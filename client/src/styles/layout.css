@@ -1,0 +1,334 @@
+/* =========================================
+   ANOVA — APPLICATION LAYOUT
+   ========================================= */
+
+.anova-app-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--color-background);
+}
+
+/* =========================================
+   SIDEBAR
+   ========================================= */
+
+.anova-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 258px;
+  min-height: 100vh;
+  padding: 28px 18px 20px;
+  color: #ffffff;
+  background: var(--color-primary);
+}
+
+.anova-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px 30px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.anova-brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 43px;
+  height: 43px;
+  flex-shrink: 0;
+  border: 1px solid var(--color-accent);
+  border-radius: 12px;
+  color: var(--color-accent);
+  font-family: Georgia, serif;
+  font-size: 27px;
+}
+
+.anova-sidebar-brand h1 {
+  margin: 0;
+  color: #ffffff;
+  font-family: Georgia, serif;
+  font-size: 25px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+.anova-sidebar-brand p {
+  margin: 5px 0 0;
+  color: #bdcbc3;
+  font-size: 10px;
+  letter-spacing: 0.2px;
+}
+
+/* Navigation */
+
+.anova-sidebar-nav {
+  flex: 1;
+  padding-top: 24px;
+}
+
+.anova-nav-section {
+  margin-bottom: 27px;
+}
+
+.anova-nav-heading {
+  margin: 0 0 10px;
+  padding: 0 10px;
+  color: #aebfb5;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.anova-nav-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 42px;
+  margin: 3px 0;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #e1e9e3;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.anova-nav-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
+}
+
+.anova-nav-item.active {
+  border-color: rgba(197, 164, 109, 0.2);
+  background: rgba(197, 164, 109, 0.13);
+  color: #e4c58e;
+}
+
+.anova-sidebar-footer {
+  padding: 18px 9px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.anova-sidebar-footer p {
+  margin: 0 0 6px;
+  color: #dce5de;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.anova-sidebar-footer span {
+  color: #aebfb5;
+  font-size: 11px;
+}
+
+/* =========================================
+   MAIN CONTENT
+   ========================================= */
+
+.anova-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.anova-page-content {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 30px 34px;
+}
+
+/* =========================================
+   TOPBAR
+   ========================================= */
+
+.anova-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 105px;
+  padding: 22px 34px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.anova-topbar-eyebrow {
+  margin: 0 0 7px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.3px;
+}
+
+.anova-topbar-heading h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-family: var(--font-primary);
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.7px;
+}
+
+.anova-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 25px;
+}
+
+.anova-branch-indicator {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--color-text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.anova-branch-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+.anova-profile {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding-left: 22px;
+  border-left: 1px solid var(--color-border);
+}
+
+.anova-profile-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 39px;
+  height: 39px;
+  border-radius: 50%;
+  background: #e8eee8;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.anova-profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.anova-profile-info strong {
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.anova-profile-info span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+/* =========================================
+   RESPONSIVE LAYOUT
+   ========================================= */
+
+@media (max-width: 1100px) {
+  .anova-sidebar {
+    width: 230px;
+  }
+
+  .anova-topbar,
+  .anova-page-content {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+
+  .anova-topbar-actions {
+    gap: 16px;
+  }
+}
+
+@media (max-width: 760px) {
+  .anova-app-shell {
+    flex-direction: column;
+  }
+
+  .anova-sidebar {
+    width: 100%;
+    min-height: auto;
+    padding: 16px;
+  }
+
+  .anova-sidebar-brand {
+    padding: 0 4px 15px;
+  }
+
+  .anova-sidebar-nav {
+    display: flex;
+    gap: 22px;
+    overflow-x: auto;
+    padding: 16px 0 5px;
+  }
+
+  .anova-nav-section {
+    flex-shrink: 0;
+    margin-bottom: 0;
+  }
+
+  .anova-nav-heading {
+    white-space: nowrap;
+  }
+
+  .anova-nav-item {
+    width: auto;
+    min-width: 130px;
+  }
+
+  .anova-sidebar-footer {
+    display: none;
+  }
+
+  .anova-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+    padding: 22px 18px;
+  }
+
+  .anova-topbar-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .anova-page-content {
+    padding: 22px 18px;
+  }
+}
+
+@media (max-width: 420px) {
+  .anova-branch-indicator {
+    font-size: 11px;
+  }
+
+  .anova-profile {
+    padding-left: 12px;
+  }
+
+  .anova-profile-info strong {
+    font-size: 11px;
+  }
+}
