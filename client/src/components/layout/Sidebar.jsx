@@ -30,13 +30,13 @@ function Sidebar({ activePage, setActivePage }) {
   return (
     <aside className="anova-sidebar">
       <div className="anova-sidebar-brand">
-        <span className="anova-brand-mark">A</span>
+  <span className="anova-brand-mark">A</span>
 
-        <div>
-          <h1>Anova</h1>
-          <p>Restaurant Enterprise Suite</p>
-        </div>
-      </div>
+  <div className="anova-brand-details">
+    <h1>Anova</h1>
+    <p>The Art of Intelligent Hospitality</p>
+  </div>
+</div>
 
       <nav className="anova-sidebar-nav">
         {navigation.map((section) => (
