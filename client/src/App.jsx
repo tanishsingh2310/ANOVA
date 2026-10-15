@@ -9,6 +9,7 @@ import Reservations from "./pages/restaurant/Reservations";
 import Orders from "./pages/restaurant/Orders";
 import KitchenWorkflow from "./pages/restaurant/KitchenWorkflow";
 import BillingPayments from "./pages/restaurant/BillingPayments";
+import FoodRecommendations from "./pages/restaurant/FoodRecommendations";
 
 function App() {
   const [activePage, setActivePage] = useState("Dashboard");
@@ -32,6 +33,9 @@ function App() {
 
     case "Billing & Payments":
       return <BillingPayments />;
+      
+    case "Food Recommendations":
+      return <FoodRecommendations />;
 
     default:
       return <Dashboard />;
