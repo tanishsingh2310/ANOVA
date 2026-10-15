@@ -389,3 +389,184 @@
     gap: 5px;
   }
 }
+
+
+
+/* =========================================
+   ANOVA — RECENT ACTIVITY TIMELINE
+   ========================================= */
+
+.dashboard-activity-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-activity-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 19px 22px;
+  border-bottom: 1px solid var(--color-border);
+  transition: background var(--transition-fast);
+}
+
+.dashboard-activity-item:last-child {
+  border-bottom: none;
+}
+
+.dashboard-activity-item:hover {
+  background: #FBFCF9;
+}
+
+/* Activity indicators */
+
+.dashboard-activity-icon {
+  display: flex;
+  flex: 0 0 40px;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.dashboard-activity-icon.order {
+  background: #EDF4EF;
+  color: var(--color-primary);
+}
+
+.dashboard-activity-icon.reservation {
+  background: #F5F0E5;
+  color: #8B6D37;
+}
+
+.dashboard-activity-icon.payment {
+  background: #EAF4F0;
+  color: var(--color-success);
+}
+
+.dashboard-activity-icon.kitchen {
+  background: #F1F0F7;
+  color: #6D648F;
+}
+
+.dashboard-activity-icon.menu {
+  background: #F6EFEA;
+  color: #966A4E;
+}
+
+/* Activity descriptions */
+
+.dashboard-activity-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard-activity-details h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.dashboard-activity-details p {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.dashboard-activity-item time {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Demo-data disclaimer */
+
+.dashboard-activity-disclaimer {
+  margin: 12px 2px 0;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+/* Tablet */
+
+@media (max-width: 900px) {
+  .dashboard-activity-item {
+    gap: 13px;
+    padding: 17px 18px;
+  }
+
+  .dashboard-activity-icon {
+    flex-basis: 36px;
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* Mobile */
+
+@media (max-width: 600px) {
+  .dashboard-activity-list {
+    margin-top: 16px;
+  }
+
+  .dashboard-activity-item {
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 13px;
+  }
+
+  .dashboard-activity-icon {
+    flex-basis: 34px;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+  }
+
+  .dashboard-activity-details h3 {
+    font-size: 12px;
+  }
+
+  .dashboard-activity-details p {
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-activity-item time {
+    font-size: 10px;
+  }
+
+  .dashboard-activity-disclaimer {
+    font-size: 10px;
+  }
+}
+
+/* Very small mobile screens */
+
+@media (max-width: 380px) {
+  .dashboard-activity-item {
+    flex-wrap: wrap;
+  }
+
+  .dashboard-activity-details {
+    flex-basis: calc(100% - 48px);
+  }
+
+  .dashboard-activity-item time {
+    margin-left: 46px;
+  }
+}

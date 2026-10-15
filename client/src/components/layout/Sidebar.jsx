@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 const navigation = [
   {
     title: "Overview",
@@ -27,18 +29,48 @@ const navigation = [
 ];
 
 function Sidebar({ activePage, setActivePage }) {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  function handleNavigation(item) {
+    setActivePage(item);
+    setIsMobileMenuOpen(false);
+  }
+
+  function toggleMobileMenu() {
+    setIsMobileMenuOpen((previousState) => !previousState);
+  }
+
   return (
     <aside className="anova-sidebar">
-      <div className="anova-sidebar-brand">
-  <span className="anova-brand-mark">A</span>
+      <div className="anova-sidebar-header">
+        <div className="anova-sidebar-brand">
+          <span className="anova-brand-mark">A</span>
 
-  <div className="anova-brand-details">
-    <h1>Anova</h1>
-    <p>The Art of Intelligent Hospitality</p>
-  </div>
-</div>
+          <div className="anova-brand-details">
+            <h1>Anova</h1>
+            <p>The Art of Intelligent Hospitality</p>
+          </div>
+        </div>
 
-      <nav className="anova-sidebar-nav">
+        <button
+          type="button"
+          className="anova-mobile-menu-toggle"
+          onClick={toggleMobileMenu}
+          aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+          aria-expanded={isMobileMenuOpen}
+          aria-controls="anova-navigation"
+        >
+          {isMobileMenuOpen ? "\u00D7" : "\u2630"}
+        </button>
+      </div>
+
+      <nav
+        id="anova-navigation"
+        className={`anova-sidebar-nav ${
+          isMobileMenuOpen ? "is-open" : ""
+        }`}
+        aria-label="Main navigation"
+      >
         {navigation.map((section) => (
           <div className="anova-nav-section" key={section.title}>
             <p className="anova-nav-heading">{section.title}</p>
@@ -47,10 +79,11 @@ function Sidebar({ activePage, setActivePage }) {
               <button
                 key={item}
                 type="button"
-                onClick={() => setActivePage(item)}
+                onClick={() => handleNavigation(item)}
                 className={`anova-nav-item ${
                   activePage === item ? "active" : ""
                 }`}
+                aria-current={activePage === item ? "page" : undefined}
               >
                 {item}
               </button>

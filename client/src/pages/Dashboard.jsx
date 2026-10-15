@@ -70,7 +70,7 @@ function Dashboard() {
         <div>
           <p className="dashboard-eyebrow">RESTAURANT OPERATIONS</p>
 
-          <h1>Good evening, Administrator</h1>
+          <h1>Welcome, Administrator</h1>
 
           <p className="dashboard-welcome-description">
             Here's an overview of your restaurant's operations.
@@ -144,24 +144,90 @@ function Dashboard() {
       </section>
 
       <section className="dashboard-activity">
-        <div className="dashboard-section-heading">
-          <div>
-            <p className="dashboard-eyebrow">ACTIVITY</p>
-            <h2>Recent Activity</h2>
-          </div>
-        </div>
+  <div className="dashboard-section-heading">
+    <div>
+      <p className="dashboard-eyebrow">ACTIVITY OVERVIEW</p>
+      <h2>Recent Activity</h2>
+    </div>
 
-        <div className="dashboard-activity-empty">
-          <div className="dashboard-activity-mark">A</div>
+    <span className="dashboard-module-count">DEMO DATA</span>
+  </div>
 
-          <h3>Your activity will appear here</h3>
+  <div className="dashboard-activity-list">
+    <article className="dashboard-activity-item">
+      <span className="dashboard-activity-icon order" aria-hidden="true">
+        O
+      </span>
 
-          <p>
-            Recent orders, reservations and billing updates will be
-            displayed here once the modules are connected.
-          </p>
-        </div>
-      </section>
+      <div className="dashboard-activity-details">
+        <h3>New Order Received</h3>
+        <p>Order #ORD-1042 was received and is awaiting preparation.</p>
+      </div>
+
+      <time>10:42 AM</time>
+    </article>
+
+    <article className="dashboard-activity-item">
+      <span
+        className="dashboard-activity-icon reservation"
+        aria-hidden="true"
+      >
+        R
+      </span>
+
+      <div className="dashboard-activity-details">
+        <h3>Reservation Confirmed</h3>
+        <p>A table reservation for 4 guests was confirmed.</p>
+      </div>
+
+      <time>10:25 AM</time>
+    </article>
+
+    <article className="dashboard-activity-item">
+      <span className="dashboard-activity-icon payment" aria-hidden="true">
+        ₹
+      </span>
+
+      <div className="dashboard-activity-details">
+        <h3>Payment Recorded</h3>
+        <p>A payment of ₹1,250 was recorded successfully.</p>
+      </div>
+
+      <time>10:08 AM</time>
+    </article>
+
+    <article className="dashboard-activity-item">
+      <span className="dashboard-activity-icon kitchen" aria-hidden="true">
+        K
+      </span>
+
+      <div className="dashboard-activity-details">
+        <h3>Order Ready for Serving</h3>
+        <p>Order #ORD-1038 has completed kitchen preparation.</p>
+      </div>
+
+      <time>9:54 AM</time>
+    </article>
+
+    <article className="dashboard-activity-item">
+      <span className="dashboard-activity-icon menu" aria-hidden="true">
+        M
+      </span>
+
+      <div className="dashboard-activity-details">
+        <h3>Menu Availability Updated</h3>
+        <p>Paneer Tikka availability was updated in the menu.</p>
+      </div>
+
+      <time>9:30 AM</time>
+    </article>
+  </div>
+
+  <p className="dashboard-activity-disclaimer">
+    These activities are illustrative examples and do not represent live
+    restaurant transactions.
+  </p>
+</section>
 
       <footer className="dashboard-footer">
         <span>Anova Enterprise Management System</span>
