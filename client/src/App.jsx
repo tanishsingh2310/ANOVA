@@ -7,6 +7,7 @@ import MenuManagement from "./pages/restaurant/MenuManagement";
 import TableManagement from "./pages/restaurant/TableManagement";
 import Reservations from "./pages/restaurant/Reservations";
 import Orders from "./pages/restaurant/Orders";
+import KitchenWorkflow from "./pages/restaurant/KitchenWorkflow";
 
 function App() {
   const [activePage, setActivePage] = useState("Dashboard");
@@ -24,6 +25,9 @@ function App() {
     
     case "Orders":
       return <Orders />;
+
+    case "Kitchen Workflow":
+      return <KitchenWorkflow />;
 
     default:
       return <Dashboard />;
