@@ -138,13 +138,13 @@ export default function TransfersPage({ branchId, branches = [] }) {
             <table className="inv-table">
               <thead>
                 <tr>
-                  <th>Transfer #</th>
+                  <th style={{ width: '140px', whiteSpace: 'nowrap' }}>Transfer #</th>
                   <th>Origin Branch</th>
                   <th>Destination Branch</th>
                   <th>Items Transferred</th>
-                  <th>Dispatched Time</th>
+                  <th style={{ width: '140px', whiteSpace: 'nowrap' }}>Dispatched Time</th>
                   <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
+                  <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -157,22 +157,22 @@ export default function TransfersPage({ branchId, branches = [] }) {
                 ) : (
                   transfers.map(tr => (
                     <tr key={tr.id}>
-                      <td><strong>{tr.transferNumber}</strong></td>
-                      <td>{branchMap[tr.fromBranchId] || tr.fromBranchId}</td>
-                      <td>{branchMap[tr.toBranchId] || tr.toBranchId}</td>
+                      <td className="inv-cell-code"><code>{tr.transferNumber}</code></td>
+                      <td className="inv-cell-nowrap">{branchMap[tr.fromBranchId] || tr.fromBranchId}</td>
+                      <td className="inv-cell-nowrap">{branchMap[tr.toBranchId] || tr.toBranchId}</td>
                       <td>
                         {tr.items.map((it, idx) => (
-                          <div key={idx} style={{ fontSize: '12px' }}>
+                          <div key={idx} style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
                             • <strong>{ingredientMap[it.ingredientId] || it.ingredientId}</strong>: {it.qty} {it.unit}
                           </div>
                         ))}
                       </td>
-                      <td>
+                      <td className="inv-cell-date">
                         <div>{tr.dispatchedAt ? tr.dispatchedAt.replace('T', ' ').slice(0, 16) : '-'}</div>
                         <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>by {tr.dispatchedBy}</span>
                       </td>
-                      <td><StockBadge status={tr.status} /></td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="inv-cell-badge"><StockBadge status={tr.status} /></td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         {tr.status === 'IN_TRANSIT' ? (
                           <button
                             type="button"

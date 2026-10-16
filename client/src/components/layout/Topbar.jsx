@@ -1,7 +1,7 @@
 export default function Topbar({
   title = "Dashboard",
   subtitle = "",
-  breadcrumb = "ANOVA / RESTAURANT MANAGEMENT",
+  breadcrumb = "ANOVA / INVENTORY & SUPPLY CHAIN",
   branches = [],
   selectedBranch = "all",
   onSelectBranch = () => {},

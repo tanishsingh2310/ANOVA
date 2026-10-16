@@ -66,7 +66,7 @@ export default function StockAdjustmentModal({
           <div>
             <h3>Adjust Physical Stock Count</h3>
             <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-              {ingredient.name} ({ingredient.sku})
+              {ingredient.name} • SKU: <code style={{ fontSize: '11px' }}>{ingredient.sku}</code>
             </p>
           </div>
           <button type="button" className="inv-modal-close" onClick={onClose}>✕</button>

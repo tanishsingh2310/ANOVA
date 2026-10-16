@@ -2,12 +2,6 @@ import { useState } from 'react';
 
 const navigationSections = [
   {
-    title: 'Overview',
-    items: [
-      { id: 'dashboard', label: 'Executive Dashboard' }
-    ]
-  },
-  {
     title: 'Inventory & Supply Chain',
     items: [
       { id: 'inv-dashboard', label: 'Inventory Overview' },
@@ -17,27 +11,6 @@ const navigationSections = [
       { id: 'inv-transfers', label: 'Branch Transfers' },
       { id: 'inv-wastage', label: 'Wastage & Spoilage' },
       { id: 'inv-reports', label: 'Valuation & Reports' }
-    ]
-  },
-  {
-    title: 'Restaurant Operations',
-    items: [
-      { id: 'ops-menu', label: 'Menu Management' },
-      { id: 'ops-tables', label: 'Table Management' },
-      { id: 'ops-reservations', label: 'Reservations' },
-      { id: 'ops-orders', label: 'Orders & POS' },
-      { id: 'ops-kitchen', label: 'Kitchen Workflow' },
-      { id: 'ops-billing', label: 'Billing & Payments' },
-      { id: 'ops-recommendations', label: 'Food Recommendations' }
-    ]
-  },
-  {
-    title: 'Other Modules',
-    items: [
-      { id: 'core-admin', label: 'Administration' },
-      { id: 'core-branches', label: 'Branches & Locations' },
-      { id: 'core-staff', label: 'Staff & Roles' },
-      { id: 'cust-management', label: 'Customer Management' }
     ]
   }
 ];

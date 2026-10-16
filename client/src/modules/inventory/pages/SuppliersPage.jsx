@@ -151,7 +151,7 @@ export default function SuppliersPage() {
             <table className="inv-table">
               <thead>
                 <tr>
-                  <th>Vendor Code</th>
+                  <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Vendor Code</th>
                   <th>Supplier Name</th>
                   <th>Specialty Category</th>
                   <th>Primary Contact</th>
@@ -159,7 +159,7 @@ export default function SuppliersPage() {
                   <th>Payment Terms</th>
                   <th>Rating</th>
                   <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
+                  <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -172,29 +172,29 @@ export default function SuppliersPage() {
                 ) : (
                   suppliers.map((sup) => (
                     <tr key={sup.id}>
-                      <td><code>{sup.code}</code></td>
+                      <td className="inv-cell-code"><code>{sup.code}</code></td>
                       <td>
                         <strong>{sup.name}</strong>
                         <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
                           {sup.city} • GST: {sup.taxId || 'N/A'}
                         </div>
                       </td>
-                      <td>{sup.category}</td>
+                      <td className="inv-cell-nowrap">{sup.category}</td>
                       <td>
                         <div>{sup.contactPerson}</div>
                         <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
                           {sup.phone} • {sup.email}
                         </div>
                       </td>
-                      <td><strong>{sup.leadTimeDays} days</strong></td>
-                      <td>{sup.paymentTerms}</td>
-                      <td>
+                      <td className="inv-cell-nowrap"><strong>{sup.leadTimeDays} days</strong></td>
+                      <td className="inv-cell-nowrap">{sup.paymentTerms}</td>
+                      <td className="inv-cell-nowrap">
                         <span style={{ color: 'var(--color-warning)', fontWeight: 700 }}>
                           ★ {sup.rating || '4.5'}
                         </span>
                       </td>
-                      <td><StockBadge status={sup.status} /></td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td className="inv-cell-badge"><StockBadge status={sup.status} /></td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'inline-flex', gap: '6px' }}>
                           <button
                             type="button"

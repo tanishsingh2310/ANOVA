@@ -182,7 +182,7 @@ export default function ReportsPage({ branchId, branches = [] }) {
               <table className="inv-table">
                 <thead>
                   <tr>
-                    <th>SKU</th>
+                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>SKU</th>
                     <th>Ingredient</th>
                     <th>Category</th>
                     <th>Branch Stock</th>
@@ -194,13 +194,13 @@ export default function ReportsPage({ branchId, branches = [] }) {
                 <tbody>
                   {valuationData.items.map(row => (
                     <tr key={row.id}>
-                      <td><code>{row.sku}</code></td>
+                      <td className="inv-cell-code"><code>{row.sku}</code></td>
                       <td><strong>{row.name}</strong></td>
-                      <td>{row.category}</td>
-                      <td><strong>{row.quantity}</strong></td>
-                      <td>{row.baseUnit}</td>
-                      <td>₹{row.unitCost}</td>
-                      <td><strong>₹{row.totalValue.toLocaleString()}</strong></td>
+                      <td className="inv-cell-nowrap">{row.category}</td>
+                      <td className="inv-cell-nowrap"><strong>{row.quantity}</strong></td>
+                      <td className="inv-cell-nowrap">{row.baseUnit}</td>
+                      <td className="inv-cell-amount">₹{row.unitCost}</td>
+                      <td className="inv-cell-amount"><strong>₹{row.totalValue.toLocaleString()}</strong></td>
                     </tr>
                   ))}
                 </tbody>
@@ -231,7 +231,7 @@ export default function ReportsPage({ branchId, branches = [] }) {
               <table className="inv-table">
                 <thead>
                   <tr>
-                    <th>SKU</th>
+                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>SKU</th>
                     <th>Ingredient</th>
                     <th>Current Stock</th>
                     <th>Safety Buffer (Min)</th>
@@ -245,13 +245,13 @@ export default function ReportsPage({ branchId, branches = [] }) {
                     const deficit = Math.max(0, item.minThreshold - item.status.qty);
                     return (
                       <tr key={item.id}>
-                        <td><code>{item.sku}</code></td>
+                        <td className="inv-cell-code"><code>{item.sku}</code></td>
                         <td><strong>{item.name}</strong></td>
-                        <td><strong style={{ color: 'var(--color-error)' }}>{item.status.qty} {item.baseUnit}</strong></td>
-                        <td>{item.minThreshold} {item.baseUnit}</td>
-                        <td>{item.reorderLevel} {item.baseUnit}</td>
-                        <td><strong style={{ color: 'var(--color-error)' }}>+{deficit} {item.baseUnit}</strong></td>
-                        <td>
+                        <td className="inv-cell-nowrap"><strong style={{ color: 'var(--color-error)' }}>{item.status.qty} {item.baseUnit}</strong></td>
+                        <td className="inv-cell-nowrap">{item.minThreshold} {item.baseUnit}</td>
+                        <td className="inv-cell-nowrap">{item.reorderLevel} {item.baseUnit}</td>
+                        <td className="inv-cell-nowrap"><strong style={{ color: 'var(--color-error)' }}>+{deficit} {item.baseUnit}</strong></td>
+                        <td className="inv-cell-badge">
                           <span className={`inv-badge ${item.status.level === 'OUT_OF_STOCK' || item.status.level === 'CRITICAL' ? 'inv-badge-danger' : 'inv-badge-warning'}`}>
                             {item.status.text}
                           </span>
@@ -280,11 +280,11 @@ export default function ReportsPage({ branchId, branches = [] }) {
               <table className="inv-table">
                 <thead>
                   <tr>
-                    <th>Batch #</th>
+                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Batch #</th>
                     <th>Ingredient</th>
                     <th>Branch Location</th>
                     <th>Quantity</th>
-                    <th>Expiry Date</th>
+                    <th style={{ width: '110px', whiteSpace: 'nowrap' }}>Expiry Date</th>
                     <th>Days Remaining</th>
                     <th>Priority</th>
                   </tr>
@@ -292,13 +292,13 @@ export default function ReportsPage({ branchId, branches = [] }) {
                 <tbody>
                   {expiringBatches.map(b => (
                     <tr key={b.batchNumber}>
-                      <td><strong>{b.batchNumber}</strong></td>
+                      <td className="inv-cell-code"><code>{b.batchNumber}</code></td>
                       <td>{b.ingredientName}</td>
-                      <td>{branchMap[b.branchId] || b.branchId}</td>
-                      <td><strong>{b.qty} {b.unit}</strong></td>
-                      <td>{b.expiryDate}</td>
-                      <td>{b.diffDays <= 0 ? 'Expired' : `${b.diffDays} day(s)`}</td>
-                      <td>
+                      <td className="inv-cell-nowrap">{branchMap[b.branchId] || b.branchId}</td>
+                      <td className="inv-cell-nowrap"><strong>{b.qty} {b.unit}</strong></td>
+                      <td className="inv-cell-date">{b.expiryDate}</td>
+                      <td className="inv-cell-nowrap">{b.diffDays <= 0 ? 'Expired' : `${b.diffDays} day(s)`}</td>
+                      <td className="inv-cell-badge">
                         <span className={`inv-badge ${b.isExpired ? 'inv-badge-danger' : 'inv-badge-warning'}`}>
                           {b.isExpired ? 'DISCARD REQUIRED' : 'USE FIRST (FIFO)'}
                         </span>
@@ -333,9 +333,9 @@ export default function ReportsPage({ branchId, branches = [] }) {
               <table className="inv-table">
                 <thead>
                   <tr>
-                    <th>Timestamp</th>
+                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Timestamp</th>
                     <th>Type</th>
-                    <th>Reference</th>
+                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Reference</th>
                     <th>Delta Change</th>
                     <th>Resulting Stock</th>
                     <th>Performed By</th>
@@ -345,22 +345,22 @@ export default function ReportsPage({ branchId, branches = [] }) {
                 <tbody>
                   {movements.map(m => (
                     <tr key={m.id}>
-                      <td style={{ fontSize: '11.5px', color: 'var(--color-text-muted)' }}>
+                      <td className="inv-cell-date">
                         {m.timestamp.replace('T', ' ').slice(0, 16)}
                       </td>
-                      <td>
+                      <td className="inv-cell-badge">
                         <span className="inv-badge inv-badge-info">
                           {m.type.replace(/_/g, ' ')}
                         </span>
                       </td>
-                      <td><code>{m.reference}</code></td>
-                      <td>
+                      <td className="inv-cell-code"><code>{m.reference}</code></td>
+                      <td className="inv-cell-nowrap">
                         <strong style={{ color: m.deltaQty < 0 ? 'var(--color-error)' : 'var(--color-success)' }}>
                           {m.deltaQty > 0 ? `+${m.deltaQty}` : m.deltaQty} {m.unit}
                         </strong>
                       </td>
-                      <td><strong>{m.resultingBalance} {m.unit}</strong></td>
-                      <td>{m.performedBy}</td>
+                      <td className="inv-cell-nowrap"><strong>{m.resultingBalance} {m.unit}</strong></td>
+                      <td className="inv-cell-nowrap">{m.performedBy}</td>
                       <td style={{ fontSize: '11.5px', color: 'var(--color-text-muted)' }}>{m.notes}</td>
                     </tr>
                   ))}

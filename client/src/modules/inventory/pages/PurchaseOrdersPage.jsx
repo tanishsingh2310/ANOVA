@@ -213,15 +213,15 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
             <table className="inv-table">
               <thead>
                 <tr>
-                  <th>PO #</th>
+                  <th style={{ width: '140px', whiteSpace: 'nowrap' }}>PO #</th>
                   <th>Supplier</th>
                   <th>Receiving Branch</th>
-                  <th>Order Date</th>
-                  <th>Expected</th>
+                  <th style={{ width: '110px', whiteSpace: 'nowrap' }}>Order Date</th>
+                  <th style={{ width: '110px', whiteSpace: 'nowrap' }}>Expected</th>
                   <th>Line Items</th>
                   <th>Total Amount</th>
                   <th>Lifecycle Status</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
+                  <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -238,13 +238,13 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
 
                     return (
                       <tr key={po.id}>
-                        <td><code>{po.poNumber}</code></td>
+                        <td className="inv-cell-code"><code>{po.poNumber}</code></td>
                         <td>
                           <strong>{supName}</strong>
                         </td>
-                        <td>{bName}</td>
-                        <td style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{po.createdAt.split('T')[0]}</td>
-                        <td style={{ fontSize: '12px' }}>{po.expectedDate}</td>
+                        <td className="inv-cell-nowrap">{bName}</td>
+                        <td className="inv-cell-date">{po.createdAt.split('T')[0]}</td>
+                        <td className="inv-cell-date">{po.expectedDate}</td>
                         <td>
                           <span style={{ fontWeight: 600 }}>{po.items.length} item{po.items.length > 1 ? 's' : ''}</span>
                           <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', display: 'block', maxWidth: '220px', whiteSpace: 'normal' }}>
@@ -252,9 +252,9 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
                             {po.items.length > 2 ? '...' : ''}
                           </span>
                         </td>
-                        <td><strong>₹{po.totalAmount.toLocaleString()}</strong></td>
-                        <td><StockBadge status={po.status} /></td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td className="inv-cell-amount"><strong>₹{po.totalAmount.toLocaleString()}</strong></td>
+                        <td className="inv-cell-badge"><StockBadge status={po.status} /></td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'inline-flex', gap: '6px' }}>
                             {po.status === 'DRAFT' && (
                               <button

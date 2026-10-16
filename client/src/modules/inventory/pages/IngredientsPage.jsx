@@ -158,7 +158,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
             <table className="inv-table">
               <thead>
                 <tr>
-                  <th>SKU</th>
+                  <th style={{ width: '130px', whiteSpace: 'nowrap' }}>SKU</th>
                   <th>Ingredient Name</th>
                   <th>Category</th>
                   <th>Current Stock</th>
@@ -166,7 +166,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
                   <th>Unit Cost</th>
                   <th>Total Value</th>
                   <th>Status</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
+                  <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -184,26 +184,26 @@ export default function IngredientsPage({ branchId, branches = [] }) {
 
                     return (
                       <tr key={ing.id}>
-                        <td><code>{ing.sku}</code></td>
+                        <td className="inv-cell-code"><code>{ing.sku}</code></td>
                         <td>
                           <strong>{ing.name}</strong>
                           <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
                             Base Unit: {ing.baseUnit}
                           </div>
                         </td>
-                        <td>{ing.category}</td>
-                        <td>
+                        <td className="inv-cell-nowrap">{ing.category}</td>
+                        <td className="inv-cell-nowrap">
                           <strong style={{ fontSize: '14px', color: qty <= 0 ? 'var(--color-error)' : 'inherit' }}>
                             {qty} {ing.baseUnit}
                           </strong>
                         </td>
-                        <td>
+                        <td className="inv-cell-nowrap">
                           <span>{ing.minThreshold} {ing.baseUnit}</span>
                           <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}> / {ing.reorderLevel || '-'}</span>
                         </td>
-                        <td>₹{ing.unitCost}</td>
-                        <td><strong>₹{totalVal.toLocaleString()}</strong></td>
-                        <td><StockBadge status={status} /></td>
+                        <td className="inv-cell-amount">₹{ing.unitCost}</td>
+                        <td className="inv-cell-amount"><strong>₹{totalVal.toLocaleString()}</strong></td>
+                        <td className="inv-cell-badge"><StockBadge status={status} /></td>
                         <td style={{ textAlign: 'right' }}>
                           <div style={{ display: 'inline-flex', gap: '6px' }}>
                             <button

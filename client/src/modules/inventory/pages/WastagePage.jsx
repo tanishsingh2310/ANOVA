@@ -140,7 +140,7 @@ export default function WastagePage({ branchId, branches = [] }) {
             <table className="inv-table">
               <thead>
                 <tr>
-                  <th>Log #</th>
+                  <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Log #</th>
                   <th>Branch</th>
                   <th>Ingredient</th>
                   <th>Qty Discarded</th>
@@ -148,7 +148,7 @@ export default function WastagePage({ branchId, branches = [] }) {
                   <th>Financial Loss</th>
                   <th>Reason</th>
                   <th>Reported By</th>
-                  <th>Date & Time</th>
+                  <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Date & Time</th>
                 </tr>
               </thead>
               <tbody>
@@ -161,20 +161,20 @@ export default function WastagePage({ branchId, branches = [] }) {
                 ) : (
                   wastageList.map(w => (
                     <tr key={w.id}>
-                      <td><strong>{w.wasteNumber}</strong></td>
-                      <td>{branchMap[w.branchId] || w.branchId}</td>
+                      <td className="inv-cell-code"><code>{w.wasteNumber}</code></td>
+                      <td className="inv-cell-nowrap">{branchMap[w.branchId] || w.branchId}</td>
                       <td><strong>{ingredientMap[w.ingredientId] || w.ingredientId}</strong></td>
-                      <td style={{ color: 'var(--color-error)', fontWeight: 600 }}>
+                      <td className="inv-cell-nowrap" style={{ color: 'var(--color-error)', fontWeight: 600 }}>
                         -{w.qty} {w.unit}
                       </td>
-                      <td>₹{w.unitCost}</td>
-                      <td><strong style={{ color: 'var(--color-error)' }}>₹{w.totalCost.toLocaleString()}</strong></td>
+                      <td className="inv-cell-amount">₹{w.unitCost}</td>
+                      <td className="inv-cell-amount"><strong style={{ color: 'var(--color-error)' }}>₹{w.totalCost.toLocaleString()}</strong></td>
                       <td>
                         <span className="inv-badge inv-badge-danger">{w.reason.replace(/_/g, ' ')}</span>
                         {w.notes && <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontStyle: 'italic', marginTop: '2px' }}>"{w.notes}"</div>}
                       </td>
-                      <td>{w.loggedBy}</td>
-                      <td>{w.date.replace('T', ' ').slice(0, 16)}</td>
+                      <td className="inv-cell-nowrap">{w.loggedBy}</td>
+                      <td className="inv-cell-date">{w.date.replace('T', ' ').slice(0, 16)}</td>
                     </tr>
                   ))
                 )}

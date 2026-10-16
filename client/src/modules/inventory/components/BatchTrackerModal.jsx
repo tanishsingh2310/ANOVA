@@ -14,7 +14,7 @@ export default function BatchTrackerModal({ isOpen, onClose, ingredient, branche
           <div>
             <h3>Batch & Expiry Ledger</h3>
             <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-              {ingredient.name} • SKU: {ingredient.sku} • Base Unit: {ingredient.baseUnit}
+              {ingredient.name} • SKU: <code style={{ fontSize: '11px' }}>{ingredient.sku}</code> • Base Unit: {ingredient.baseUnit}
             </p>
           </div>
           <button type="button" className="inv-modal-close" onClick={onClose}>✕</button>
@@ -30,10 +30,10 @@ export default function BatchTrackerModal({ isOpen, onClose, ingredient, branche
               <table className="inv-table">
                 <thead>
                   <tr>
-                    <th>Batch #</th>
+                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Batch #</th>
                     <th>Branch Location</th>
                     <th>Batch Qty</th>
-                    <th>Expiry Date</th>
+                    <th style={{ width: '110px', whiteSpace: 'nowrap' }}>Expiry Date</th>
                     <th>Status</th>
                     <th>Received Cost</th>
                   </tr>
@@ -47,11 +47,11 @@ export default function BatchTrackerModal({ isOpen, onClose, ingredient, branche
 
                     return (
                       <tr key={b.id || b.batchNumber}>
-                        <td><strong>{b.batchNumber}</strong></td>
-                        <td>{branchMap[b.branchId] || b.branchId}</td>
-                        <td>{b.qty} {ingredient.baseUnit}</td>
-                        <td>{b.expiryDate}</td>
-                        <td>
+                        <td className="inv-cell-code"><code>{b.batchNumber}</code></td>
+                        <td className="inv-cell-nowrap">{branchMap[b.branchId] || b.branchId}</td>
+                        <td className="inv-cell-nowrap"><strong>{b.qty} {ingredient.baseUnit}</strong></td>
+                        <td className="inv-cell-date">{b.expiryDate}</td>
+                        <td className="inv-cell-badge">
                           {isExpired ? (
                             <span className="inv-badge inv-badge-danger">Expired ({Math.abs(diffDays)}d ago)</span>
                           ) : isSoon ? (
@@ -60,7 +60,7 @@ export default function BatchTrackerModal({ isOpen, onClose, ingredient, branche
                             <span className="inv-badge inv-badge-success">Good ({diffDays}d)</span>
                           )}
                         </td>
-                        <td>₹{b.receivedCost}</td>
+                        <td className="inv-cell-amount">₹{b.receivedCost}</td>
                       </tr>
                     );
                   })}

@@ -134,7 +134,65 @@
   line-height: 1.5;
 }
 
-/* Indicators */
+/* KPI Icons with vibrant, distinct color badges */
+.inv-kpi-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.inv-kpi-card:hover .inv-kpi-icon {
+  transform: scale(1.08);
+}
+
+.inv-kpi-icon.valuation {
+  background: rgba(197, 164, 109, 0.16);
+  color: #B38640;
+  border: 1px solid rgba(197, 164, 109, 0.32);
+}
+
+.inv-kpi-icon.stock {
+  background: rgba(46, 125, 96, 0.14);
+  color: #2E7D60;
+  border: 1px solid rgba(46, 125, 96, 0.28);
+}
+
+.inv-kpi-icon.stock.is-alert {
+  background: rgba(220, 38, 38, 0.14);
+  color: #DC2626;
+  border: 1px solid rgba(220, 38, 38, 0.3);
+}
+
+.inv-kpi-icon.expiring {
+  background: rgba(224, 138, 38, 0.14);
+  color: #D97706;
+  border: 1px solid rgba(224, 138, 38, 0.28);
+}
+
+.inv-kpi-icon.orders {
+  background: rgba(24, 60, 52, 0.12);
+  color: #183C34;
+  border: 1px solid rgba(24, 60, 52, 0.22);
+}
+
+.inv-kpi-icon.transfers {
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563EB;
+  border: 1px solid rgba(37, 99, 235, 0.22);
+}
+
+.inv-kpi-icon.spoilage {
+  background: rgba(220, 38, 38, 0.14);
+  color: #DC2626;
+  border: 1px solid rgba(220, 38, 38, 0.28);
+}
+
+/* Fallback indicator dots */
 .dashboard-summary-indicator {
   width: 9px;
   height: 9px;
@@ -142,20 +200,104 @@
   border-radius: 50%;
 }
 
-.dashboard-summary-indicator.orders {
-  background: var(--color-primary);
+.dashboard-summary-indicator.orders { background: var(--color-primary); }
+.dashboard-summary-indicator.reservations { background: var(--color-secondary); }
+.dashboard-summary-indicator.revenue { background: var(--color-accent); }
+.dashboard-summary-indicator.tables { background: var(--color-success); }
+
+/* Stock Replenishment Healthy / Optimal State */
+.inv-healthy-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 34px 24px;
+  min-height: 250px;
 }
 
-.dashboard-summary-indicator.reservations {
-  background: var(--color-secondary);
+.inv-healthy-state-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(46, 125, 96, 0.12);
+  color: #2E7D60;
+  border: 1.5px solid rgba(46, 125, 96, 0.26);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+  box-shadow: 0 4px 12px rgba(46, 125, 96, 0.12);
 }
 
-.dashboard-summary-indicator.revenue {
-  background: var(--color-accent);
+.inv-healthy-state-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: 6px;
+  letter-spacing: -0.2px;
 }
 
-.dashboard-summary-indicator.tables {
-  background: var(--color-success);
+.inv-healthy-state-desc {
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  max-width: 420px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.inv-healthy-state-metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  background: #F8FAF8;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 18px;
+  margin-bottom: 16px;
+}
+
+.inv-healthy-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.inv-healthy-metric-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2E7D60;
+  line-height: 1.2;
+}
+
+.inv-healthy-metric-label {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.inv-healthy-metric-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--color-border);
+}
+
+/* Quick Logistics Actions Grid */
+.inv-quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.inv-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  white-space: nowrap;
 }
 
 /* ============================================================
@@ -359,10 +501,11 @@
   padding: 12px 16px;
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .inv-table td {
-  padding: 13px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--color-border);
   color: var(--color-text);
   vertical-align: middle;
@@ -377,14 +520,46 @@
   background-color: #F8FAF8;
 }
 
-.inv-table code {
-  background: var(--color-background);
-  padding: 2px 6px;
+.inv-table code,
+.inv-code {
+  display: inline-block;
+  white-space: nowrap;
+  background: #F3F6F4;
+  padding: 3px 8px;
   border-radius: 4px;
-  font-size: 11px;
-  font-family: monospace;
+  font-size: 11.5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 600;
   color: var(--color-primary);
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(24, 60, 52, 0.16);
+  letter-spacing: 0.3px;
+  line-height: 1.35;
+}
+
+.inv-cell-code {
+  white-space: nowrap;
+  min-width: 130px;
+}
+
+.inv-cell-nowrap {
+  white-space: nowrap;
+}
+
+.inv-cell-date {
+  white-space: nowrap;
+  min-width: 110px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.inv-cell-amount {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.inv-cell-badge {
+  white-space: nowrap;
 }
 
 /* ============================================================
