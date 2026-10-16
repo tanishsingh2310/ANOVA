@@ -1,5 +1,6 @@
 ﻿const mongoose = require("mongoose");
 const Branch = require("../models/Branch");
+const { writeAuditLog } = require("../utils/auditLogger");
 
 const STAFF_ROLES = [
   "owner",
@@ -108,6 +109,18 @@ exports.createBranch = async (req, res) => {
       phone: phone === undefined ? "" : phone.trim(),
       email: email === undefined ? "" : email.trim().toLowerCase(),
     });
+    await writeAuditLog({
+    actor: req.user,
+    action: "BRANCH_CREATED",
+    resource: "Branch",
+    resourceId: branch._id,
+    branch: branch._id,
+    details: {
+    branchName: branch.name,
+    branchCode: branch.code,
+  },
+  ipAddress: req.ip,
+});
 
     return res.status(201).json({
       message: "Branch created successfully.",
@@ -283,7 +296,19 @@ exports.updateBranch = async (req, res) => {
         message: "Branch not found.",
       });
     }
-
+    await writeAuditLog({
+  actor: req.user,
+  action: "BRANCH_UPDATED",
+  resource: "Branch",
+  resourceId: branch._id,
+  branch: branch._id,
+  details: {
+    updatedFields: Object.keys(updates),
+    branchName: branch.name,
+    branchCode: branch.code,
+  },
+  ipAddress: req.ip,
+});
     return res.status(200).json({
       message: "Branch updated successfully.",
       branch,
@@ -321,6 +346,19 @@ exports.updateBranchStatus = async (req, res) => {
         message: "Branch not found.",
       });
     }
+    await writeAuditLog({
+  actor: req.user,
+  action: isActive ? "BRANCH_ACTIVATED" : "BRANCH_DEACTIVATED",
+  resource: "Branch",
+  resourceId: branch._id,
+  branch: branch._id,
+  details: {
+    branchName: branch.name,
+    branchCode: branch.code,
+    isActive,
+  },
+  ipAddress: req.ip,
+});
 
     return res.status(200).json({
       message: isActive
