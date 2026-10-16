@@ -292,7 +292,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
                                 className="inv-btn inv-btn-sm inv-btn-gold"
                                 onClick={() => handleOpenReceive(po)}
                               >
-                                📦 Receive GRN
+                                Receive GRN
                               </button>
                             )}
 

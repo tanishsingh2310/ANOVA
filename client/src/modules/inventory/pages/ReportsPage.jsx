@@ -109,28 +109,28 @@ export default function ReportsPage({ branchId, branches = [] }) {
           className={`inv-btn ${reportType === 'VALUATION' ? 'inv-btn-primary' : 'inv-btn-secondary'}`}
           onClick={() => setReportType('VALUATION')}
         >
-          💰 Stock Valuation (FIFO / Weighted Avg)
+          Stock Valuation (FIFO / Weighted Avg)
         </button>
         <button
           type="button"
           className={`inv-btn ${reportType === 'LOW_STOCK' ? 'inv-btn-primary' : 'inv-btn-secondary'}`}
           onClick={() => setReportType('LOW_STOCK')}
         >
-          📉 Low Stock & Reorder Schedule
+          Low Stock & Reorder Schedule
         </button>
         <button
           type="button"
           className={`inv-btn ${reportType === 'EXPIRY' ? 'inv-btn-primary' : 'inv-btn-secondary'}`}
           onClick={() => setReportType('EXPIRY')}
         >
-          ⏳ Batch Expiry Forecast (14 Days)
+          Batch Expiry Forecast (14 Days)
         </button>
         <button
           type="button"
           className={`inv-btn ${reportType === 'AUDIT_TRAIL' ? 'inv-btn-primary' : 'inv-btn-secondary'}`}
           onClick={() => setReportType('AUDIT_TRAIL')}
         >
-          📋 Stock Movement Audit Trail
+          Stock Movement Audit Trail
         </button>
       </div>
 
@@ -158,7 +158,7 @@ export default function ReportsPage({ branchId, branches = [] }) {
                 className="inv-btn inv-btn-sm inv-btn-gold"
                 onClick={handleExportValuation}
               >
-                📥 Export CSV
+                Export CSV
               </button>
             </div>
           </div>
@@ -223,7 +223,7 @@ export default function ReportsPage({ branchId, branches = [] }) {
               className="inv-btn inv-btn-sm inv-btn-gold"
               onClick={handleExportLowStock}
             >
-              📥 Export CSV
+              Export CSV
             </button>
           </div>
           <div className="inv-card-body" style={{ padding: 0 }}>
@@ -294,7 +294,7 @@ export default function ReportsPage({ branchId, branches = [] }) {
                     <tr key={b.batchNumber}>
                       <td><strong>{b.batchNumber}</strong></td>
                       <td>{b.ingredientName}</td>
-                      <td>📍 {branchMap[b.branchId] || b.branchId}</td>
+                      <td>{branchMap[b.branchId] || b.branchId}</td>
                       <td><strong>{b.qty} {b.unit}</strong></td>
                       <td>{b.expiryDate}</td>
                       <td>{b.diffDays <= 0 ? 'Expired' : `${b.diffDays} day(s)`}</td>
@@ -325,7 +325,7 @@ export default function ReportsPage({ branchId, branches = [] }) {
               className="inv-btn inv-btn-sm inv-btn-gold"
               onClick={handleExportMovements}
             >
-              📥 Export CSV
+              Export CSV
             </button>
           </div>
           <div className="inv-card-body" style={{ padding: 0 }}>

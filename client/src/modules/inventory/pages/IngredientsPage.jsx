@@ -98,7 +98,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
       {/* Action Toolbar */}
       <div className="inv-toolbar">
         <div className="inv-search-box">
-          <span>🔍</span>
+          <span aria-hidden="true" style={{ opacity: 0.6, fontSize: '15px' }}>⌕</span>
           <input
             type="text"
             placeholder="Search ingredient name, SKU..."

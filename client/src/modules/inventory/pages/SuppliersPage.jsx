@@ -95,7 +95,7 @@ export default function SuppliersPage() {
       {/* Toolbar */}
       <div className="inv-toolbar">
         <div className="inv-search-box">
-          <span>🔍</span>
+          <span aria-hidden="true" style={{ opacity: 0.6, fontSize: '15px' }}>⌕</span>
           <input
             type="text"
             placeholder="Search supplier, contact, city, GST..."
@@ -176,14 +176,14 @@ export default function SuppliersPage() {
                       <td>
                         <strong>{sup.name}</strong>
                         <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-                          📍 {sup.city} • GST: {sup.taxId || 'N/A'}
+                          {sup.city} • GST: {sup.taxId || 'N/A'}
                         </div>
                       </td>
                       <td>{sup.category}</td>
                       <td>
                         <div>{sup.contactPerson}</div>
                         <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-                          📞 {sup.phone} • ✉️ {sup.email}
+                          {sup.phone} • {sup.email}
                         </div>
                       </td>
                       <td><strong>{sup.leadTimeDays} days</strong></td>

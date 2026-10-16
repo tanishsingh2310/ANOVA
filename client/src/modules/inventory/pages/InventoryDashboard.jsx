@@ -37,9 +37,9 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
       {kpis.totalAlerts > 0 && (
         <div className="inv-alert-banner inv-alert-warning">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '18px' }}>⚠️</span>
+            <span className="dashboard-summary-indicator reservations" style={{ display: 'inline-block', marginRight: '6px' }} aria-hidden="true" />
             <span>
-              <strong>Inventory Warning:</strong> {kpis.criticalLowCount} items critically low, {kpis.outOfStockCount} out of stock, and {kpis.expiringBatchesCount} batches expiring within 7 days.
+              <strong>Inventory Notice:</strong> {kpis.criticalLowCount} items critically low, {kpis.outOfStockCount} out of stock, and {kpis.expiringBatchesCount} batches expiring within 7 days.
             </span>
           </div>
           <button
@@ -57,7 +57,7 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
         <div className="inv-kpi-card success">
           <div className="inv-kpi-header">
             <span className="inv-kpi-label">Total Inventory Valuation</span>
-            <span className="inv-kpi-icon">💰</span>
+            <span className="dashboard-summary-indicator revenue" aria-hidden="true" />
           </div>
           <div className="inv-kpi-value">₹{kpis.totalStockValue.toLocaleString()}</div>
           <div className="inv-kpi-sub">{kpis.totalItemsTracked} ingredients tracked across branches</div>
@@ -66,7 +66,7 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
         <div className={`inv-kpi-card ${kpis.lowStockCount > 0 ? 'warning' : ''}`}>
           <div className="inv-kpi-header">
             <span className="inv-kpi-label">Low & Critical Stock Items</span>
-            <span className="inv-kpi-icon">📉</span>
+            <span className="dashboard-summary-indicator reservations" aria-hidden="true" />
           </div>
           <div className="inv-kpi-value" style={{ color: kpis.criticalLowCount > 0 ? 'var(--color-error)' : 'inherit' }}>
             {kpis.criticalLowCount + kpis.lowStockCount}
@@ -77,7 +77,7 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
         <div className={`inv-kpi-card ${kpis.expiringBatchesCount > 0 ? 'warning' : ''}`}>
           <div className="inv-kpi-header">
             <span className="inv-kpi-label">Batches Expiring (≤7 Days)</span>
-            <span className="inv-kpi-icon">⏳</span>
+            <span className="dashboard-summary-indicator orders" aria-hidden="true" />
           </div>
           <div className="inv-kpi-value" style={{ color: kpis.expiringBatchesCount > 0 ? 'var(--color-warning)' : 'inherit' }}>
             {kpis.expiringBatchesCount}
@@ -88,7 +88,7 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
         <div className="inv-kpi-card">
           <div className="inv-kpi-header">
             <span className="inv-kpi-label">Active Purchase Orders</span>
-            <span className="inv-kpi-icon">📦</span>
+            <span className="dashboard-summary-indicator tables" aria-hidden="true" />
           </div>
           <div className="inv-kpi-value">{kpis.activeOrderedPOs}</div>
           <div className="inv-kpi-sub">{kpis.pendingApprovalPOs} pending executive approval</div>
@@ -97,7 +97,7 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
         <div className="inv-kpi-card">
           <div className="inv-kpi-header">
             <span className="inv-kpi-label">In-Transit Transfers</span>
-            <span className="inv-kpi-icon">🚚</span>
+            <span className="dashboard-summary-indicator orders" aria-hidden="true" />
           </div>
           <div className="inv-kpi-value">{kpis.inTransitTransfers}</div>
           <div className="inv-kpi-sub">Branch logistics & movements active</div>
@@ -106,7 +106,7 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
         <div className="inv-kpi-card danger">
           <div className="inv-kpi-header">
             <span className="inv-kpi-label">Recorded Spoilage / Loss</span>
-            <span className="inv-kpi-icon">🗑️</span>
+            <span className="dashboard-summary-indicator revenue" style={{ background: 'var(--color-error)' }} aria-hidden="true" />
           </div>
           <div className="inv-kpi-value" style={{ color: 'var(--color-error)' }}>
             ₹{kpis.totalWastageCost.toLocaleString()}
@@ -246,35 +246,35 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
               className="inv-btn inv-btn-primary"
               onClick={() => onNavigate('inv-ingredients')}
             >
-              🥬 Manage Ingredients & Stock Counts
+              Manage Ingredients & Stock Counts
             </button>
             <button
               type="button"
               className="inv-btn inv-btn-gold"
               onClick={() => onNavigate('inv-orders')}
             >
-              📝 Purchase Orders & Receive Goods (GRN)
+              Purchase Orders & Receive Goods (GRN)
             </button>
             <button
               type="button"
               className="inv-btn inv-btn-secondary"
               onClick={() => onNavigate('inv-transfers')}
             >
-              🔄 Dispatch Inter-Branch Transfer
+              Dispatch Inter-Branch Transfer
             </button>
             <button
               type="button"
               className="inv-btn inv-btn-secondary"
               onClick={() => onNavigate('inv-wastage')}
             >
-              🗑️ Log Wastage & Spoilage Write-Off
+              Log Wastage & Spoilage Write-Off
             </button>
             <button
               type="button"
               className="inv-btn inv-btn-secondary"
               onClick={() => onNavigate('inv-reports')}
             >
-              📈 Run FIFO / Weighted Avg Valuation
+              Run FIFO / Weighted Avg Valuation
             </button>
           </div>
         </div>

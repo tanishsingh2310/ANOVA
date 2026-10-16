@@ -81,7 +81,7 @@ export default function WastagePage({ branchId, branches = [] }) {
         <div className="inv-kpi-card danger">
           <div className="inv-kpi-header">
             <span className="inv-kpi-label">Total Spoilage & Loss Value</span>
-            <span className="inv-kpi-icon">💸</span>
+            <span className="dashboard-summary-indicator revenue" style={{ background: 'var(--color-error)' }} aria-hidden="true" />
           </div>
           <div className="inv-kpi-value" style={{ color: 'var(--color-error)' }}>
             ₹{totalLoss.toLocaleString()}
@@ -92,7 +92,7 @@ export default function WastagePage({ branchId, branches = [] }) {
         <div className="inv-kpi-card">
           <div className="inv-kpi-header">
             <span className="inv-kpi-label">Primary Loss Cause</span>
-            <span className="inv-kpi-icon">📊</span>
+            <span className="dashboard-summary-indicator orders" aria-hidden="true" />
           </div>
           <div className="inv-kpi-value" style={{ fontSize: '20px', marginTop: '4px' }}>
             Expiration & Spoilage
@@ -162,7 +162,7 @@ export default function WastagePage({ branchId, branches = [] }) {
                   wastageList.map(w => (
                     <tr key={w.id}>
                       <td><strong>{w.wasteNumber}</strong></td>
-                      <td>📍 {branchMap[w.branchId] || w.branchId}</td>
+                      <td>{branchMap[w.branchId] || w.branchId}</td>
                       <td><strong>{ingredientMap[w.ingredientId] || w.ingredientId}</strong></td>
                       <td style={{ color: 'var(--color-error)', fontWeight: 600 }}>
                         -{w.qty} {w.unit}

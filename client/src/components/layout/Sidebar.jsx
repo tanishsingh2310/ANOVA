@@ -1,42 +1,43 @@
 import { useState } from 'react';
-import logoImg from '../../assets/logo.png';
 
 const navigationSections = [
   {
     title: 'Overview',
     items: [
-      { id: 'dashboard', label: 'Executive Dashboard', icon: '📊' }
+      { id: 'dashboard', label: 'Executive Dashboard' }
     ]
   },
   {
     title: 'Inventory & Supply Chain',
     items: [
-      { id: 'inv-dashboard', label: 'Inventory Overview', icon: '📦' },
-      { id: 'inv-ingredients', label: 'Ingredients & Stock', icon: '🥬' },
-      { id: 'inv-suppliers', label: 'Supplier Directory', icon: '🚚' },
-      { id: 'inv-orders', label: 'Purchase Orders & GRN', icon: '📝' },
-      { id: 'inv-transfers', label: 'Branch Transfers', icon: '🔄' },
-      { id: 'inv-wastage', label: 'Wastage & Spoilage', icon: '🗑️' },
-      { id: 'inv-reports', label: 'Valuation & Reports', icon: '📈' }
+      { id: 'inv-dashboard', label: 'Inventory Overview' },
+      { id: 'inv-ingredients', label: 'Ingredients & Stock' },
+      { id: 'inv-suppliers', label: 'Supplier Directory' },
+      { id: 'inv-orders', label: 'Purchase Orders & GRN' },
+      { id: 'inv-transfers', label: 'Branch Transfers' },
+      { id: 'inv-wastage', label: 'Wastage & Spoilage' },
+      { id: 'inv-reports', label: 'Valuation & Reports' }
     ]
   },
   {
     title: 'Restaurant Operations',
     items: [
-      { id: 'ops-menu', label: 'Menu Management', icon: '🍽️' },
-      { id: 'ops-tables', label: 'Table Management', icon: '🪑' },
-      { id: 'ops-reservations', label: 'Reservations', icon: '📅' },
-      { id: 'ops-orders', label: 'Orders & POS', icon: '🧾' },
-      { id: 'ops-kitchen', label: 'Kitchen Workflow', icon: '👨‍🍳' },
-      { id: 'ops-billing', label: 'Billing & Payments', icon: '💳' }
+      { id: 'ops-menu', label: 'Menu Management' },
+      { id: 'ops-tables', label: 'Table Management' },
+      { id: 'ops-reservations', label: 'Reservations' },
+      { id: 'ops-orders', label: 'Orders & POS' },
+      { id: 'ops-kitchen', label: 'Kitchen Workflow' },
+      { id: 'ops-billing', label: 'Billing & Payments' },
+      { id: 'ops-recommendations', label: 'Food Recommendations' }
     ]
   },
   {
-    title: 'Enterprise Management',
+    title: 'Other Modules',
     items: [
-      { id: 'core-branches', label: 'Branches & Locations', icon: '🏢' },
-      { id: 'core-staff', label: 'Staff & Roles', icon: '👥' },
-      { id: 'cust-management', label: 'Customer Management', icon: '🌟' }
+      { id: 'core-admin', label: 'Administration' },
+      { id: 'core-branches', label: 'Branches & Locations' },
+      { id: 'core-staff', label: 'Staff & Roles' },
+      { id: 'cust-management', label: 'Customer Management' }
     ]
   }
 ];
@@ -58,14 +59,20 @@ export default function Sidebar({ activePage, setActivePage, alertsCount = 0 }) 
           role="button"
           tabIndex={0}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleNav('inv-dashboard'); }}
-          title="ANOVA — Advanced Networked Operations, Visibility & Administration"
+          title="ANOVA — The Art of Intelligent Hospitality"
         >
-          <img
-            src={logoImg}
-            alt="ANOVA — Smarter Operations. Greater Hospitality."
-            className="anova-brand-logo-img"
-          />
-          <h1 className="sr-only">ANOVA — Smarter Operations. Greater Hospitality.</h1>
+          <div className="anova-brand-logo-container">
+            <img
+              src="/anova-emblem.png"
+              alt="Anova"
+              className="anova-brand-logo"
+            />
+          </div>
+
+          <div className="anova-brand-details">
+            <h1>Anova</h1>
+            <p>The Art of Intelligent Hospitality</p>
+          </div>
         </div>
 
         <button
@@ -81,7 +88,7 @@ export default function Sidebar({ activePage, setActivePage, alertsCount = 0 }) 
       <nav className={`anova-sidebar-nav ${mobileOpen ? 'is-open' : ''}`} aria-label="Main navigation">
         {navigationSections.map((section) => (
           <div className="anova-nav-section" key={section.title}>
-            <div className="anova-nav-heading">{section.title}</div>
+            <p className="anova-nav-heading">{section.title}</p>
             {section.items.map((item) => {
               const isActive = activePage === item.id;
               const hasAlert = item.id === 'inv-ingredients' && alertsCount > 0;
@@ -93,7 +100,6 @@ export default function Sidebar({ activePage, setActivePage, alertsCount = 0 }) 
                   onClick={() => handleNav(item.id)}
                   aria-current={isActive ? 'page' : undefined}
                 >
-                  <span style={{ fontSize: '15px' }}>{item.icon}</span>
                   <span>{item.label}</span>
                   {hasAlert && <span className="anova-nav-badge">{alertsCount}</span>}
                 </button>
@@ -104,8 +110,8 @@ export default function Sidebar({ activePage, setActivePage, alertsCount = 0 }) 
       </nav>
 
       <div className="anova-sidebar-footer">
-        <p>ANOVA MBREMS</p>
-        <span>Enterprise v1.2 • Branch Ready</span>
+        <p>ANOVA MANAGEMENT SYSTEM</p>
+        <span>Enterprise Edition</span>
       </div>
     </aside>
   );

@@ -1,34 +1,26 @@
 :root {
   /* =========================================
-     ANOVA — The Verdant Harmony Color Palette
+     ANOVA — The Verdant Luxury Palette (Tanvi Alignment)
      ========================================= */
-  --anova-forest-green: #0C2C26;
-  --anova-olive-green: #2D5652;
-  --anova-sage-green: #4E6F5E;
-  --anova-champagne-gold: #DAAF7C;
-  --anova-warm-ivory: #F5F1E8;
-  --anova-charcoal: #1A1F1C;
-  --anova-slate-green: #2A3F37;
-  --anova-moss-green: #3E5E52;
-  --anova-soft-gold: #EBD9B5;
-  --anova-cream: #FBFAF6;
+  /* Brand colors */
+  --color-primary: #183C34;
+  --color-secondary: #739184;
+  --color-accent: #C5A46D;
 
-  /* Semantic Mappings */
-  --color-primary: #0C2C26;
-  --color-primary-light: #2D5652;
-  --color-secondary: #4E6F5E;
-  --color-accent: #DAAF7C;
-  --color-accent-soft: #EBD9B5;
-  --color-background: #F5F1E8;
-  --color-surface: #FBFAF6;
+  /* Backgrounds */
+  --color-background: #F8F7F3;
+  --color-surface: #FFFFFF;
   --color-surface-card: #FFFFFF;
-  --color-text: #1A1F1C;
-  --color-text-muted: #586962;
-  --color-text-light: #F5F1E8;
-  --color-border: #D7DFDB;
-  --color-border-subtle: #E8ECE9;
 
-  /* Status Tokens */
+  /* Typography */
+  --color-text: #26342F;
+  --color-text-muted: #748078;
+
+  /* Borders */
+  --color-border: #E3E9E3;
+  --color-border-subtle: #EDF1ED;
+
+  /* Status colors */
   --color-success: #287D60;
   --color-success-bg: #EAF5F0;
   --color-warning: #C48A36;
@@ -38,22 +30,36 @@
   --color-info: #2D6B82;
   --color-info-bg: #EDF6F9;
 
-  /* Typography */
-  --font-primary: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: Georgia, "Times New Roman", serif;
+  /* Brand Aliases for Compatibility */
+  --anova-forest-green: #183C34;
+  --anova-olive-green: #739184;
+  --anova-sage-green: #739184;
+  --anova-champagne-gold: #C5A46D;
+  --anova-warm-ivory: #F8F7F3;
+  --anova-charcoal: #26342F;
+  --anova-slate-green: #26342F;
+  --anova-moss-green: #739184;
+  --anova-soft-gold: #E4C58E;
+  --anova-cream: #F8F7F3;
 
-  /* Dimensions & Spacing */
+  /* Typography */
+  --font-primary: "Inter", sans-serif;
+  --font-display: "Inter", sans-serif;
+
+  /* Border radius */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 2px 8px rgba(12, 44, 38, 0.05);
-  --shadow-md: 0 8px 24px rgba(12, 44, 38, 0.08);
-  --shadow-lg: 0 16px 36px rgba(12, 44, 38, 0.12);
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(24, 60, 52, 0.05);
+  --shadow-md: 0 8px 24px rgba(24, 60, 52, 0.08);
+  --shadow-lg: 0 16px 36px rgba(24, 60, 52, 0.12);
 
-  --transition-fast: 0.18s ease;
-  --transition-normal: 0.28s ease;
+  /* Transitions */
+  --transition-fast: 0.2s ease;
+  --transition-normal: 0.3s ease;
 }
 
 /* Global Reset & Base Styling */
@@ -69,4 +75,5 @@ body {
   color: var(--color-text);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }

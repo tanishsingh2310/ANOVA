@@ -1,12 +1,12 @@
 export default function InventoryNav({ activeTab, onTabChange, alertsCount = 0 }) {
   const tabs = [
-    { id: 'inv-dashboard', label: '📊 Dashboard & KPIs' },
-    { id: 'inv-ingredients', label: '🥬 Ingredients & Stock', badge: alertsCount > 0 ? alertsCount : null },
-    { id: 'inv-suppliers', label: '🚚 Suppliers' },
-    { id: 'inv-orders', label: '📝 Purchase Orders & Receiving' },
-    { id: 'inv-transfers', label: '🔄 Branch Transfers' },
-    { id: 'inv-wastage', label: '🗑️ Wastage & Spoilage' },
-    { id: 'inv-reports', label: '📈 Valuation & Reports' }
+    { id: 'inv-dashboard', label: 'Dashboard & KPIs' },
+    { id: 'inv-ingredients', label: 'Ingredients & Stock', badge: alertsCount > 0 ? alertsCount : null },
+    { id: 'inv-suppliers', label: 'Suppliers' },
+    { id: 'inv-orders', label: 'Purchase Orders & Receiving' },
+    { id: 'inv-transfers', label: 'Branch Transfers' },
+    { id: 'inv-wastage', label: 'Wastage & Spoilage' },
+    { id: 'inv-reports', label: 'Valuation & Reports' }
   ];
 
   return (

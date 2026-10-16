@@ -158,8 +158,8 @@ export default function TransfersPage({ branchId, branches = [] }) {
                   transfers.map(tr => (
                     <tr key={tr.id}>
                       <td><strong>{tr.transferNumber}</strong></td>
-                      <td>📍 {branchMap[tr.fromBranchId] || tr.fromBranchId}</td>
-                      <td>📍 {branchMap[tr.toBranchId] || tr.toBranchId}</td>
+                      <td>{branchMap[tr.fromBranchId] || tr.fromBranchId}</td>
+                      <td>{branchMap[tr.toBranchId] || tr.toBranchId}</td>
                       <td>
                         {tr.items.map((it, idx) => (
                           <div key={idx} style={{ fontSize: '12px' }}>
