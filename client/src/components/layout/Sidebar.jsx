@@ -43,14 +43,22 @@ function Sidebar({ activePage, setActivePage }) {
   return (
     <aside className="anova-sidebar">
       <div className="anova-sidebar-header">
-        <div className="anova-sidebar-brand">
-          <span className="anova-brand-mark">A</span>
+      
+<div className="anova-sidebar-brand">
+  <div className="anova-brand-logo-container">
+    <img
+      src="/anova-emblem.png"
+      alt="Anova"
+      className="anova-brand-logo"
+    />
+  </div>
 
-          <div className="anova-brand-details">
-            <h1>Anova</h1>
-            <p>The Art of Intelligent Hospitality</p>
-          </div>
-        </div>
+  <div className="anova-brand-details">
+    <h1>Anova</h1>
+    <p>The Art of Intelligent Hospitality</p>
+  </div>
+</div>
+
 
         <button
           type="button"

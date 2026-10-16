@@ -31,10 +31,35 @@
   display: flex;
   align-items: center;
   gap: 13px;
+  min-width: 0;
   padding: 0 8px 30px;
   border-bottom: 1px solid rgba(197, 164, 109, 0.22);
 }
 
+/* =========================================
+   ANOVA BRAND LOGO
+   ========================================= */
+
+.anova-brand-logo-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+}
+
+.anova-brand-logo {
+  display: block;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  object-position: center;
+}
+
+/* Retained for compatibility with the previous text-based logo */
 .anova-brand-mark {
   display: flex;
   align-items: center;
@@ -50,7 +75,12 @@
   font-weight: 500;
 }
 
+/* =========================================
+   BRAND DETAILS
+   ========================================= */
+
 .anova-brand-details {
+  flex: 1;
   min-width: 0;
 }
 
@@ -138,6 +168,10 @@
   outline: 2px solid var(--color-accent);
   outline-offset: 3px;
 }
+
+/* =========================================
+   SIDEBAR FOOTER
+   ========================================= */
 
 .anova-sidebar-footer {
   padding: 18px 9px 0;
@@ -338,19 +372,27 @@
   }
 
   .anova-sidebar-brand {
-    min-width: 0;
     flex: 1;
+    min-width: 0;
     align-items: center;
     gap: 11px;
     padding: 0;
     border-bottom: none;
   }
 
-  .anova-brand-mark {
+  .anova-brand-logo-container,
+  .anova-brand-logo {
+    flex: 0 0 40px;
     width: 40px;
     height: 40px;
-    border-radius: 8px;
-    font-size: 25px;
+  }
+
+  .anova-brand-logo {
+    border-radius: 7px;
+  }
+
+  .anova-brand-details {
+    min-width: 0;
   }
 
   .anova-brand-details h1 {
@@ -359,8 +401,10 @@
 
   .anova-brand-details p {
     font-size: 9px;
+    line-height: 1.4;
   }
 
+  /* Mobile menu button */
   .anova-mobile-menu-toggle {
     display: inline-flex;
     align-items: center;
@@ -387,6 +431,7 @@
     background: rgba(255, 255, 255, 0.08);
   }
 
+  /* Collapsible navigation */
   .anova-sidebar-nav {
     display: none;
     max-height: min(65vh, 520px);
@@ -420,6 +465,7 @@
     display: none;
   }
 
+  /* Mobile topbar */
   .anova-topbar {
     align-items: flex-start;
     flex-direction: column;
@@ -446,6 +492,7 @@
     padding-left: 14px;
   }
 
+  /* Mobile page content */
   .anova-page-content {
     padding: 22px 20px;
   }
@@ -460,8 +507,20 @@
     padding: 12px 14px;
   }
 
+  .anova-brand-logo-container,
+  .anova-brand-logo {
+    flex-basis: 36px;
+    width: 36px;
+    height: 36px;
+  }
+
+  .anova-brand-details h1 {
+    font-size: 21px;
+  }
+
   .anova-brand-details p {
     max-width: 210px;
+    font-size: 9px;
     line-height: 1.4;
   }
 
