@@ -1,0 +1,381 @@
+/* ============================================================
+   ANOVA ENTERPRISE APPLICATION SHELL & LAYOUT
+   The Verdant Harmony Design System
+   ============================================================ */
+
+.anova-app-shell {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  background-color: var(--color-background);
+  overflow-x: hidden;
+}
+
+/* ============================================================
+   1. Sidebar Navigation
+   ============================================================ */
+.anova-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  min-width: 260px;
+  background-color: var(--anova-forest-green);
+  color: var(--anova-warm-ivory);
+  padding: 16px 14px 18px;
+  border-right: 1px solid rgba(218, 175, 124, 0.2);
+  transition: transform var(--transition-normal);
+  z-index: 50;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+}
+
+.anova-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 14px;
+  border-bottom: 1px solid rgba(218, 175, 124, 0.2);
+  flex-shrink: 0;
+}
+
+.anova-sidebar-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  cursor: pointer;
+  width: 100%;
+  transition: opacity var(--transition-fast);
+}
+
+.anova-sidebar-brand:hover {
+  opacity: 0.92;
+}
+
+/* 
+   logo.png has natural 2:1 aspect ratio (707x353) with transparent background
+   and embedded gold monogram + ANOVA logotype + tagline.
+*/
+.anova-brand-logo-img {
+  width: 100%;
+  max-width: 215px;
+  height: auto;
+  aspect-ratio: 2 / 1;
+  object-fit: contain;
+  display: block;
+}
+
+.anova-mobile-menu-toggle {
+  display: none;
+  background: transparent;
+  border: 1px solid rgba(218, 175, 124, 0.3);
+  color: var(--anova-warm-ivory);
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Sidebar Nav */
+.anova-sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px 2px;
+}
+
+.anova-sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.anova-sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(218, 175, 124, 0.25);
+  border-radius: 4px;
+}
+
+.anova-nav-section {
+  margin-bottom: 20px;
+}
+
+.anova-nav-heading {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--anova-champagne-gold);
+  padding: 0 10px;
+  margin-bottom: 6px;
+  opacity: 0.85;
+}
+
+.anova-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  margin: 2px 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-sm);
+  color: #D4DDD7;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.anova-nav-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+.anova-nav-item.active {
+  background: rgba(218, 175, 124, 0.12);
+  border-left-color: var(--anova-champagne-gold);
+  color: var(--anova-champagne-gold);
+  font-weight: 600;
+}
+
+.anova-nav-badge {
+  margin-left: auto;
+  background: var(--color-error);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+}
+
+/* Sidebar Footer */
+.anova-sidebar-footer {
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+  padding-left: 8px;
+}
+
+.anova-sidebar-footer p {
+  font-size: 9.5px;
+  letter-spacing: 1.2px;
+  font-weight: 700;
+  color: var(--anova-champagne-gold);
+  text-transform: uppercase;
+}
+
+.anova-sidebar-footer span {
+  font-size: 11px;
+  color: #A0B2A8;
+}
+
+/* ============================================================
+   2. Main Content & Layout
+   ============================================================ */
+.anova-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--anova-cream);
+  min-height: 100vh;
+}
+
+/* ============================================================
+   3. Topbar Header
+   ============================================================ */
+.anova-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 32px;
+  background: var(--color-surface-card);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 1px 3px rgba(12, 44, 38, 0.04);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  min-height: 64px;
+}
+
+.anova-topbar-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.anova-topbar-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--anova-olive-green);
+}
+
+.anova-topbar-heading h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--anova-forest-green);
+  font-family: var(--font-display);
+  line-height: 1.2;
+}
+
+.anova-topbar-subtitle {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.anova-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+/* Branch Selector */
+.anova-branch-selector-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-background);
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  transition: border-color var(--transition-fast);
+}
+
+.anova-branch-selector-wrapper:focus-within {
+  border-color: var(--anova-champagne-gold);
+}
+
+.anova-branch-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 2px rgba(40, 125, 96, 0.2);
+  flex-shrink: 0;
+}
+
+.anova-branch-select {
+  background: transparent;
+  border: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text);
+  outline: none;
+  cursor: pointer;
+}
+
+/* User Profile Badge */
+.anova-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 16px;
+  border-left: 1px solid var(--color-border);
+}
+
+.anova-profile-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--anova-forest-green);
+  color: var(--anova-champagne-gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  border: 1.5px solid var(--anova-champagne-gold);
+  flex-shrink: 0;
+}
+
+.anova-profile-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.anova-profile-info strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+
+.anova-profile-info span {
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+}
+
+/* ============================================================
+   4. Page Content Area
+   ============================================================ */
+.anova-page-content {
+  flex: 1;
+  padding: 24px 32px;
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ============================================================
+   5. Responsive Media Queries
+   ============================================================ */
+@media (max-width: 1024px) {
+  .anova-app-shell {
+    flex-direction: column;
+  }
+
+  .anova-sidebar {
+    width: 100%;
+    min-width: 100%;
+    height: auto;
+    position: static;
+    padding: 12px 18px;
+  }
+
+  .anova-mobile-menu-toggle {
+    display: inline-flex;
+  }
+
+  .anova-sidebar-nav {
+    display: none;
+  }
+
+  .anova-sidebar-nav.is-open {
+    display: block;
+    padding-top: 12px;
+  }
+
+  .anova-topbar {
+    padding: 12px 20px;
+  }
+
+  .anova-page-content {
+    padding: 20px 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .anova-topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .anova-topbar-actions {
+    justify-content: space-between;
+  }
+
+  .anova-profile-info {
+    display: none;
+  }
+}

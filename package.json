@@ -1,0 +1,12 @@
+{
+  "name": "mbrems",
+  "private": true,
+  "description": "ANOVA Multi-Branch Restaurant Enterprise Management System",
+  "scripts": {
+    "dev": "npm run dev --prefix client",
+    "client": "npm run dev --prefix client",
+    "server": "npm run dev --prefix server",
+    "test": "node --test tests/inventory.test.mjs",
+    "build": "npm run build --prefix client"
+  }
+}
