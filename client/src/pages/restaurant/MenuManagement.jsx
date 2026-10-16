@@ -1,56 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "../../styles/menu-management.css";
+import { apiRequest } from "../../api";
 
-const initialMenu = [
-  {
-    id: 1,
-    name: "Paneer Tikka",
-    category: "Starters",
-    description: "Char-grilled paneer marinated with aromatic Indian spices.",
-    price: 280,
-    available: true,
-  },
-  {
-    id: 2,
-    name: "Classic Margherita",
-    category: "Pizza",
-    description: "Tomato sauce, mozzarella, and fresh basil.",
-    price: 320,
-    available: true,
-  },
-  {
-    id: 3,
-    name: "Dal Makhani",
-    category: "Main Course",
-    description: "Slow-cooked black lentils finished with cream and butter.",
-    price: 260,
-    available: true,
-  },
-  {
-    id: 4,
-    name: "Veg Biryani",
-    category: "Main Course",
-    description: "Fragrant basmati rice cooked with vegetables and spices.",
-    price: 240,
-    available: false,
-  },
-  {
-    id: 5,
-    name: "Chocolate Brownie",
-    category: "Desserts",
-    description: "Rich chocolate brownie served as a classic dessert.",
-    price: 160,
-    available: true,
-  },
-  {
-    id: 6,
-    name: "Fresh Lime Soda",
-    category: "Beverages",
-    description: "Refreshing lime soda, available sweet or salted.",
-    price: 90,
-    available: true,
-  },
-];
+const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 const emptyForm = {
   name: "",
@@ -68,13 +20,51 @@ const categories = [
 ];
 
 function MenuManagement() {
-  const [menu, setMenu] = useState(initialMenu);
+  const [menu, setMenu] = useState([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All Categories");
   const [availabilityFilter, setAvailabilityFilter] = useState("All Items");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(true);
+
+  // Convert MongoDB documents to the format used by the existing UI.
+  function normalizeMenuItem(item) {
+    return {
+      ...item,
+      id: item._id,
+    };
+  }
+
+  // Load menu items from the backend when the page opens.
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadMenu() {
+      try {
+        const data = await apiRequest(`/api/menu/${BRANCH_ID}`);
+
+        if (isMounted) {
+          setMenu(data.map(normalizeMenuItem));
+        }
+      } catch (error) {
+        if (isMounted) {
+          window.alert(`Unable to load menu items: ${error.message}`);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadMenu();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const filteredMenu = useMemo(() => {
     return menu.filter((item) => {
@@ -106,75 +96,169 @@ function MenuManagement() {
 
   function openEditForm(item) {
     setEditingId(item.id);
+
     setForm({
       name: item.name,
       category: item.category,
       description: item.description,
       price: String(item.price),
     });
+
     setShowForm(true);
   }
 
   function handleFormChange(event) {
     const { name, value } = event.target;
-    setForm((current) => ({ ...current, [name]: value }));
+
+    setForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
 
     const name = form.name.trim();
     const description = form.description.trim();
     const price = Number(form.price);
 
-    if (!name || !description || form.price === "" || !Number.isFinite(price) || price <= 0) {
-      window.alert("Please enter valid menu details and a price greater than zero.");
+    if (
+      !name ||
+      !description ||
+      form.price === "" ||
+      !Number.isFinite(price) ||
+      price <= 0
+    ) {
+      window.alert(
+        "Please enter valid menu details and a price greater than zero."
+      );
       return;
     }
 
-    const menuItem = {
-      id: editingId ?? Date.now(),
+    const existingItem =
+      editingId !== null
+        ? menu.find((item) => item.id === editingId)
+        : null;
+
+    if (editingId !== null && !existingItem) {
+      window.alert("The menu item could not be found.");
+      return;
+    }
+
+    const menuItemData = {
       name,
       category: form.category,
       description,
       price,
-      available: editingId
-        ? menu.find((item) => item.id === editingId).available
-        : true,
     };
 
-    if (editingId !== null) {
-      setMenu((current) =>
-        current.map((item) => (item.id === editingId ? menuItem : item))
-      );
-    } else {
-      setMenu((current) => [menuItem, ...current]);
+    try {
+      if (editingId !== null) {
+        // Update the existing item in MongoDB.
+        const updatedItem = await apiRequest(
+          `/api/menu/${BRANCH_ID}/${editingId}`,
+          {
+            method: "PUT",
+            body: JSON.stringify(menuItemData),
+          }
+        );
+
+        setMenu((current) =>
+          current.map((item) =>
+            item.id === editingId
+              ? normalizeMenuItem(updatedItem)
+              : item
+          )
+        );
+
+        window.alert("Menu item updated successfully.");
+      } else {
+        // Create a new item in MongoDB.
+        const createdItem = await apiRequest("/api/menu", {
+          method: "POST",
+          body: JSON.stringify({
+            branchId: BRANCH_ID,
+            ...menuItemData,
+            available: true,
+          }),
+        });
+
+        setMenu((current) => [
+          normalizeMenuItem(createdItem),
+          ...current,
+        ]);
+
+        window.alert("Menu item added successfully.");
+      }
+
+      setShowForm(false);
+      setEditingId(null);
+      setForm(emptyForm);
+    } catch (error) {
+      window.alert(`Unable to save menu item: ${error.message}`);
     }
-
-    setShowForm(false);
-    setEditingId(null);
-    setForm(emptyForm);
   }
 
-  function toggleAvailability(id) {
-    setMenu((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, available: !item.available } : item
-      )
-    );
-  }
-
-  function deleteMenuItem(id) {
+  async function toggleAvailability(id) {
     const item = menu.find((entry) => entry.id === id);
 
-    if (!item) return;
+    if (!item) {
+      return;
+    }
+
+    try {
+      const updatedItem = await apiRequest(
+        `/api/menu/${BRANCH_ID}/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            available: !item.available,
+          }),
+        }
+      );
+
+      setMenu((current) =>
+        current.map((entry) =>
+          entry.id === id
+            ? normalizeMenuItem(updatedItem)
+            : entry
+        )
+      );
+    } catch (error) {
+      window.alert(
+        `Unable to change menu item availability: ${error.message}`
+      );
+    }
+  }
+
+  async function deleteMenuItem(id) {
+    const item = menu.find((entry) => entry.id === id);
+
+    if (!item) {
+      return;
+    }
 
     const confirmed = window.confirm(
       `Are you sure you want to delete "${item.name}"?`
     );
 
-    if (confirmed) {
-      setMenu((current) => current.filter((entry) => entry.id !== id));
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await apiRequest(`/api/menu/${BRANCH_ID}/${id}`, {
+        method: "DELETE",
+      });
+
+      setMenu((current) =>
+        current.filter((entry) => entry.id !== id)
+      );
+
+      window.alert("Menu item deleted successfully.");
+    } catch (error) {
+      window.alert(`Unable to delete menu item: ${error.message}`);
     }
   }
 
@@ -204,19 +288,24 @@ function MenuManagement() {
         <article className="menu-summary-card">
           <span className="menu-summary-label">Available Items</span>
           <strong>{availableCount}</strong>
-          <span className="menu-summary-note">Currently on the menu</span>
+          <span className="menu-summary-note">
+            Currently on the menu
+          </span>
         </article>
 
         <article className="menu-summary-card">
           <span className="menu-summary-label">Unavailable Items</span>
           <strong>{unavailableCount}</strong>
-          <span className="menu-summary-note">Temporarily not orderable</span>
+          <span className="menu-summary-note">
+            Temporarily not orderable
+          </span>
         </article>
       </div>
 
       <div className="menu-toolbar">
         <div className="menu-search">
           <span aria-hidden="true">⌕</span>
+
           <input
             type="search"
             placeholder="Search dishes or descriptions..."
@@ -232,6 +321,7 @@ function MenuManagement() {
           aria-label="Filter by category"
         >
           <option>All Categories</option>
+
           {categories.map((category) => (
             <option key={category}>{category}</option>
           ))}
@@ -252,7 +342,11 @@ function MenuManagement() {
         <div className="menu-table-heading">
           <div>
             <h2>Restaurant Menu</h2>
-            <p>{filteredMenu.length} items found</p>
+            <p>
+              {loading
+                ? "Loading menu items..."
+                : `${filteredMenu.length} items found`}
+            </p>
           </div>
         </div>
 
@@ -273,6 +367,7 @@ function MenuManagement() {
                 <tr key={item.id}>
                   <td>
                     <div className="menu-item-name">{item.name}</div>
+
                     <div className="menu-item-description">
                       {item.description}
                     </div>
@@ -291,10 +386,13 @@ function MenuManagement() {
                   <td>
                     <span
                       className={`menu-status ${
-                        item.available ? "is-available" : "is-unavailable"
+                        item.available
+                          ? "is-available"
+                          : "is-unavailable"
                       }`}
                     >
                       <span className="menu-status-dot"></span>
+
                       {item.available ? "Available" : "Unavailable"}
                     </span>
                   </td>
@@ -328,7 +426,7 @@ function MenuManagement() {
                 </tr>
               ))}
 
-              {filteredMenu.length === 0 && (
+              {!loading && filteredMenu.length === 0 && (
                 <tr>
                   <td colSpan="5" className="menu-empty-state">
                     <strong>No menu items found</strong>
@@ -358,9 +456,14 @@ function MenuManagement() {
           >
             <div className="menu-modal-heading">
               <div>
-                <span className="menu-eyebrow">MENU CONFIGURATION</span>
+                <span className="menu-eyebrow">
+                  MENU CONFIGURATION
+                </span>
+
                 <h2 id="menu-modal-title">
-                  {editingId !== null ? "Edit Menu Item" : "Add Menu Item"}
+                  {editingId !== null
+                    ? "Edit Menu Item"
+                    : "Add Menu Item"}
                 </h2>
               </div>
 
@@ -377,6 +480,7 @@ function MenuManagement() {
             <form onSubmit={handleSubmit}>
               <label>
                 Dish Name
+
                 <input
                   name="name"
                   value={form.name}
@@ -389,6 +493,7 @@ function MenuManagement() {
 
               <label>
                 Category
+
                 <select
                   name="category"
                   value={form.category}
@@ -402,6 +507,7 @@ function MenuManagement() {
 
               <label>
                 Description
+
                 <textarea
                   name="description"
                   value={form.description}
@@ -415,6 +521,7 @@ function MenuManagement() {
 
               <label>
                 Price (₹)
+
                 <input
                   name="price"
                   type="number"
@@ -436,8 +543,13 @@ function MenuManagement() {
                   Cancel
                 </button>
 
-                <button type="submit" className="menu-primary-button">
-                  {editingId !== null ? "Save Changes" : "Add Menu Item"}
+                <button
+                  type="submit"
+                  className="menu-primary-button"
+                >
+                  {editingId !== null
+                    ? "Save Changes"
+                    : "Add Menu Item"}
                 </button>
               </div>
             </form>

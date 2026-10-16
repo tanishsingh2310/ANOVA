@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
+const menuRoutes = require("./modules/menu/menuRoutes");
 
 const app = express();
 
@@ -14,6 +15,9 @@ app.get("/", (req, res) => {
     message: "ANOVA backend is running!",
   });
 });
+
+// Menu management API
+app.use("/api/menu", menuRoutes);
 
 const startServer = async () => {
   await connectDB();
