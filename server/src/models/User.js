@@ -33,6 +33,8 @@ const userSchema = new mongoose.Schema(
         "chef",
         "cashier",
         "employee",
+        "supplier",
+        "delivery_personnel",
         "customer",
       ],
       default: "employee",

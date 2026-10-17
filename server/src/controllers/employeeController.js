@@ -44,7 +44,15 @@ function employeeScope(user) {
   };
 
   if (!canManageAllBranches(user)) {
-    filter.branch = user.branch || null;
+    if (!user.branch) {
+      // Prevent branch-scoped users without an assignment
+      // from matching employees with no branch.
+      filter.branch = { $exists: false };
+      filter._id = null;
+      return filter;
+    }
+
+    filter.branch = user.branch;
   }
 
   return filter;
