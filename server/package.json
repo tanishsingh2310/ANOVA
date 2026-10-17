@@ -7,7 +7,6 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "seed": "node src/scripts/seedInventory.js",
-    "test:phase2": "node src/scripts/testPhase2.js",
     "test": "node --test ../tests/inventory.test.mjs"
   },
   "keywords": [],

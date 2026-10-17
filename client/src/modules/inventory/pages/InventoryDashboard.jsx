@@ -8,7 +8,10 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
   const [expiringBatches, setExpiringBatches] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
 
-  const loadData = () => {
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const loadData = async () => {
+    // Initial local compute for instant render
     const metrics = AnalyticsService.getDashboardKPIs(branchId);
     setKpis(metrics);
 
@@ -23,6 +26,32 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
       }))
       .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
     setLowStockItems(low.slice(0, 6));
+
+    // Live remote sync from Atlas backend
+    setIsSyncing(true);
+    try {
+      const [remoteKpis, remoteExpiring, remoteIngs] = await Promise.all([
+        AnalyticsService.fetchDashboardKPIsRemote(branchId),
+        InventoryService.getExpiringBatchesRemote(7, branchId),
+        InventoryService.syncFromBackend(branchId)
+      ]);
+
+      if (remoteKpis) setKpis(remoteKpis);
+      if (remoteExpiring) setExpiringBatches(remoteExpiring.slice(0, 5));
+      if (remoteIngs) {
+        const remoteLow = remoteIngs
+          .map(i => ({
+            ...i,
+            status: InventoryService.calculateStockStatus(i, branchId)
+          }))
+          .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
+        setLowStockItems(remoteLow.slice(0, 6));
+      }
+    } catch (err) {
+      console.warn('Dashboard live sync error:', err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   useEffect(() => {

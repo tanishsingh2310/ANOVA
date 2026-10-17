@@ -16,13 +16,33 @@ export default function WastagePage({ branchId, branches = [] }) {
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
 
-  const loadData = () => {
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const loadData = async () => {
     const list = MovementService.getWastage({
       branchId,
       reason: reasonFilter
     });
     setWastageList(list);
     setIngredients(InventoryService.getIngredients());
+
+    setIsSyncing(true);
+    try {
+      await Promise.all([
+        MovementService.syncWastageFromBackend(branchId),
+        InventoryService.syncFromBackend(branchId)
+      ]);
+      const fresh = MovementService.getWastage({
+        branchId,
+        reason: reasonFilter
+      });
+      setWastageList(fresh);
+      setIngredients(InventoryService.getIngredients());
+    } catch (err) {
+      console.warn('Wastage sync error:', err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   useEffect(() => {
@@ -34,7 +54,7 @@ export default function WastagePage({ branchId, branches = [] }) {
   const unitCost = Number(selectedIng?.unitCost || 0);
   const calculatedLoss = Math.round(unitCost * (Number(wasteQty) || 0) * 100) / 100;
 
-  const handleRecordWaste = (e) => {
+  const handleRecordWaste = async (e) => {
     e.preventDefault();
     if (!selectedIngId || !wasteQty || Number(wasteQty) <= 0) {
       setError('Please select an ingredient and enter a valid quantity');
@@ -46,7 +66,7 @@ export default function WastagePage({ branchId, branches = [] }) {
     }
 
     try {
-      MovementService.logWastage({
+      await MovementService.logWastageRemote({
         branchId: targetBranch,
         ingredientId: selectedIngId,
         qty: Number(wasteQty),
@@ -54,6 +74,7 @@ export default function WastagePage({ branchId, branches = [] }) {
         notes,
         loggedBy: 'Arjun Verma (Chef Director)'
       });
+      await InventoryService.syncFromBackend(branchId);
 
       setIsModalOpen(false);
       setSelectedIngId('');

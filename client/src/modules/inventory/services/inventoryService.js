@@ -10,6 +10,47 @@ import {
   CANONICAL_UNITS,
   INGREDIENT_CATEGORIES
 } from './mockData.js';
+import { apiClient } from '../../../api/client.js';
+
+export function normalizeIngredient(doc) {
+  if (!doc) return null;
+  const stockObj = {};
+  if (doc.stockByBranch instanceof Map) {
+    doc.stockByBranch.forEach((val, key) => { stockObj[key] = Number(val) || 0; });
+  } else if (typeof doc.stockByBranch === 'object' && doc.stockByBranch !== null) {
+    Object.assign(stockObj, doc.stockByBranch);
+  }
+
+  const batches = (doc.batches || []).map(b => ({
+    id: String(b._id || b.id || `bat_${Math.random().toString(36).slice(2)}`),
+    batchNumber: b.batchNumber,
+    branchId: b.branch || b.branchId,
+    qty: b.quantity !== undefined ? Number(b.quantity) : Number(b.qty || 0),
+    expiryDate: b.expiryDate ? new Date(b.expiryDate).toISOString().split('T')[0] : '',
+    receivedCost: b.receivedCost !== undefined ? Number(b.receivedCost) : Number(b.costPerUnit || doc.unitCost || 0)
+  }));
+
+  const ingId = String(doc._id || doc.id);
+  const supId = doc.primarySupplier?._id ? String(doc.primarySupplier._id) : (doc.primarySupplier ? String(doc.primarySupplier) : doc.primarySupplierId);
+
+  return {
+    ...doc,
+    id: ingId,
+    _id: ingId,
+    name: doc.name,
+    sku: doc.sku,
+    category: doc.category,
+    baseUnit: doc.baseUnit,
+    unitCost: Number(doc.unitCost || 0),
+    minThreshold: Number(doc.minThreshold || 0),
+    maxThreshold: Number(doc.maxThreshold || 0),
+    reorderLevel: Number(doc.reorderLevel || 0),
+    primarySupplierId: supId,
+    primarySupplier: doc.primarySupplier,
+    stockByBranch: stockObj,
+    batches
+  };
+}
 
 const STORAGE_KEYS = {
   INGREDIENTS: 'anova_inventory_ingredients',
@@ -236,5 +277,143 @@ export const InventoryService = {
     }
 
     return movements;
+  },
+
+  // ==========================================
+  // REMOTE BACKEND / ATLAS SYNCHRONIZATION
+  // ==========================================
+  async syncFromBackend(branchId = 'all') {
+    try {
+      const res = await apiClient('/api/inventory/ingredients');
+      if (res && res.success && Array.isArray(res.data)) {
+        const normalized = res.data.map(normalizeIngredient);
+        setStored(STORAGE_KEYS.INGREDIENTS, normalized);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[InventoryService] Backend sync failed, using cached store:', err.message);
+    }
+    return this.getIngredients({ branchId });
+  },
+
+  async saveIngredientRemote(ingredientData) {
+    const isUpdate = Boolean(ingredientData._id || (ingredientData.id && ingredientData.id.length === 24));
+    const targetId = ingredientData._id || ingredientData.id;
+
+    const payload = {
+      name: ingredientData.name,
+      sku: ingredientData.sku,
+      category: ingredientData.category,
+      baseUnit: ingredientData.baseUnit,
+      unitCost: Number(ingredientData.unitCost),
+      minThreshold: Number(ingredientData.minThreshold),
+      maxThreshold: Number(ingredientData.maxThreshold || ingredientData.minThreshold * 3),
+      reorderLevel: Number(ingredientData.reorderLevel || ingredientData.minThreshold * 1.3),
+      primarySupplier: ingredientData.primarySupplierId || undefined,
+      stockByBranch: ingredientData.stockByBranch || {
+        b_downtown: 0,
+        b_uptown: 0,
+        b_westside: 0,
+        b_waterfront: 0
+      }
+    };
+
+    try {
+      const endpoint = isUpdate ? `/api/inventory/ingredients/${targetId}` : '/api/inventory/ingredients';
+      const method = isUpdate ? 'PUT' : 'POST';
+      const res = await apiClient(endpoint, { method, body: payload });
+      if (res && res.success && res.data) {
+        const normalized = normalizeIngredient(res.data);
+        const items = getStored(STORAGE_KEYS.INGREDIENTS, SEED_INGREDIENTS);
+        const idx = items.findIndex(i => i.id === normalized.id);
+        if (idx !== -1) {
+          items[idx] = normalized;
+        } else {
+          items.unshift(normalized);
+        }
+        setStored(STORAGE_KEYS.INGREDIENTS, items);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[InventoryService] Remote save failed, falling back to local:', err.message);
+    }
+    return this.saveIngredient(ingredientData);
+  },
+
+  async deleteIngredientRemote(id) {
+    try {
+      await apiClient(`/api/inventory/ingredients/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('[InventoryService] Remote delete failed, falling back to local:', err.message);
+    }
+    return this.deleteIngredient(id);
+  },
+
+  async adjustStockRemote({ ingredientId, branchId, newQty, reason, notes, user = 'Store Manager' }) {
+    try {
+      const res = await apiClient(`/api/inventory/ingredients/${ingredientId}/adjust`, {
+        method: 'POST',
+        body: {
+          branch: branchId,
+          newQuantity: Number(newQty),
+          reason,
+          notes,
+          user
+        }
+      });
+      if (res && res.success && res.data) {
+        const updatedIng = normalizeIngredient(res.data.ingredient);
+        const items = getStored(STORAGE_KEYS.INGREDIENTS, SEED_INGREDIENTS);
+        const idx = items.findIndex(i => i.id === updatedIng.id);
+        if (idx !== -1) {
+          items[idx] = updatedIng;
+          setStored(STORAGE_KEYS.INGREDIENTS, items);
+        }
+        return { item: updatedIng, movement: res.data.movement };
+      }
+    } catch (err) {
+      console.warn('[InventoryService] Remote adjust failed, falling back to local:', err.message);
+    }
+    return this.adjustStock({ ingredientId, branchId, newQty, reason, notes, user });
+  },
+
+  async getExpiringBatchesRemote(daysAhead = 7, branchId = 'all') {
+    try {
+      const branchQuery = branchId && branchId !== 'all' ? `&branch=${branchId}` : '';
+      const res = await apiClient(`/api/inventory/batches/expiring?days=${daysAhead}${branchQuery}`);
+      if (res && res.success && Array.isArray(res.data)) {
+        return res.data;
+      }
+    } catch (err) {
+      console.warn('[InventoryService] Remote expiring batches failed, falling back:', err.message);
+    }
+    return this.getExpiringBatches(daysAhead, branchId);
+  },
+
+  async getMovementsRemote(filter = {}) {
+    try {
+      const params = new URLSearchParams();
+      if (filter.branchId && filter.branchId !== 'all') params.append('branch', filter.branchId);
+      if (filter.type && filter.type !== 'ALL') params.append('type', filter.type);
+      const query = params.toString() ? `?${params.toString()}` : '';
+
+      const res = await apiClient(`/api/inventory/movements${query}`);
+      if (res && res.success && Array.isArray(res.data)) {
+        const mapped = res.data.map(m => ({
+          ...m,
+          id: String(m._id || m.id),
+          ingredientId: String(m.ingredient?._id || m.ingredient || m.ingredientId),
+          ingredientName: m.ingredient?.name || 'Ingredient',
+          branchId: m.branch,
+          user: m.performedBy,
+          notes: m.notes
+        }));
+        setStored(STORAGE_KEYS.MOVEMENTS, mapped);
+        return mapped;
+      }
+    } catch (err) {
+      console.warn('[InventoryService] Remote movements failed, falling back:', err.message);
+    }
+    return this.getMovements(filter);
   }
 };

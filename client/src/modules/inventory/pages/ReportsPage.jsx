@@ -9,21 +9,19 @@ export default function ReportsPage({ branchId, branches = [] }) {
   const [movements, setMovements] = useState([]);
   const [expiringBatches, setExpiringBatches] = useState([]);
   const [lowStockList, setLowStockList] = useState([]);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  const loadData = () => {
-    // Valuation
+  const loadData = async () => {
+    // Initial local render
     const val = AnalyticsService.getInventoryValuation(branchId, valuationMethod);
     setValuationData(val);
 
-    // Audit movements
     const movs = InventoryService.getMovements({ branchId });
     setMovements(movs);
 
-    // Expiring batches
     const exp = InventoryService.getExpiringBatches(14, branchId);
     setExpiringBatches(exp);
 
-    // Low stock
     const ings = InventoryService.getIngredients({ branchId });
     const low = ings
       .map(i => ({
@@ -32,6 +30,34 @@ export default function ReportsPage({ branchId, branches = [] }) {
       }))
       .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
     setLowStockList(low);
+
+    // Live remote sync
+    setIsSyncing(true);
+    try {
+      const [remoteVal, remoteMovs, remoteExp, remoteIngs] = await Promise.all([
+        AnalyticsService.fetchValuationRemote(branchId, valuationMethod),
+        InventoryService.getMovementsRemote({ branchId }),
+        InventoryService.getExpiringBatchesRemote(14, branchId),
+        InventoryService.syncFromBackend(branchId)
+      ]);
+
+      if (remoteVal) setValuationData(remoteVal);
+      if (remoteMovs) setMovements(remoteMovs);
+      if (remoteExp) setExpiringBatches(remoteExp);
+      if (remoteIngs) {
+        const freshLow = remoteIngs
+          .map(i => ({
+            ...i,
+            status: InventoryService.calculateStockStatus(i, branchId)
+          }))
+          .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
+        setLowStockList(freshLow);
+      }
+    } catch (err) {
+      console.warn('Reports sync error:', err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   useEffect(() => {
@@ -135,79 +161,87 @@ export default function ReportsPage({ branchId, branches = [] }) {
       </div>
 
       {/* REPORT 1: STOCK VALUATION */}
-      {reportType === 'VALUATION' && valuationData && (
-        <div className="inv-card">
-          <div className="inv-card-header">
-            <div>
-              <h3>Enterprise Inventory Valuation Ledger</h3>
-              <p>Branch: {valuationData.branchName} • Generated: {valuationData.generatedAt.split('T')[0]}</p>
-            </div>
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <select
-                className="inv-select"
-                value={valuationMethod}
-                onChange={(e) => setValuationMethod(e.target.value)}
-                aria-label="Costing method"
-              >
-                <option value="FIFO">Method: FIFO (First-In, First-Out)</option>
-                <option value="WEIGHTED_AVG">Method: Weighted Average Costing</option>
-              </select>
-
-              <button
-                type="button"
-                className="inv-btn inv-btn-sm inv-btn-gold"
-                onClick={handleExportValuation}
-              >
-                Export CSV
-              </button>
-            </div>
+      {reportType === 'VALUATION' && (
+        !valuationData ? (
+          <div className="inv-card" style={{ padding: '32px', textAlign: 'center' }}>
+            <p style={{ color: 'var(--color-text-muted)' }}>Calculating inventory valuation...</p>
           </div>
-
-          <div className="inv-card-body" style={{ padding: '16px 24px', background: 'var(--color-surface)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        ) : (
+          <div className="inv-card">
+            <div className="inv-card-header">
               <div>
-                <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>TOTAL PORTFOLIO VALUATION ({valuationMethod})</span>
-                <div style={{ fontSize: '26px', fontWeight: 700, color: 'var(--anova-forest-green)', fontFamily: 'var(--font-display)' }}>
-                  ₹{valuationData.totalPortfolioValue.toLocaleString()}
+                <h3>Enterprise Inventory Valuation Ledger</h3>
+                <p>
+                  Branch: {valuationData.branchName || 'All Enterprise Branches'} • Generated: {valuationData.generatedAt ? valuationData.generatedAt.split('T')[0] : new Date().toISOString().split('T')[0]}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <select
+                  className="inv-select"
+                  value={valuationMethod}
+                  onChange={(e) => setValuationMethod(e.target.value)}
+                  aria-label="Costing method"
+                >
+                  <option value="FIFO">Method: FIFO (First-In, First-Out)</option>
+                  <option value="WEIGHTED_AVG">Method: Weighted Average Costing</option>
+                </select>
+
+                <button
+                  type="button"
+                  className="inv-btn inv-btn-sm inv-btn-gold"
+                  onClick={handleExportValuation}
+                >
+                  Export CSV
+                </button>
+              </div>
+            </div>
+
+            <div className="inv-card-body" style={{ padding: '16px 24px', background: 'var(--color-surface)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>TOTAL PORTFOLIO VALUATION ({valuationMethod})</span>
+                  <div style={{ fontSize: '26px', fontWeight: 700, color: 'var(--anova-forest-green)', fontFamily: 'var(--font-display)' }}>
+                    ₹{(valuationData.totalPortfolioValue || 0).toLocaleString()}
+                  </div>
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', textAlign: 'right' }}>
+                  Costing Method Grounding: <strong style={{ color: 'var(--anova-forest-green)' }}>{valuationMethod === 'FIFO' ? 'Oldest Batch Depletion' : 'Batch Value Weighted Average'}</strong>
                 </div>
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', textAlign: 'right' }}>
-                Costing Method Grounding: <strong style={{ color: 'var(--anova-forest-green)' }}>{valuationMethod === 'FIFO' ? 'Oldest Batch Depletion' : 'Batch Value Weighted Average'}</strong>
+            </div>
+
+            <div className="inv-card-body" style={{ padding: 0 }}>
+              <div className="inv-table-wrapper">
+                <table className="inv-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '130px', whiteSpace: 'nowrap' }}>SKU</th>
+                      <th>Ingredient</th>
+                      <th>Category</th>
+                      <th>Branch Stock</th>
+                      <th>Unit</th>
+                      <th>Calculated Unit Cost</th>
+                      <th>Total Inventory Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(valuationData.items || []).map(row => (
+                      <tr key={row.id}>
+                        <td className="inv-cell-code"><code>{row.sku}</code></td>
+                        <td><strong>{row.name}</strong></td>
+                        <td className="inv-cell-nowrap">{row.category}</td>
+                        <td className="inv-cell-nowrap"><strong>{row.quantity}</strong></td>
+                        <td className="inv-cell-nowrap">{row.baseUnit}</td>
+                        <td className="inv-cell-amount">₹{row.unitCost}</td>
+                        <td className="inv-cell-amount"><strong>₹{((row.totalValue ?? row.valuation) || 0).toLocaleString()}</strong></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
-
-          <div className="inv-card-body" style={{ padding: 0 }}>
-            <div className="inv-table-wrapper">
-              <table className="inv-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>SKU</th>
-                    <th>Ingredient</th>
-                    <th>Category</th>
-                    <th>Branch Stock</th>
-                    <th>Unit</th>
-                    <th>Calculated Unit Cost</th>
-                    <th>Total Inventory Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {valuationData.items.map(row => (
-                    <tr key={row.id}>
-                      <td className="inv-cell-code"><code>{row.sku}</code></td>
-                      <td><strong>{row.name}</strong></td>
-                      <td className="inv-cell-nowrap">{row.category}</td>
-                      <td className="inv-cell-nowrap"><strong>{row.quantity}</strong></td>
-                      <td className="inv-cell-nowrap">{row.baseUnit}</td>
-                      <td className="inv-cell-amount">₹{row.unitCost}</td>
-                      <td className="inv-cell-amount"><strong>₹{row.totalValue.toLocaleString()}</strong></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        )
       )}
 
       {/* REPORT 2: LOW STOCK */}
@@ -343,25 +377,25 @@ export default function ReportsPage({ branchId, branches = [] }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {movements.map(m => (
-                    <tr key={m.id}>
+                  {(movements || []).map(m => (
+                    <tr key={m.id || m._id || `mov_${Math.random()}`}>
                       <td className="inv-cell-date">
-                        {m.timestamp.replace('T', ' ').slice(0, 16)}
+                        {m.timestamp ? m.timestamp.replace('T', ' ').slice(0, 16) : (m.createdAt ? new Date(m.createdAt).toISOString().replace('T', ' ').slice(0, 16) : '—')}
                       </td>
                       <td className="inv-cell-badge">
                         <span className="inv-badge inv-badge-info">
-                          {m.type.replace(/_/g, ' ')}
+                          {(m.type || 'MOVEMENT').replace(/_/g, ' ')}
                         </span>
                       </td>
-                      <td className="inv-cell-code"><code>{m.reference}</code></td>
+                      <td className="inv-cell-code"><code>{m.reference || '—'}</code></td>
                       <td className="inv-cell-nowrap">
-                        <strong style={{ color: m.deltaQty < 0 ? 'var(--color-error)' : 'var(--color-success)' }}>
-                          {m.deltaQty > 0 ? `+${m.deltaQty}` : m.deltaQty} {m.unit}
+                        <strong style={{ color: (m.deltaQty || 0) < 0 ? 'var(--color-error)' : 'var(--color-success)' }}>
+                          {(m.deltaQty || 0) > 0 ? `+${m.deltaQty}` : (m.deltaQty ?? 0)} {m.unit || ''}
                         </strong>
                       </td>
-                      <td className="inv-cell-nowrap"><strong>{m.resultingBalance} {m.unit}</strong></td>
-                      <td className="inv-cell-nowrap">{m.performedBy}</td>
-                      <td style={{ fontSize: '11.5px', color: 'var(--color-text-muted)' }}>{m.notes}</td>
+                      <td className="inv-cell-nowrap"><strong>{m.resultingBalance ?? 0} {m.unit || ''}</strong></td>
+                      <td className="inv-cell-nowrap">{m.performedBy || 'System'}</td>
+                      <td style={{ fontSize: '11.5px', color: 'var(--color-text-muted)' }}>{m.notes || '—'}</td>
                     </tr>
                   ))}
                 </tbody>

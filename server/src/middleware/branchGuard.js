@@ -16,7 +16,7 @@ module.exports = (req, res, next) => {
   }
 
   // Determine requested branch from body, params, or query
-  const targetBranch = req.body.branch || req.body.branchId || req.query.branch || req.params.branch;
+  const targetBranch = req.body.branch || req.body.branchId || req.body.fromBranch || req.query.branch || req.params.branch;
 
   if (targetBranch && targetBranch !== 'all') {
     if (req.user.branchId && req.user.branchId !== targetBranch) {

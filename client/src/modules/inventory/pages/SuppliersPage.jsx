@@ -30,7 +30,9 @@ export default function SuppliersPage() {
   });
   const [formError, setFormError] = useState('');
 
-  const loadData = () => {
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const loadData = async () => {
     const list = SupplierService.getSuppliers({
       category: categoryFilter,
       status: statusFilter,
@@ -38,6 +40,21 @@ export default function SuppliersPage() {
     });
     setSuppliers(list);
     setCategories(InventoryService.getCategories());
+
+    setIsSyncing(true);
+    try {
+      await SupplierService.syncFromBackend();
+      const fresh = SupplierService.getSuppliers({
+        category: categoryFilter,
+        status: statusFilter,
+        search
+      });
+      setSuppliers(fresh);
+    } catch (err) {
+      console.warn('Suppliers sync error:', err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   useEffect(() => {
@@ -50,16 +67,16 @@ export default function SuppliersPage() {
     setSuppliedItems(items);
   };
 
-  const handleToggleStatus = (supplierId) => {
+  const handleToggleStatus = async (supplierId) => {
     try {
-      SupplierService.toggleStatus(supplierId);
+      await SupplierService.toggleStatusRemote(supplierId);
       loadData();
     } catch (err) {
       alert(err.message || 'Error updating supplier status');
     }
   };
 
-  const handleSaveSupplier = (e) => {
+  const handleSaveSupplier = async (e) => {
     e.preventDefault();
     if (!form.name || !form.contactPerson || !form.phone || !form.email) {
       setFormError('Please fill in all mandatory contact and business fields');
@@ -67,7 +84,7 @@ export default function SuppliersPage() {
     }
 
     try {
-      SupplierService.saveSupplier({
+      await SupplierService.saveSupplierRemote({
         ...form,
         leadTimeDays: Number(form.leadTimeDays)
       });

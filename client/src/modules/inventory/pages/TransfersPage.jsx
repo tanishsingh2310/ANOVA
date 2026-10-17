@@ -16,25 +16,46 @@ export default function TransfersPage({ branchId, branches = [] }) {
   const [transferNotes, setTransferNotes] = useState('');
   const [error, setError] = useState('');
 
-  const loadData = () => {
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const loadData = async () => {
     const list = MovementService.getTransfers({
       branchId,
       status: statusFilter
     });
     setTransfers(list);
     setIngredients(InventoryService.getIngredients());
+
+    setIsSyncing(true);
+    try {
+      await Promise.all([
+        MovementService.syncTransfersFromBackend(branchId),
+        InventoryService.syncFromBackend(branchId)
+      ]);
+      const fresh = MovementService.getTransfers({
+        branchId,
+        status: statusFilter
+      });
+      setTransfers(fresh);
+      setIngredients(InventoryService.getIngredients());
+    } catch (err) {
+      console.warn('Transfers sync error:', err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   useEffect(() => {
     loadData();
   }, [branchId, statusFilter]);
 
-  const handleReceive = (transferId) => {
+  const handleReceive = async (transferId) => {
     try {
-      MovementService.receiveTransfer({
+      await MovementService.receiveTransferRemote({
         transferId,
         receivedBy: 'Arjun Verma (Director)'
       });
+      await InventoryService.syncFromBackend(branchId);
       loadData();
     } catch (err) {
       alert(err.message || 'Error receiving transfer');
@@ -55,7 +76,7 @@ export default function TransfersPage({ branchId, branches = [] }) {
     setTransferLines(transferLines.filter((_, i) => i !== idx));
   };
 
-  const handleDispatch = (e) => {
+  const handleDispatch = async (e) => {
     e.preventDefault();
     if (fromBranch === toBranch) {
       setError('Origin and destination branches must be different');
@@ -67,7 +88,7 @@ export default function TransfersPage({ branchId, branches = [] }) {
     }
 
     try {
-      MovementService.dispatchTransfer({
+      await MovementService.dispatchTransferRemote({
         fromBranchId: fromBranch,
         toBranchId: toBranch,
         items: transferLines.map(l => {
@@ -82,6 +103,7 @@ export default function TransfersPage({ branchId, branches = [] }) {
         notes: transferNotes,
         dispatchedBy: 'Arjun Verma (Logistics Lead)'
       });
+      await InventoryService.syncFromBackend(branchId);
 
       setIsModalOpen(false);
       setTransferLines([{ ingredientId: '', qty: '' }]);

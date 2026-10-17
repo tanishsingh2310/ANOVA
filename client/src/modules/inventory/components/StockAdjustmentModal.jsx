@@ -27,7 +27,7 @@ export default function StockAdjustmentModal({
     setError('');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (newCount === '') {
       setError('Please enter the newly counted stock quantity');
@@ -43,7 +43,7 @@ export default function StockAdjustmentModal({
     }
 
     try {
-      InventoryService.adjustStock({
+      await InventoryService.adjustStockRemote({
         ingredientId: ingredient.id,
         branchId: selectedBranch,
         newQty: enteredQty,

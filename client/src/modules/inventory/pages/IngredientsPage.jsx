@@ -32,7 +32,9 @@ export default function IngredientsPage({ branchId, branches = [] }) {
   });
   const [formError, setFormError] = useState('');
 
-  const loadData = () => {
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const loadData = async () => {
     const ings = InventoryService.getIngredients({
       branchId,
       category: categoryFilter,
@@ -42,13 +44,33 @@ export default function IngredientsPage({ branchId, branches = [] }) {
     setIngredients(ings);
     setCategories(InventoryService.getCategories());
     setSuppliers(SupplierService.getSuppliers());
+
+    setIsSyncing(true);
+    try {
+      await Promise.all([
+        InventoryService.syncFromBackend(branchId),
+        SupplierService.syncFromBackend()
+      ]);
+      const freshIngs = InventoryService.getIngredients({
+        branchId,
+        category: categoryFilter,
+        search,
+        stockStatus: statusFilter
+      });
+      setIngredients(freshIngs);
+      setSuppliers(SupplierService.getSuppliers());
+    } catch (err) {
+      console.warn('Ingredients sync error:', err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   useEffect(() => {
     loadData();
   }, [branchId, categoryFilter, search, statusFilter]);
 
-  const handleCreateIngredient = (e) => {
+  const handleCreateIngredient = async (e) => {
     e.preventDefault();
     if (!form.name || !form.unitCost || !form.minThreshold) {
       setFormError('Please fill in all mandatory fields');
@@ -56,7 +78,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
     }
 
     try {
-      InventoryService.saveIngredient({
+      await InventoryService.saveIngredientRemote({
         name: form.name,
         sku: form.sku,
         category: form.category,

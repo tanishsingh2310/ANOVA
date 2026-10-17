@@ -7,6 +7,47 @@
 // ============================================================
 
 import { SEED_PURCHASE_ORDERS, SEED_STOCK_MOVEMENTS, SEED_INGREDIENTS } from './mockData.js';
+import { apiClient } from '../../../api/client.js';
+
+export function normalizePurchaseOrder(doc) {
+  if (!doc) return null;
+  const poId = String(doc._id || doc.id);
+  const supplierId = String(doc.supplier?._id || doc.supplier || doc.supplierId || '');
+  const branchId = doc.branch || doc.branchId;
+
+  const items = (doc.items || []).map(it => ({
+    ingredientId: String(it.ingredient?._id || it.ingredient || it.ingredientId),
+    ingredientName: it.ingredient?.name || '',
+    orderedQty: Number(it.orderedQty || 0),
+    receivedQty: Number(it.receivedQty || 0),
+    rejectedQty: Number(it.rejectedQty || 0),
+    damagedQty: Number(it.damagedQty || 0),
+    unit: it.unit || 'kg',
+    unitPrice: Number(it.unitPrice || 0)
+  }));
+
+  return {
+    ...doc,
+    id: poId,
+    _id: poId,
+    poNumber: doc.poNumber,
+    supplierId,
+    supplier: doc.supplier,
+    branchId,
+    status: doc.status,
+    createdAt: doc.createdAt,
+    expectedDate: doc.expectedDate,
+    approvedBy: doc.approvedBy,
+    approvedAt: doc.approvedAt,
+    createdBy: doc.createdBy,
+    notes: doc.notes || '',
+    items,
+    subtotal: Number(doc.subtotal || 0),
+    tax: Number(doc.tax || 0),
+    totalAmount: Number(doc.totalAmount || 0),
+    receiptHistory: doc.receiptHistory || []
+  };
+}
 
 const PO_KEY = 'anova_inventory_pos';
 const MOVEMENTS_KEY = 'anova_inventory_movements';
@@ -53,7 +94,7 @@ export const PurchaseOrderService = {
 
   getPOById(id) {
     const orders = getPOsData();
-    return orders.find(po => po.id === id) || null;
+    return orders.find(po => po.id === id || po._id === id || po.poNumber === id) || null;
   },
 
   createPO({ supplierId, branchId, expectedDate, items, notes, createdBy = 'Store Manager' }) {
@@ -98,7 +139,7 @@ export const PurchaseOrderService = {
 
   updateStatus(poId, nextStatus, user = 'Enterprise Admin') {
     const orders = getPOsData();
-    const po = orders.find(o => o.id === poId);
+    const po = orders.find(o => o.id === poId || o._id === poId || o.poNumber === poId);
     if (!po) throw new Error('Purchase Order not found');
 
     // Valid transitions
@@ -134,7 +175,7 @@ export const PurchaseOrderService = {
     notes = ''
   }) {
     const orders = getPOsData();
-    const po = orders.find(o => o.id === poId);
+    const po = orders.find(o => o.id === poId || o._id === poId || o.poNumber === poId);
     if (!po) throw new Error('Purchase Order not found');
 
     if (po.status !== 'ORDERED' && po.status !== 'PARTIALLY_RECEIVED') {
@@ -248,5 +289,165 @@ export const PurchaseOrderService = {
     localStorage.setItem(MOVEMENTS_KEY, JSON.stringify(movements));
 
     return { po, grnNumber: generatedGRN };
+  },
+
+  // ==========================================
+  // REMOTE BACKEND / ATLAS SYNCHRONIZATION
+  // ==========================================
+  async syncFromBackend(branchId = 'all') {
+    try {
+      const branchQuery = branchId && branchId !== 'all' ? `?branch=${branchId}` : '';
+      const res = await apiClient(`/api/inventory/purchase-orders${branchQuery}`);
+      if (res && res.success && Array.isArray(res.data)) {
+        const remotePOs = res.data.map(normalizePurchaseOrder);
+        const localPOs = getPOsData();
+
+        // Merge: remote POs take precedence, but preserve local-only POs (e.g., drafts or local offline POs)
+        const remoteMap = new Map();
+        remotePOs.forEach(r => {
+          remoteMap.set(r.id, r);
+          if (r.poNumber) remoteMap.set(r.poNumber, r);
+        });
+
+        const merged = [...remotePOs];
+        localPOs.forEach(local => {
+          const matchKey1 = local.id;
+          const matchKey2 = local.poNumber;
+          const matchKey3 = local._id;
+          if (!remoteMap.has(matchKey1) && !remoteMap.has(matchKey2) && (!matchKey3 || !remoteMap.has(matchKey3))) {
+            merged.push(local);
+          }
+        });
+
+        savePOsData(merged);
+        return this.getPurchaseOrders({ branchId });
+      }
+    } catch (err) {
+      console.warn('[PurchaseOrderService] Backend sync failed, using cached store:', err.message);
+    }
+    return this.getPurchaseOrders({ branchId });
+  },
+
+  async createPORemote({ supplierId, branchId, expectedDate, items, notes, createdBy = 'Store Manager' }) {
+    const payload = {
+      supplier: supplierId,
+      branch: branchId,
+      expectedDate,
+      expectedDeliveryDate: expectedDate,
+      notes,
+      createdBy,
+      items: items.map(it => ({
+        ingredient: it.ingredientId,
+        orderedQty: Number(it.orderedQty),
+        unit: it.unit || 'kg',
+        unitPrice: Number(it.unitPrice)
+      }))
+    };
+
+    try {
+      const res = await apiClient('/api/inventory/purchase-orders', {
+        method: 'POST',
+        body: payload
+      });
+      if (res && res.success && res.data) {
+        const normalized = normalizePurchaseOrder(res.data);
+        const orders = getPOsData();
+        orders.unshift(normalized);
+        savePOsData(orders);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[PurchaseOrderService] Remote PO creation failed, falling back:', err.message);
+    }
+    return this.createPO({ supplierId, branchId, expectedDate, items, notes, createdBy });
+  },
+
+  async updateStatusRemote(poId, nextStatus, user = 'Enterprise Admin') {
+    // 1. Always update local store immediately for instant UI response and persistence
+    let updatedLocal = null;
+    try {
+      updatedLocal = this.updateStatus(poId, nextStatus, user);
+    } catch (localErr) {
+      console.warn('[PurchaseOrderService] Local status update pre-check note:', localErr.message);
+    }
+
+    // 2. Determine best ID for remote lookup
+    const lookupId = updatedLocal?._id || updatedLocal?.poNumber || poId;
+
+    try {
+      let res;
+      if (nextStatus === 'APPROVED') {
+        res = await apiClient(`/api/inventory/purchase-orders/${lookupId}/approve`, {
+          method: 'PATCH',
+          body: { approvedBy: user }
+        });
+      } else {
+        res = await apiClient(`/api/inventory/purchase-orders/${lookupId}/status`, {
+          method: 'PATCH',
+          body: { status: nextStatus, approvedBy: user }
+        });
+      }
+
+      if (res && res.success && res.data) {
+        const normalized = normalizePurchaseOrder(res.data);
+        const orders = getPOsData();
+        const idx = orders.findIndex(o => o.id === normalized.id || o.poNumber === normalized.poNumber || o._id === normalized.id);
+        if (idx !== -1) {
+          orders[idx] = normalized;
+        } else {
+          orders.unshift(normalized);
+        }
+        savePOsData(orders);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[PurchaseOrderService] Remote status update failed, keeping local update:', err.message);
+    }
+
+    if (updatedLocal) return updatedLocal;
+    return this.updateStatus(poId, nextStatus, user);
+  },
+
+  async receiveGoodsRemote({ poId, grnNumber, receiverName = 'Receiving Officer', receiptItems, notes = '' }) {
+    const orders = getPOsData();
+    const existing = orders.find(o => o.id === poId || o._id === poId || o.poNumber === poId);
+    const lookupId = existing?._id || existing?.poNumber || poId;
+
+    const payload = {
+      grnNumber,
+      receiverName,
+      notes,
+      items: receiptItems.map(it => ({
+        ingredient: it.ingredientId,
+        acceptedQty: Number(it.acceptedQty || 0),
+        rejectedQty: Number(it.rejectedQty || 0),
+        damagedQty: Number(it.damagedQty || 0),
+        batchNumber: it.batchNumber,
+        expiryDate: it.expiryDate
+      }))
+    };
+
+    try {
+      const res = await apiClient(`/api/inventory/purchase-orders/${lookupId}/receive`, {
+        method: 'POST',
+        body: payload
+      });
+
+      if (res && res.success && res.data) {
+        const normalized = normalizePurchaseOrder(res.data);
+        const list = getPOsData();
+        const idx = list.findIndex(o => o.id === normalized.id || o.poNumber === normalized.poNumber || o._id === normalized.id);
+        if (idx !== -1) {
+          list[idx] = normalized;
+        } else {
+          list.unshift(normalized);
+        }
+        savePOsData(list);
+        return { po: normalized, grnNumber };
+      }
+    } catch (err) {
+      console.warn('[PurchaseOrderService] Remote GRN receive failed, falling back:', err.message);
+    }
+    return this.receiveGoods({ poId, grnNumber, receiverName, receiptItems, notes });
   }
 };

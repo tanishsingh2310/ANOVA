@@ -32,7 +32,9 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   const [grnNotes, setGrnNotes] = useState('');
   const [grnError, setGrnError] = useState('');
 
-  const loadData = () => {
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const loadData = async () => {
     const list = PurchaseOrderService.getPurchaseOrders({
       branchId,
       status: statusFilter,
@@ -41,6 +43,27 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     setOrders(list);
     setSuppliers(SupplierService.getSuppliers());
     setIngredients(InventoryService.getIngredients());
+
+    setIsSyncing(true);
+    try {
+      await Promise.all([
+        PurchaseOrderService.syncFromBackend(branchId),
+        SupplierService.syncFromBackend(),
+        InventoryService.syncFromBackend(branchId)
+      ]);
+      const fresh = PurchaseOrderService.getPurchaseOrders({
+        branchId,
+        status: statusFilter,
+        supplierId: supplierFilter
+      });
+      setOrders(fresh);
+      setSuppliers(SupplierService.getSuppliers());
+      setIngredients(InventoryService.getIngredients());
+    } catch (err) {
+      console.warn('PurchaseOrders sync error:', err.message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   useEffect(() => {
@@ -48,9 +71,9 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   }, [branchId, statusFilter, supplierFilter]);
 
   // Handle PO Lifecycle Progression
-  const handleTransition = (poId, nextStatus) => {
+  const handleTransition = async (poId, nextStatus) => {
     try {
-      PurchaseOrderService.updateStatus(poId, nextStatus, 'Arjun Verma (Director)');
+      await PurchaseOrderService.updateStatusRemote(poId, nextStatus, 'Arjun Verma (Director)');
       loadData();
     } catch (err) {
       alert(err.message || 'Status transition error');
@@ -81,18 +104,19 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     setGrnItems(items);
   };
 
-  const handleProcessGRN = (e) => {
+  const handleProcessGRN = async (e) => {
     e.preventDefault();
     if (!receivingPO) return;
 
     try {
-      PurchaseOrderService.receiveGoods({
+      await PurchaseOrderService.receiveGoodsRemote({
         poId: receivingPO.id,
         grnNumber,
         receiverName,
         receiptItems: grnItems,
         notes: grnNotes
       });
+      await InventoryService.syncFromBackend(branchId);
 
       setReceivingPO(null);
       loadData();
@@ -124,7 +148,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     setLineItems(updated);
   };
 
-  const handleCreatePO = (e) => {
+  const handleCreatePO = async (e) => {
     e.preventDefault();
     if (!newPoSupplier || lineItems.length === 0 || lineItems.some(i => !i.ingredientId || !i.orderedQty)) {
       setCreateError('Please select a supplier and provide valid line items with quantities');
@@ -132,7 +156,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     }
 
     try {
-      PurchaseOrderService.createPO({
+      await PurchaseOrderService.createPORemote({
         supplierId: newPoSupplier,
         branchId: newPoBranch,
         expectedDate: expectedDate || new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
@@ -243,16 +267,20 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
                           <strong>{supName}</strong>
                         </td>
                         <td className="inv-cell-nowrap">{bName}</td>
-                        <td className="inv-cell-date">{po.createdAt.split('T')[0]}</td>
-                        <td className="inv-cell-date">{po.expectedDate}</td>
+                        <td className="inv-cell-date">
+                          {po.createdAt ? (typeof po.createdAt === 'string' && po.createdAt.includes('T') ? po.createdAt.split('T')[0] : new Date(po.createdAt).toISOString().split('T')[0]) : '—'}
+                        </td>
+                        <td className="inv-cell-date">
+                          {po.expectedDate ? (typeof po.expectedDate === 'string' && po.expectedDate.includes('T') ? po.expectedDate.split('T')[0] : String(po.expectedDate)) : '—'}
+                        </td>
                         <td>
-                          <span style={{ fontWeight: 600 }}>{po.items.length} item{po.items.length > 1 ? 's' : ''}</span>
+                          <span style={{ fontWeight: 600 }}>{(po.items || []).length} item{(po.items || []).length !== 1 ? 's' : ''}</span>
                           <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', display: 'block', maxWidth: '220px', whiteSpace: 'normal' }}>
-                            {po.items.map(i => ingredientMap[i.ingredientId] || i.ingredientId).slice(0, 2).join(', ')}
-                            {po.items.length > 2 ? '...' : ''}
+                            {(po.items || []).map(i => ingredientMap[i.ingredientId] || i.ingredientName || i.ingredientId).slice(0, 2).join(', ')}
+                            {(po.items || []).length > 2 ? '...' : ''}
                           </span>
                         </td>
-                        <td className="inv-cell-amount"><strong>₹{po.totalAmount.toLocaleString()}</strong></td>
+                        <td className="inv-cell-amount"><strong>₹{(po.totalAmount || 0).toLocaleString()}</strong></td>
                         <td className="inv-cell-badge"><StockBadge status={po.status} /></td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'inline-flex', gap: '6px' }}>
@@ -260,7 +288,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
                               <button
                                 type="button"
                                 className="inv-btn inv-btn-sm inv-btn-secondary"
-                                onClick={() => handleTransition(po.id, 'SUBMITTED')}
+                                onClick={() => handleTransition(po.id || po._id || po.poNumber, 'SUBMITTED')}
                               >
                                 Submit
                               </button>
@@ -270,7 +298,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
                               <button
                                 type="button"
                                 className="inv-btn inv-btn-sm inv-btn-gold"
-                                onClick={() => handleTransition(po.id, 'APPROVED')}
+                                onClick={() => handleTransition(po.id || po._id || po.poNumber, 'APPROVED')}
                               >
                                 Approve
                               </button>
@@ -280,7 +308,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
                               <button
                                 type="button"
                                 className="inv-btn inv-btn-sm inv-btn-primary"
-                                onClick={() => handleTransition(po.id, 'ORDERED')}
+                                onClick={() => handleTransition(po.id || po._id || po.poNumber, 'ORDERED')}
                               >
                                 Issue PO
                               </button>

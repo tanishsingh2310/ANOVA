@@ -4,6 +4,30 @@
 // ============================================================
 
 import { SEED_SUPPLIERS, SEED_INGREDIENTS } from './mockData.js';
+import { apiClient } from '../../../api/client.js';
+
+export function normalizeSupplier(doc) {
+  if (!doc) return null;
+  const supId = String(doc._id || doc.id);
+  return {
+    ...doc,
+    id: supId,
+    _id: supId,
+    name: doc.name,
+    code: doc.code,
+    category: doc.category,
+    contactPerson: doc.contactPerson,
+    email: doc.email,
+    phone: doc.phone,
+    city: doc.city || 'Mumbai',
+    leadTimeDays: Number(doc.leadTimeDays || 2),
+    paymentTerms: doc.paymentTerms || 'Net 30',
+    taxId: doc.taxId || '',
+    status: doc.status || 'ACTIVE',
+    rating: Number(doc.rating || 4.5),
+    activeOrderCount: Number(doc.activeOrderCount || 0)
+  };
+}
 
 const SUPPLIERS_KEY = 'anova_inventory_suppliers';
 
@@ -103,5 +127,81 @@ export const SupplierService = {
     supplier.status = supplier.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     saveSuppliersData(list);
     return supplier;
+  },
+
+  // ==========================================
+  // REMOTE BACKEND / ATLAS SYNCHRONIZATION
+  // ==========================================
+  async syncFromBackend() {
+    try {
+      const res = await apiClient('/api/inventory/suppliers');
+      if (res && res.success && Array.isArray(res.data)) {
+        const normalized = res.data.map(normalizeSupplier);
+        saveSuppliersData(normalized);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[SupplierService] Backend sync failed, using cached store:', err.message);
+    }
+    return this.getSuppliers();
+  },
+
+  async saveSupplierRemote(supplierData) {
+    const isUpdate = Boolean(supplierData._id || (supplierData.id && supplierData.id.length === 24));
+    const targetId = supplierData._id || supplierData.id;
+
+    const payload = {
+      name: supplierData.name,
+      code: supplierData.code,
+      category: supplierData.category,
+      contactPerson: supplierData.contactPerson,
+      email: supplierData.email,
+      phone: supplierData.phone,
+      city: supplierData.city || 'Mumbai',
+      leadTimeDays: Number(supplierData.leadTimeDays || 2),
+      paymentTerms: supplierData.paymentTerms || 'Net 30',
+      taxId: supplierData.taxId || undefined,
+      rating: Number(supplierData.rating || 4.5)
+    };
+
+    try {
+      const endpoint = isUpdate ? `/api/inventory/suppliers/${targetId}` : '/api/inventory/suppliers';
+      const method = isUpdate ? 'PUT' : 'POST';
+      const res = await apiClient(endpoint, { method, body: payload });
+      if (res && res.success && res.data) {
+        const normalized = normalizeSupplier(res.data);
+        const list = getSuppliersData();
+        const idx = list.findIndex(s => s.id === normalized.id);
+        if (idx !== -1) {
+          list[idx] = normalized;
+        } else {
+          list.unshift(normalized);
+        }
+        saveSuppliersData(list);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[SupplierService] Remote save failed, falling back to local:', err.message);
+    }
+    return this.saveSupplier(supplierData);
+  },
+
+  async toggleStatusRemote(id) {
+    try {
+      const res = await apiClient(`/api/inventory/suppliers/${id}/status`, { method: 'PATCH' });
+      if (res && res.success && res.data) {
+        const normalized = normalizeSupplier(res.data);
+        const list = getSuppliersData();
+        const idx = list.findIndex(s => s.id === normalized.id);
+        if (idx !== -1) {
+          list[idx] = normalized;
+          saveSuppliersData(list);
+        }
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[SupplierService] Remote toggle status failed, falling back:', err.message);
+    }
+    return this.toggleStatus(id);
   }
 };

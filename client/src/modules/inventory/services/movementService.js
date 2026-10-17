@@ -7,6 +7,58 @@
 // ============================================================
 
 import { SEED_TRANSFERS, SEED_WASTAGE, SEED_STOCK_MOVEMENTS, SEED_INGREDIENTS } from './mockData.js';
+import { apiClient } from '../../../api/client.js';
+
+export function normalizeTransfer(doc) {
+  if (!doc) return null;
+  const tId = String(doc._id || doc.id);
+  const items = (doc.items || []).map(it => ({
+    ingredientId: String(it.ingredient?._id || it.ingredient || it.ingredientId),
+    ingredientName: it.ingredient?.name || '',
+    qty: Number(it.qty || 0),
+    unit: it.unit || 'kg',
+    unitCost: Number(it.unitCost || 0)
+  }));
+
+  return {
+    ...doc,
+    id: tId,
+    _id: tId,
+    transferNumber: doc.transferNumber,
+    fromBranchId: doc.fromBranch || doc.fromBranchId,
+    toBranchId: doc.toBranch || doc.toBranchId,
+    status: doc.status,
+    items,
+    dispatchedBy: doc.dispatchedBy,
+    receivedBy: doc.receivedBy,
+    dispatchedAt: doc.dispatchedAt || doc.createdAt,
+    receivedAt: doc.receivedAt,
+    notes: doc.notes || ''
+  };
+}
+
+export function normalizeWastage(doc) {
+  if (!doc) return null;
+  const wId = String(doc._id || doc.id);
+  return {
+    ...doc,
+    id: wId,
+    _id: wId,
+    wasteNumber: doc.wasteNumber,
+    branchId: doc.branch || doc.branchId,
+    ingredientId: String(doc.ingredient?._id || doc.ingredient || doc.ingredientId),
+    ingredientName: doc.ingredient?.name || '',
+    batchNumber: doc.batchNumber,
+    qty: Number(doc.quantity !== undefined ? doc.quantity : (doc.qty || 0)),
+    unit: doc.unit || 'kg',
+    unitCost: Number(doc.unitCost || 0),
+    totalCost: Number(doc.totalCost || 0),
+    reason: doc.reason,
+    loggedBy: doc.loggedBy,
+    date: doc.date || doc.createdAt,
+    notes: doc.notes || ''
+  };
+}
 
 const TRANSFERS_KEY = 'anova_inventory_transfers';
 const WASTAGE_KEY = 'anova_inventory_wastage';
@@ -325,5 +377,121 @@ export const MovementService = {
     localStorage.setItem(MOVEMENTS_KEY, JSON.stringify(movements));
 
     return newWastage;
+  },
+
+  // ==========================================
+  // REMOTE BACKEND / ATLAS SYNCHRONIZATION
+  // ==========================================
+  async syncTransfersFromBackend(branchId = 'all') {
+    try {
+      const branchQuery = branchId && branchId !== 'all' ? `?branch=${branchId}` : '';
+      const res = await apiClient(`/api/inventory/transfers${branchQuery}`);
+      if (res && res.success && Array.isArray(res.data)) {
+        const normalized = res.data.map(normalizeTransfer);
+        saveTransfersData(normalized);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[MovementService] Backend transfers sync failed, using cached store:', err.message);
+    }
+    return this.getTransfers({ branchId });
+  },
+
+  async dispatchTransferRemote({ fromBranchId, toBranchId, items, notes, dispatchedBy = 'Dispatcher' }) {
+    const payload = {
+      fromBranch: fromBranchId,
+      toBranch: toBranchId,
+      notes,
+      dispatchedBy,
+      items: items.map(it => ({
+        ingredient: it.ingredientId,
+        qty: Number(it.qty),
+        unit: it.unit || 'kg',
+        unitCost: Number(it.unitCost || 0)
+      }))
+    };
+
+    try {
+      const res = await apiClient('/api/inventory/transfers/dispatch', {
+        method: 'POST',
+        body: payload
+      });
+      if (res && res.success && res.data) {
+        const normalized = normalizeTransfer(res.data);
+        const list = getTransfersData();
+        list.unshift(normalized);
+        saveTransfersData(list);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[MovementService] Remote transfer dispatch failed, falling back:', err.message);
+    }
+    return this.dispatchTransfer({ fromBranchId, toBranchId, items, notes, dispatchedBy });
+  },
+
+  async receiveTransferRemote({ transferId, receivedBy = 'Receiver' }) {
+    try {
+      const res = await apiClient(`/api/inventory/transfers/${transferId}/receive`, {
+        method: 'POST',
+        body: { receivedBy }
+      });
+      if (res && res.success && res.data) {
+        const normalized = normalizeTransfer(res.data);
+        const list = getTransfersData();
+        const idx = list.findIndex(t => t.id === normalized.id);
+        if (idx !== -1) {
+          list[idx] = normalized;
+          saveTransfersData(list);
+        }
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[MovementService] Remote transfer receive failed, falling back:', err.message);
+    }
+    return this.receiveTransfer({ transferId, receivedBy });
+  },
+
+  async syncWastageFromBackend(branchId = 'all') {
+    try {
+      const branchQuery = branchId && branchId !== 'all' ? `?branch=${branchId}` : '';
+      const res = await apiClient(`/api/inventory/wastage${branchQuery}`);
+      if (res && res.success && Array.isArray(res.data)) {
+        const normalized = res.data.map(normalizeWastage);
+        saveWastageData(normalized);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[MovementService] Backend wastage sync failed, using cached store:', err.message);
+    }
+    return this.getWastage({ branchId });
+  },
+
+  async logWastageRemote({ branchId, ingredientId, batchNumber, qty, reason, notes, loggedBy = 'Kitchen Staff' }) {
+    const payload = {
+      branch: branchId,
+      ingredient: ingredientId,
+      batchNumber,
+      quantity: Number(qty),
+      reason,
+      notes,
+      loggedBy
+    };
+
+    try {
+      const res = await apiClient('/api/inventory/wastage', {
+        method: 'POST',
+        body: payload
+      });
+      if (res && res.success && res.data) {
+        const normalized = normalizeWastage(res.data);
+        const list = getWastageData();
+        list.unshift(normalized);
+        saveWastageData(list);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[MovementService] Remote wastage logging failed, falling back:', err.message);
+    }
+    return this.logWastage({ branchId, ingredientId, batchNumber, qty, reason, notes, loggedBy });
   }
 };

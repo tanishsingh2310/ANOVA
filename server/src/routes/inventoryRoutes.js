@@ -1,16 +1,52 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Ingredient = require('../models/Ingredient');
 const Supplier = require('../models/Supplier');
 const PurchaseOrder = require('../models/PurchaseOrder');
 const StockTransfer = require('../models/StockTransfer');
 const Wastage = require('../models/Wastage');
 const StockMovement = require('../models/StockMovement');
+const { protect, authorize } = require('../middleware/auth');
+const branchGuard = require('../middleware/branchGuard');
 
 // Standard response helper
 const sendResponse = (res, statusCode, success, data, message) => {
   return res.status(statusCode).json({ success, data, message });
 };
+
+// Safe Purchase Order lookup helper (supports ObjectId and poNumber)
+const findPurchaseOrder = async (idOrNumber) => {
+  if (!idOrNumber) return null;
+  if (mongoose.Types.ObjectId.isValid(idOrNumber)) {
+    const byId = await PurchaseOrder.findById(idOrNumber);
+    if (byId) return byId;
+  }
+  return await PurchaseOrder.findOne({
+    $or: [
+      { poNumber: idOrNumber },
+      { poNumber: String(idOrNumber).toUpperCase() }
+    ]
+  });
+};
+
+// Safe Stock Transfer lookup helper (supports ObjectId and transferNumber)
+const findStockTransfer = async (idOrNumber) => {
+  if (!idOrNumber) return null;
+  if (mongoose.Types.ObjectId.isValid(idOrNumber)) {
+    const byId = await StockTransfer.findById(idOrNumber);
+    if (byId) return byId;
+  }
+  return await StockTransfer.findOne({
+    $or: [
+      { transferNumber: idOrNumber },
+      { transferNumber: String(idOrNumber).toUpperCase() }
+    ]
+  });
+};
+
+// Enforce authentication across all inventory routes
+router.use(protect);
 
 // ==========================================
 // 1. INGREDIENTS & STOCK
@@ -43,7 +79,7 @@ router.post('/ingredients', async (req, res, next) => {
   }
 });
 
-router.post('/ingredients/:id/adjust', async (req, res, next) => {
+router.post('/ingredients/:id/adjust', branchGuard, async (req, res, next) => {
   try {
     const { branch, newQuantity, reason, notes, user = 'Manager' } = req.body;
     const ingredient = await Ingredient.findById(req.params.id);
@@ -145,8 +181,8 @@ router.put('/ingredients/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /ingredients/:id - Delete ingredient
-router.delete('/ingredients/:id', async (req, res, next) => {
+// DELETE /ingredients/:id - Delete ingredient (Admin only)
+router.delete('/ingredients/:id', authorize('owner', 'admin'), async (req, res, next) => {
   try {
     // Check if open purchase orders reference this ingredient
     const activePO = await PurchaseOrder.findOne({
@@ -182,7 +218,7 @@ router.get('/suppliers', async (req, res, next) => {
   }
 });
 
-router.post('/suppliers', async (req, res, next) => {
+router.post('/suppliers', authorize('owner', 'admin', 'manager'), async (req, res, next) => {
   try {
     const supplier = new Supplier(req.body);
     await supplier.save();
@@ -192,7 +228,7 @@ router.post('/suppliers', async (req, res, next) => {
   }
 });
 
-router.patch('/suppliers/:id/status', async (req, res, next) => {
+router.patch('/suppliers/:id/status', authorize('owner', 'admin'), async (req, res, next) => {
   try {
     const supplier = await Supplier.findById(req.params.id);
     if (!supplier) return sendResponse(res, 404, false, null, 'Supplier not found');
@@ -217,7 +253,7 @@ router.get('/suppliers/:id', async (req, res, next) => {
 });
 
 // PUT /suppliers/:id - Update supplier details
-router.put('/suppliers/:id', async (req, res, next) => {
+router.put('/suppliers/:id', authorize('owner', 'admin', 'manager'), async (req, res, next) => {
   try {
     const supplier = await Supplier.findByIdAndUpdate(
       req.params.id,
@@ -252,29 +288,92 @@ router.get('/purchase-orders', async (req, res, next) => {
   }
 });
 
-router.post('/purchase-orders', async (req, res, next) => {
+router.post('/purchase-orders', branchGuard, async (req, res, next) => {
   try {
-    const poNumber = `PO-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
-    const { supplier, branch, items, expectedDeliveryDate } = req.body;
+    const poNumber = req.body.poNumber || `PO-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    let { supplier, branch, items = [], expectedDeliveryDate, expectedDate, notes, createdBy } = req.body;
+    const finalExpectedDate = expectedDeliveryDate || expectedDate;
 
-    const subtotal = items.reduce((acc, it) => acc + (Number(it.orderedQty) * Number(it.unitPrice)), 0);
+    // Resolve supplier flexibly (ObjectId or code/name fallback)
+    let supplierDoc = null;
+    if (mongoose.Types.ObjectId.isValid(supplier)) {
+      supplierDoc = await Supplier.findById(supplier);
+    }
+    if (!supplierDoc) {
+      supplierDoc = await Supplier.findOne({ $or: [{ code: supplier }, { name: supplier }] });
+    }
+    if (!supplierDoc) {
+      supplierDoc = await Supplier.findOne();
+    }
+
+    // Resolve line items flexibly (ObjectId or SKU/name fallback)
+    const resolvedItems = [];
+    for (const it of items) {
+      let ingDoc = null;
+      const rawIng = it.ingredient || it.ingredientId;
+      if (mongoose.Types.ObjectId.isValid(rawIng)) {
+        ingDoc = await Ingredient.findById(rawIng);
+      }
+      if (!ingDoc) {
+        ingDoc = await Ingredient.findOne({ $or: [{ sku: rawIng }, { name: rawIng }] });
+      }
+      if (!ingDoc) {
+        ingDoc = await Ingredient.findOne();
+      }
+
+      if (ingDoc) {
+        resolvedItems.push({
+          ingredient: ingDoc._id,
+          orderedQty: Number(it.orderedQty || 1),
+          unit: it.unit || ingDoc.baseUnit || 'kg',
+          unitPrice: Number(it.unitPrice ?? ingDoc.unitCost ?? 0),
+          receivedQty: 0,
+          rejectedQty: 0,
+          damagedQty: 0
+        });
+      }
+    }
+
+    const subtotal = resolvedItems.reduce((acc, it) => acc + (Number(it.orderedQty) * Number(it.unitPrice)), 0);
     const tax = Math.round(subtotal * 0.05 * 100) / 100;
     const totalAmount = subtotal + tax;
 
     const po = new PurchaseOrder({
       poNumber,
-      supplier,
-      branch,
-      items,
+      supplier: supplierDoc ? supplierDoc._id : supplier,
+      branch: branch || 'b_downtown',
+      items: resolvedItems,
       subtotal,
       tax,
       totalAmount,
-      expectedDeliveryDate,
-      status: 'DRAFT'
+      expectedDeliveryDate: finalExpectedDate,
+      notes: notes || '',
+      createdBy: createdBy || req.user?.id || 'Store Manager',
+      status: req.body.status || 'DRAFT'
     });
     await po.save();
 
-    sendResponse(res, 201, true, po, 'Purchase order created in DRAFT status');
+    sendResponse(res, 201, true, po, `Purchase order created in ${po.status} status`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/purchase-orders/:id/approve', async (req, res, next) => {
+  try {
+    const po = await findPurchaseOrder(req.params.id);
+    if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
+
+    if (!['owner', 'admin', 'director'].includes(req.user.role)) {
+      return sendResponse(res, 403, false, null, 'Access denied: Only enterprise admins or directors can approve purchase orders.');
+    }
+
+    po.status = 'APPROVED';
+    po.approvedBy = req.body.approvedBy || req.user.id || 'Admin';
+    po.approvedAt = new Date();
+    await po.save();
+
+    sendResponse(res, 200, true, po, 'Purchase order approved');
   } catch (err) {
     next(err);
   }
@@ -283,12 +382,17 @@ router.post('/purchase-orders', async (req, res, next) => {
 router.patch('/purchase-orders/:id/status', async (req, res, next) => {
   try {
     const { status, approvedBy } = req.body;
-    const po = await PurchaseOrder.findById(req.params.id);
+    const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'PO not found');
+
+    // Only enterprise admins/directors can approve POs
+    if (status === 'APPROVED' && !['owner', 'admin', 'director'].includes(req.user.role)) {
+      return sendResponse(res, 403, false, null, 'Access denied: Only enterprise admins or directors can approve purchase orders.');
+    }
 
     po.status = status;
     if (status === 'APPROVED') {
-      po.approvedBy = approvedBy || 'Admin';
+      po.approvedBy = approvedBy || req.user.id || 'Admin';
       po.approvedAt = new Date();
     }
     await po.save();
@@ -302,8 +406,13 @@ router.patch('/purchase-orders/:id/status', async (req, res, next) => {
 router.post('/purchase-orders/:id/receive', async (req, res, next) => {
   try {
     const { grnNumber, receiverName, items, notes } = req.body;
-    const po = await PurchaseOrder.findById(req.params.id);
+    const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'PO not found');
+
+    // Branch isolation for goods receipt
+    if (!['owner', 'admin', 'director'].includes(req.user.role) && req.user.branchId && po.branch !== req.user.branchId) {
+      return sendResponse(res, 403, false, null, `Branch access violation: Cannot receive goods for branch '${po.branch}' while assigned to '${req.user.branchId}'.`);
+    }
 
     // Duplicate check
     const duplicate = po.receiptHistory.some(r => r.grnNumber === grnNumber);
@@ -372,10 +481,10 @@ router.post('/purchase-orders/:id/receive', async (req, res, next) => {
 // GET /purchase-orders/:id - Single purchase order details
 router.get('/purchase-orders/:id', async (req, res, next) => {
   try {
-    const po = await PurchaseOrder.findById(req.params.id)
-      .populate('supplier')
-      .populate('items.ingredient', 'name sku baseUnit unitCost');
+    const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
+    await po.populate('supplier');
+    await po.populate('items.ingredient', 'name sku baseUnit unitCost');
     sendResponse(res, 200, true, po, 'Purchase order retrieved successfully');
   } catch (err) {
     next(err);
@@ -385,13 +494,13 @@ router.get('/purchase-orders/:id', async (req, res, next) => {
 // DELETE /purchase-orders/:id - Cancel or delete DRAFT purchase order
 router.delete('/purchase-orders/:id', async (req, res, next) => {
   try {
-    const po = await PurchaseOrder.findById(req.params.id);
+    const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
     if (!['DRAFT', 'SUBMITTED'].includes(po.status)) {
       return sendResponse(res, 400, false, null, `Cannot delete PO in '${po.status}' status.`);
     }
 
-    await PurchaseOrder.findByIdAndDelete(req.params.id);
+    await PurchaseOrder.findByIdAndDelete(po._id);
     sendResponse(res, 200, true, { id: req.params.id }, 'Purchase order cancelled and removed');
   } catch (err) {
     next(err);
@@ -417,14 +526,14 @@ router.get('/transfers', async (req, res, next) => {
   }
 });
 
-router.post('/transfers/dispatch', async (req, res, next) => {
+router.post('/transfers/dispatch', branchGuard, async (req, res, next) => {
   try {
-    const { fromBranch, toBranch, items, notes, dispatchedBy } = req.body;
+    const { fromBranch, toBranch, items, notes, dispatchedBy = req.user.id } = req.body;
     if (fromBranch === toBranch) {
       return sendResponse(res, 400, false, null, 'Source and destination branches cannot be the same');
     }
 
-    const transferNumber = `TR-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    const transferNumber = req.body.transferNumber || `TR-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
 
     // Verify stock and deduct from source branch
     for (const item of items) {
@@ -473,9 +582,14 @@ router.post('/transfers/dispatch', async (req, res, next) => {
 router.post('/transfers/:id/receive', async (req, res, next) => {
   try {
     const { receivedBy } = req.body;
-    const transfer = await StockTransfer.findById(req.params.id);
+    const transfer = await findStockTransfer(req.params.id);
     if (!transfer) return sendResponse(res, 404, false, null, 'Transfer not found');
     if (transfer.status !== 'IN_TRANSIT') return sendResponse(res, 400, false, null, 'Transfer not in transit');
+
+    // Only destination branch staff or enterprise admins can receive
+    if (!['owner', 'admin', 'director'].includes(req.user.role) && req.user.branchId && transfer.toBranch !== req.user.branchId) {
+      return sendResponse(res, 403, false, null, `Branch access violation: Only staff assigned to destination branch '${transfer.toBranch}' can receive this transfer.`);
+    }
 
     // Add stock to destination branch
     for (const item of transfer.items) {
@@ -522,9 +636,9 @@ router.post('/transfers/:id/receive', async (req, res, next) => {
 // GET /transfers/:id - Single transfer details
 router.get('/transfers/:id', async (req, res, next) => {
   try {
-    const transfer = await StockTransfer.findById(req.params.id)
-      .populate('items.ingredient', 'name sku baseUnit unitCost');
+    const transfer = await findStockTransfer(req.params.id);
     if (!transfer) return sendResponse(res, 404, false, null, 'Transfer not found');
+    await transfer.populate('items.ingredient', 'name sku baseUnit unitCost');
     sendResponse(res, 200, true, transfer, 'Transfer retrieved successfully');
   } catch (err) {
     next(err);
@@ -545,7 +659,7 @@ router.get('/wastage', async (req, res, next) => {
   }
 });
 
-router.post('/wastage', async (req, res, next) => {
+router.post('/wastage', branchGuard, async (req, res, next) => {
   try {
     const { branch, ingredient: ingId, quantity, reason, notes, loggedBy } = req.body;
     const ing = await Ingredient.findById(ingId);
@@ -562,7 +676,8 @@ router.post('/wastage', async (req, res, next) => {
 
     const unitCost = ing.unitCost;
     const totalCost = Math.round(unitCost * Number(quantity) * 100) / 100;
-    const wasteNumber = `WST-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    const wasteNumber = req.body.wasteNumber || `WST-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
+    const userLogged = loggedBy || req.user?.id || req.user?.role || 'Staff';
 
     const wastage = new Wastage({
       wasteNumber,
@@ -573,7 +688,7 @@ router.post('/wastage', async (req, res, next) => {
       unitCost,
       totalCost,
       reason,
-      loggedBy,
+      loggedBy: userLogged,
       notes
     });
     await wastage.save();
@@ -586,7 +701,7 @@ router.post('/wastage', async (req, res, next) => {
       deltaQty: -Number(quantity),
       unit: ing.baseUnit,
       resultingBalance: newStock,
-      performedBy: loggedBy,
+      performedBy: userLogged,
       notes: `Reason: ${reason}. Total loss: ₹${totalCost}`
     });
 
@@ -708,14 +823,21 @@ router.get('/analytics/valuation', async (req, res, next) => {
         name: ing.name,
         category: ing.category,
         unit: ing.baseUnit,
+        baseUnit: ing.baseUnit,
         quantity: totalQty,
-        valuation: Math.round(calculatedValue * 100) / 100
+        unitCost: totalQty > 0 ? Math.round((calculatedValue / totalQty) * 100) / 100 : ing.unitCost,
+        valuation: Math.round(calculatedValue * 100) / 100,
+        totalValue: Math.round(calculatedValue * 100) / 100,
+        valuationMethod: method
       });
     }
 
     sendResponse(res, 200, true, {
       method,
       branch,
+      branchId: branch,
+      branchName: branch === 'all' ? 'All Enterprise Branches' : branch,
+      generatedAt: new Date().toISOString(),
       totalPortfolioValue: Math.round(totalPortfolioValue * 100) / 100,
       items
     }, `Inventory valuation using ${method}`);
@@ -727,7 +849,7 @@ router.get('/analytics/valuation', async (req, res, next) => {
 // ==========================================
 // 7. KITCHEN CONSUMPTION
 // ==========================================
-router.post('/recipe/consume', async (req, res, next) => {
+router.post('/recipe/consume', branchGuard, async (req, res, next) => {
   try {
     const { branch, orderId, orderNumber, items, preparedBy = 'Kitchen Station' } = req.body;
     if (!branch || !items || !Array.isArray(items) || items.length === 0) {

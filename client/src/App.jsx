@@ -14,10 +14,20 @@ export default function App() {
   const [alertsCount, setAlertsCount] = useState(0);
 
   useEffect(() => {
+    localStorage.setItem('anova_user_branch', selectedBranch);
+    localStorage.setItem('anova_user_role', 'admin');
+
     const branchList = InventoryService.getBranches();
     setBranches(branchList);
+
+    // Initial local compute for immediate responsiveness
     const kpis = AnalyticsService.getDashboardKPIs(selectedBranch);
     setAlertsCount(kpis.totalAlerts);
+
+    // Async backend fetch
+    AnalyticsService.fetchDashboardKPIsRemote(selectedBranch).then(remoteKpis => {
+      if (remoteKpis) setAlertsCount(remoteKpis.totalAlerts);
+    }).catch(() => {});
   }, [selectedBranch]);
 
   // Page title resolution

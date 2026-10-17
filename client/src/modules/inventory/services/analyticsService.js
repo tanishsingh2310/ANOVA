@@ -10,6 +10,7 @@
 import { InventoryService } from './inventoryService.js';
 import { PurchaseOrderService } from './purchaseOrderService.js';
 import { MovementService } from './movementService.js';
+import { apiClient } from '../../../api/client.js';
 
 export const AnalyticsService = {
   getDashboardKPIs(branchId = 'all') {
@@ -153,5 +154,72 @@ export const AnalyticsService = {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  },
+
+  // ==========================================
+  // REMOTE BACKEND / ATLAS SYNCHRONIZATION
+  // ==========================================
+  async fetchDashboardKPIsRemote(branchId = 'all') {
+    try {
+      const res = await apiClient(`/api/inventory/analytics/kpis?branch=${branchId}`);
+      if (res && res.success && res.data) {
+        const d = res.data;
+        return {
+          totalStockValue: Number(d.totalStockValue || 0),
+          totalItemsTracked: Number(d.totalItemsTracked || 0),
+          outOfStockCount: Number(d.outOfStockAlerts || 0),
+          criticalLowCount: Number(d.criticalLowAlerts || 0),
+          lowStockCount: Number(d.lowStockAlerts || 0),
+          totalAlerts: Number(d.outOfStockAlerts || 0) + Number(d.lowStockAlerts || 0),
+          expiringBatchesCount: Number(d.expiringBatchesCount || 0),
+          pendingApprovalPOs: Number(d.activePOs || 0),
+          activeOrderedPOs: Number(d.activePOs || 0),
+          inTransitTransfers: Number(d.inTransitTransfers || 0),
+          totalWastageCost: Number(d.totalWastageCost || 0)
+        };
+      }
+    } catch (err) {
+      console.warn('[AnalyticsService] Remote KPIs failed, calculating from local store:', err.message);
+    }
+    return this.getDashboardKPIs(branchId);
+  },
+
+  async fetchValuationRemote(branchId = 'all', method = 'FIFO') {
+    try {
+      const res = await apiClient(`/api/inventory/analytics/valuation?branch=${branchId}&method=${method}`);
+      if (res && res.success && res.data) {
+        const d = res.data;
+        const normalizedItems = (d.items || []).map(row => {
+          const qty = Number(row.quantity || 0);
+          const uCost = Number(row.unitCost || 0);
+          const totVal = Number(row.totalValue ?? row.valuation ?? (qty * uCost));
+          return {
+            id: String(row.id || row._id || `val_${Math.random()}`),
+            sku: row.sku || 'SKU-UNKNOWN',
+            name: row.name || 'Unnamed Ingredient',
+            category: row.category || 'General',
+            baseUnit: row.baseUnit || row.unit || 'kg',
+            quantity: qty,
+            unitCost: uCost,
+            totalValue: Math.round(totVal * 100) / 100,
+            valuationMethod: row.valuationMethod || method
+          };
+        });
+
+        const totalVal = Number(d.totalPortfolioValue ?? normalizedItems.reduce((acc, r) => acc + r.totalValue, 0));
+
+        return {
+          method: d.method || method,
+          branchId: d.branchId || d.branch || branchId,
+          branchName: d.branchName || (branchId === 'all' ? 'All Enterprise Branches' : branchId),
+          generatedAt: d.generatedAt || new Date().toISOString(),
+          totalPortfolioValue: Math.round(totalVal * 100) / 100,
+          items: normalizedItems
+        };
+      }
+    } catch (err) {
+      console.warn('[AnalyticsService] Remote valuation failed, calculating from local store:', err.message);
+    }
+    return this.getInventoryValuation(branchId, method);
   }
 };
