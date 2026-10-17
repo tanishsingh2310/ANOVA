@@ -1,5 +1,13 @@
-// server/middleware/auth.js
+// server/middleware/devAuth.js
+// TEMPORARY, DEV ONLY. Stands in for Member 1's real auth middleware.
+// Contract rule: no duplicate JWT middleware may ship. Before merging into main,
+// change the require() in every Member 4 route file to Member 1's middleware
+// and DELETE this file. Export names (protect, authorize) match the contract.
 const jwt = require('jsonwebtoken');
+
+if (process.env.NODE_ENV === 'production') {
+  throw new Error('devAuth.js is a dev-only stand-in and must not run in production');
+}
 
 exports.protect = (req, res, next) => {
   const header = req.headers.authorization || '';
@@ -16,7 +24,7 @@ exports.protect = (req, res, next) => {
 };
 
 exports.authorize = (...roles) => (req, res, next) => {
-  if (!roles.includes(req.user.role)) {
+  if (!req.user || !roles.includes(req.user.role)) {
     return res.status(403).json({ success: false, message: 'Access denied' });
   }
   next();
