@@ -5,14 +5,23 @@
 import { MOCK_MENU } from './menuData';
 import { MOCK_BRANCHES } from './branchData';
 import { MOCK_COUPONS } from './couponData';
+import { MOCK_STAFF } from './staffData';
 import { isOpenNow } from '../utils/format';
 
 const KEY = 'anova_mock_orders_v1';
+const DKEY = 'anova_mock_deliveries_v1';
+const RIDER_KEY = 'anova_mock_rider';
 const TAX_RATE = 0.05;
 const wait = (ms = 250) => new Promise((r) => setTimeout(r, ms));
 
 const read = () => {
   try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; }
+};
+const readD = () => {
+  try { return JSON.parse(localStorage.getItem(DKEY)) || []; } catch { return []; }
+};
+const writeD = (list) => {
+  try { localStorage.setItem(DKEY, JSON.stringify(list)); } catch { /* storage full or blocked */ }
 };
 const write = (orders) => {
   try { localStorage.setItem(KEY, JSON.stringify(orders)); } catch { /* storage full or blocked */ }
@@ -27,15 +36,24 @@ const reject = (status, message) => {
 
 // Status moves forward with time so the tracking page can be demonstrated.
 const TIMELINE = {
-  delivery: [[0, 'pending'], [8, 'confirmed'], [20, 'preparing'], [40, 'ready'], [55, 'out_for_delivery'], [85, 'delivered']],
+  delivery: [[0, 'pending'], [8, 'confirmed'], [20, 'preparing'], [40, 'ready']], // after 'ready' the delivery decides
   takeaway: [[0, 'pending'], [8, 'confirmed'], [20, 'preparing'], [40, 'ready'], [70, 'completed']],
+};
+const DELIVERY_TO_ORDER = {
+  pending: 'ready', assigned: 'ready', picked_up: 'out_for_delivery', on_the_way: 'out_for_delivery', delivered: 'delivered',
 };
 const withStatus = (order) => {
   if (order.status === 'cancelled') return order;
   const secs = (Date.now() - order.createdAtMs) / 1000;
   const steps = TIMELINE[order.orderType] || TIMELINE.delivery;
   const current = [...steps].reverse().find(([s]) => secs >= s);
-  return { ...order, status: current[1] };
+  let status = current[1];
+  if (order.orderType === 'delivery') {
+    const d = readD().find((x) => x.order === order._id);
+    if (d?.status === 'cancelled') status = 'cancelled';
+    else if (d && status === 'ready') status = DELIVERY_TO_ORDER[d.status] || 'ready';
+  }
+  return { ...order, status };
 };
 
 
@@ -133,6 +151,23 @@ export async function mockPlaceOrder(payload) {
     createdAtMs: now,
   };
   write([order, ...orders]);
+  if (order.orderType === 'delivery') {
+    const iso = new Date(now).toISOString();
+    writeD([{
+      _id: `mock-del-${now.toString(36)}`,
+      order: order._id,
+      orderNumber: order.orderNumber,
+      pickup: { name: branch.name, address: branch.address },
+      dropoff: { address: payload.delivery.address },
+      customerName: 'Demo customer',
+      customerPhone: payload.contactPhone,
+      itemCount: lines.reduce((n, l) => n + l.quantity, 0),
+      deliveryStaff: null,
+      status: 'pending',
+      timeline: [{ status: 'pending', at: iso }],
+      createdAt: iso,
+    }, ...readD()]);
+  }
   return withStatus(order);
 }
 
@@ -146,4 +181,88 @@ export async function mockGetOrder(id) {
   const order = read().find((o) => o._id === id);
   if (!order) throw reject(404, 'Order not found');
   return withStatus(order);
+}
+
+// ---------- Deliveries (demo) ----------
+const ACTIVE_D = ['pending', 'assigned', 'picked_up', 'on_the_way'];
+const RIDER_NEXT = { assigned: 'picked_up', picked_up: 'on_the_way', on_the_way: 'delivered' };
+const withRider = (d) => ({ ...d, deliveryStaff: MOCK_STAFF.find((s) => s._id === d.deliveryStaff) || null });
+const stamp = (d, status) => d.timeline.push({ status, at: new Date().toISOString() });
+
+export const getMockRider = () => {
+  try { return localStorage.getItem(RIDER_KEY) || MOCK_STAFF[0]._id; } catch { return MOCK_STAFF[0]._id; }
+};
+export const setMockRider = (id) => {
+  try { localStorage.setItem(RIDER_KEY, id); } catch { /* ignore */ }
+};
+
+export async function mockListDeliveries({ status } = {}) {
+  await wait();
+  const all = readD();
+  const counts = {};
+  all.forEach((d) => { counts[d.status] = (counts[d.status] || 0) + 1; });
+  const items = (status ? all.filter((d) => d.status === status) : all).map(withRider);
+  return { items, total: items.length, counts };
+}
+
+export async function mockListStaff() {
+  await wait(150);
+  const busy = readD().filter((d) => ['assigned', 'picked_up', 'on_the_way'].includes(d.status));
+  return MOCK_STAFF.map((s) => ({ ...s, activeCount: busy.filter((d) => d.deliveryStaff === s._id).length }));
+}
+
+export async function mockAssignDelivery(id, staffId) {
+  await wait();
+  const list = readD();
+  const d = list.find((x) => x._id === id);
+  if (!d) throw reject(404, 'Delivery not found');
+  if (!['pending', 'assigned'].includes(d.status)) throw reject(409, 'This delivery can no longer be assigned');
+  if (!MOCK_STAFF.some((s) => s._id === staffId)) throw reject(400, 'Choose a valid delivery staff member');
+  d.deliveryStaff = staffId;
+  d.status = 'assigned';
+  d.assignedAt = new Date().toISOString();
+  stamp(d, 'assigned');
+  writeD(list);
+  return withRider(d);
+}
+
+export async function mockCancelDelivery(id, reason) {
+  await wait();
+  const list = readD();
+  const d = list.find((x) => x._id === id);
+  if (!d) throw reject(404, 'Delivery not found');
+  if (!ACTIVE_D.includes(d.status)) throw reject(409, 'Only an unfinished delivery can be cancelled');
+  d.status = 'cancelled';
+  d.cancelledReason = reason || undefined;
+  stamp(d, 'cancelled');
+  writeD(list);
+  return withRider(d);
+}
+
+export async function mockMyDeliveries({ history = false } = {}) {
+  await wait();
+  const rider = getMockRider();
+  const mine = readD().filter((d) => d.deliveryStaff === rider);
+  return mine.filter((d) => (history ? ['delivered', 'cancelled'].includes(d.status) : ['assigned', 'picked_up', 'on_the_way'].includes(d.status)));
+}
+
+export async function mockRiderUpdate(id, status) {
+  await wait();
+  const list = readD();
+  const d = list.find((x) => x._id === id && x.deliveryStaff === getMockRider());
+  if (!d) throw reject(404, 'Delivery not found');
+  if (RIDER_NEXT[d.status] !== status) throw reject(409, 'That step is not allowed right now');
+  d.status = status;
+  if (status === 'delivered') d.deliveredAt = new Date().toISOString();
+  stamp(d, status);
+  writeD(list);
+  return d;
+}
+
+export async function mockTracking(orderId) {
+  await wait(150);
+  const d = readD().find((x) => x.order === orderId);
+  if (!d) throw reject(404, 'No delivery for this order yet');
+  const staff = MOCK_STAFF.find((s) => s._id === d.deliveryStaff);
+  return { status: d.status, riderName: staff?.name.split(' ')[0], assignedAt: d.assignedAt, deliveredAt: d.deliveredAt };
 }

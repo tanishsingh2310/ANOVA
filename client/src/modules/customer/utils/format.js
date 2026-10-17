@@ -54,3 +54,21 @@ export function describeOffer(o) {
   const min = o.minOrderAmount > 0 ? `, on orders over ${formatPrice(o.minOrderAmount)}` : '';
   return main + cap + min;
 }
+
+// ---------- Delivery (its own status list, separate from the order status) ----------
+export const DELIVERY_LABELS = {
+  pending: 'Waiting for a rider',
+  assigned: 'Rider assigned',
+  picked_up: 'Picked up',
+  on_the_way: 'On the way',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+};
+export const deliveryLabel = (s) => DELIVERY_LABELS[s] || s || 'Unknown';
+
+// What a rider can do next, per current delivery status.
+export const RIDER_NEXT = {
+  assigned: { to: 'picked_up', label: 'Mark picked up' },
+  picked_up: { to: 'on_the_way', label: 'Start delivery' },
+  on_the_way: { to: 'delivered', label: 'Mark delivered' },
+};

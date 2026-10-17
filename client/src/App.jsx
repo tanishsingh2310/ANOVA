@@ -13,6 +13,8 @@ import Checkout from './modules/customer/pages/Checkout';
 import MyOrders from './modules/customer/pages/MyOrders';
 import Offers from './modules/customer/pages/Offers';
 import AdminCoupons from './modules/customer/pages/AdminCoupons';
+import AdminDeliveries from './modules/customer/pages/AdminDeliveries';
+import MyDeliveries from './modules/customer/pages/MyDeliveries';
 import OrderTracking from './modules/customer/pages/OrderTracking';
 import RequireRole from './modules/customer/components/RequireRole';
 import { CartProvider, useCart } from './modules/customer/context/CartContext';
@@ -42,7 +44,13 @@ function TopBar() {
         )}
         {STAFF.includes(role) && (
           <nav aria-label="Staff">
+            <NavLink to="/admin/deliveries">Deliveries</NavLink>
             <NavLink to="/admin/coupons">Promotions</NavLink>
+          </nav>
+        )}
+        {role === 'delivery' && (
+          <nav aria-label="Rider">
+            <NavLink to="/deliveries">My deliveries</NavLink>
           </nav>
         )}
         {role && <button className="secondary" onClick={logout}>Sign out</button>}
@@ -56,6 +64,8 @@ function TopBar() {
 
 const STAFF = ['owner', 'admin', 'manager'];
 const staffOnly = (el) => <RequireRole roles={STAFF}>{el}</RequireRole>;
+const riderOnly = (el) => <RequireRole roles={['delivery']}>{el}</RequireRole>;
+const homeFor = (role) => (STAFF.includes(role) ? '/admin/deliveries' : role === 'delivery' ? '/deliveries' : '/branches');
 const customerOnly = (el) => <RequireRole roles={['customer']}>{el}</RequireRole>;
 
 export default function App() {
@@ -68,13 +78,15 @@ export default function App() {
           <Route path="/branches" element={customerOnly(<BranchList />)} />
           <Route path="/menu" element={customerOnly(<Menu />)} />
           <Route path="/offers" element={customerOnly(<Offers />)} />
+          <Route path="/admin/deliveries" element={staffOnly(<AdminDeliveries />)} />
+          <Route path="/deliveries" element={riderOnly(<MyDeliveries />)} />
           <Route path="/admin/coupons" element={staffOnly(<AdminCoupons />)} />
           <Route path="/cart" element={customerOnly(<Cart />)} />
           <Route path="/checkout" element={customerOnly(<Checkout />)} />
           <Route path="/orders" element={customerOnly(<MyOrders />)} />
           <Route path="/orders/:id" element={customerOnly(<OrderTracking />)} />
           <Route path="/profile" element={customerOnly(<Profile />)} />
-          <Route path="*" element={<Navigate to={STAFF.includes(getRole()) ? '/admin/coupons' : '/branches'} replace />} />
+          <Route path="*" element={<Navigate to={homeFor(getRole())} replace />} />
         </Routes>
       </CartProvider>
     </BrowserRouter>

@@ -4,13 +4,15 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { errorMessage } from '../../../api/axios';
 import { getOrder } from '../services/orderService';
-import { ORDER_FLOW, TERMINAL_STATUSES, addressLine, formatDate, formatPrice, statusLabel } from '../utils/format';
+import { getTracking } from '../services/deliveryService';
+import { ORDER_FLOW, TERMINAL_STATUSES, addressLine, deliveryLabel, formatDate, formatPrice, statusLabel } from '../utils/format';
 
 const POLL_MS = 5000;
 
 export default function OrderTracking() {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
+  const [delivery, setDelivery] = useState(null); // rider name and delivery status, if any
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
 
@@ -20,8 +22,13 @@ export default function OrderTracking() {
     const tick = async () => {
       try {
         const o = await getOrder(id);
+        let d = null;
+        if (o.orderType === 'delivery') {
+          try { d = await getTracking(id); } catch { d = null; } // no delivery record yet is normal
+        }
         if (!active) return;
         setOrder(o);
+        setDelivery(d);
         setError('');
         if (!TERMINAL_STATUSES.includes(o.status)) timer = setTimeout(tick, POLL_MS);
       } catch (err) {
@@ -78,6 +85,9 @@ export default function OrderTracking() {
           {order.orderType === 'takeaway' ? 'Collect from' : 'Prepared at'} {branch.name}
           {branch.address ? `, ${addressLine(branch.address)}` : ''}
         </p>
+      )}
+      {delivery?.riderName && (
+        <p role="status">Your rider: <strong>{delivery.riderName}</strong> ({deliveryLabel(delivery.status)})</p>
       )}
       {order.delivery?.address && (
         <p className="muted">

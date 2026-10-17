@@ -15,4 +15,5 @@ export const ENDPOINTS = {
   orders: '/orders',
   myOrders: '/orders/my',
   order: (id) => `/orders/${id}`,
+  deliveries: '/deliveries',
 };
