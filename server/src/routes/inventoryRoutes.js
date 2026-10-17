@@ -75,6 +75,96 @@ router.post('/ingredients/:id/adjust', async (req, res, next) => {
   }
 });
 
+// GET /batches/expiring - Expiring batches within threshold
+router.get('/batches/expiring', async (req, res, next) => {
+  try {
+    const days = Number(req.query.days) || 7;
+    const { branch } = req.query;
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + days);
+
+    const ingredients = await Ingredient.find({
+      'batches.expiryDate': { $lte: targetDate }
+    });
+
+    const expiringBatches = [];
+    for (const ing of ingredients) {
+      for (const batch of ing.batches) {
+        if (batch.quantity > 0 && batch.expiryDate <= targetDate) {
+          if (!branch || branch === 'all' || batch.branch === branch) {
+            const diffTime = new Date(batch.expiryDate).getTime() - Date.now();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            expiringBatches.push({
+              ingredientId: ing._id,
+              ingredientName: ing.name,
+              sku: ing.sku,
+              unit: ing.baseUnit,
+              unitCost: ing.unitCost,
+              batchNumber: batch.batchNumber,
+              branch: batch.branch,
+              quantity: batch.quantity,
+              expiryDate: batch.expiryDate,
+              diffDays,
+              isExpired: diffDays < 0
+            });
+          }
+        }
+      }
+    }
+
+    expiringBatches.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+    sendResponse(res, 200, true, expiringBatches, 'Expiring batches retrieved');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /ingredients/:id - Single ingredient
+router.get('/ingredients/:id', async (req, res, next) => {
+  try {
+    const ingredient = await Ingredient.findById(req.params.id).populate('primarySupplier', 'name code city');
+    if (!ingredient) return sendResponse(res, 404, false, null, 'Ingredient not found');
+    sendResponse(res, 200, true, ingredient, 'Ingredient retrieved successfully');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /ingredients/:id - Update ingredient details
+router.put('/ingredients/:id', async (req, res, next) => {
+  try {
+    const ingredient = await Ingredient.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    ).populate('primarySupplier', 'name code');
+    if (!ingredient) return sendResponse(res, 404, false, null, 'Ingredient not found');
+    sendResponse(res, 200, true, ingredient, 'Ingredient updated successfully');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /ingredients/:id - Delete ingredient
+router.delete('/ingredients/:id', async (req, res, next) => {
+  try {
+    // Check if open purchase orders reference this ingredient
+    const activePO = await PurchaseOrder.findOne({
+      'items.ingredient': req.params.id,
+      status: { $in: ['DRAFT', 'SUBMITTED', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'] }
+    });
+    if (activePO) {
+      return sendResponse(res, 400, false, null, `Cannot delete ingredient: referenced in active PO ${activePO.poNumber}`);
+    }
+
+    const deleted = await Ingredient.findByIdAndDelete(req.params.id);
+    if (!deleted) return sendResponse(res, 404, false, null, 'Ingredient not found');
+    sendResponse(res, 200, true, { id: req.params.id }, 'Ingredient deleted successfully');
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ==========================================
 // 2. SUPPLIERS
 // ==========================================
@@ -110,6 +200,32 @@ router.patch('/suppliers/:id/status', async (req, res, next) => {
     supplier.status = supplier.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     await supplier.save();
     sendResponse(res, 200, true, supplier, `Supplier status updated to ${supplier.status}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /suppliers/:id - Single supplier details
+router.get('/suppliers/:id', async (req, res, next) => {
+  try {
+    const supplier = await Supplier.findById(req.params.id);
+    if (!supplier) return sendResponse(res, 404, false, null, 'Supplier not found');
+    sendResponse(res, 200, true, supplier, 'Supplier retrieved successfully');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /suppliers/:id - Update supplier details
+router.put('/suppliers/:id', async (req, res, next) => {
+  try {
+    const supplier = await Supplier.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+    if (!supplier) return sendResponse(res, 404, false, null, 'Supplier not found');
+    sendResponse(res, 200, true, supplier, 'Supplier updated successfully');
   } catch (err) {
     next(err);
   }
@@ -253,6 +369,35 @@ router.post('/purchase-orders/:id/receive', async (req, res, next) => {
   }
 });
 
+// GET /purchase-orders/:id - Single purchase order details
+router.get('/purchase-orders/:id', async (req, res, next) => {
+  try {
+    const po = await PurchaseOrder.findById(req.params.id)
+      .populate('supplier')
+      .populate('items.ingredient', 'name sku baseUnit unitCost');
+    if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
+    sendResponse(res, 200, true, po, 'Purchase order retrieved successfully');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /purchase-orders/:id - Cancel or delete DRAFT purchase order
+router.delete('/purchase-orders/:id', async (req, res, next) => {
+  try {
+    const po = await PurchaseOrder.findById(req.params.id);
+    if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
+    if (!['DRAFT', 'SUBMITTED'].includes(po.status)) {
+      return sendResponse(res, 400, false, null, `Cannot delete PO in '${po.status}' status.`);
+    }
+
+    await PurchaseOrder.findByIdAndDelete(req.params.id);
+    sendResponse(res, 200, true, { id: req.params.id }, 'Purchase order cancelled and removed');
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ==========================================
 // 4. TRANSFERS & WASTAGE
 // ==========================================
@@ -374,6 +519,18 @@ router.post('/transfers/:id/receive', async (req, res, next) => {
   }
 });
 
+// GET /transfers/:id - Single transfer details
+router.get('/transfers/:id', async (req, res, next) => {
+  try {
+    const transfer = await StockTransfer.findById(req.params.id)
+      .populate('items.ingredient', 'name sku baseUnit unitCost');
+    if (!transfer) return sendResponse(res, 404, false, null, 'Transfer not found');
+    sendResponse(res, 200, true, transfer, 'Transfer retrieved successfully');
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/wastage', async (req, res, next) => {
   try {
     const { branch, reason } = req.query;
@@ -455,6 +612,159 @@ router.get('/movements', async (req, res, next) => {
       .limit(100);
 
     sendResponse(res, 200, true, movements, 'Movement audit logs retrieved');
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================
+// 6. ANALYTICS & VALUATION
+// ==========================================
+router.get('/analytics/kpis', async (req, res, next) => {
+  try {
+    const { branch = 'all' } = req.query;
+    const ingredients = await Ingredient.find();
+    const pos = await PurchaseOrder.find();
+    const transfers = await StockTransfer.find();
+    const wastages = await Wastage.find();
+
+    let totalStockValue = 0;
+    let totalItemsTracked = ingredients.length;
+    let lowStockAlerts = 0;
+    let outOfStockAlerts = 0;
+
+    for (const ing of ingredients) {
+      let branchStock = 0;
+      if (branch === 'all') {
+        for (const [_, qty] of ing.stockByBranch.entries()) {
+          branchStock += Number(qty || 0);
+        }
+      } else {
+        branchStock = Number(ing.stockByBranch.get(branch) || 0);
+      }
+
+      totalStockValue += branchStock * ing.unitCost;
+
+      if (branchStock <= 0) {
+        outOfStockAlerts++;
+      } else if (branchStock <= ing.minThreshold) {
+        lowStockAlerts++;
+      }
+    }
+
+    const activePOs = pos.filter(p => (branch === 'all' || p.branch === branch) && ['SUBMITTED', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(p.status)).length;
+    const inTransitTransfers = transfers.filter(t => (branch === 'all' || t.fromBranch === branch || t.toBranch === branch) && t.status === 'IN_TRANSIT').length;
+    const totalWastageCost = wastages
+      .filter(w => branch === 'all' || w.branch === branch)
+      .reduce((sum, w) => sum + (w.totalCost || 0), 0);
+
+    sendResponse(res, 200, true, {
+      totalStockValue: Math.round(totalStockValue * 100) / 100,
+      totalItemsTracked,
+      lowStockAlerts,
+      outOfStockAlerts,
+      totalAlerts: lowStockAlerts + outOfStockAlerts,
+      activePOs,
+      inTransitTransfers,
+      totalWastageCost: Math.round(totalWastageCost * 100) / 100
+    }, 'Dashboard KPIs calculated');
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/analytics/valuation', async (req, res, next) => {
+  try {
+    const { branch = 'all', method = 'FIFO' } = req.query;
+    const ingredients = await Ingredient.find().sort({ name: 1 });
+
+    let totalPortfolioValue = 0;
+    const items = [];
+
+    for (const ing of ingredients) {
+      let activeBatches = ing.batches.filter(b => b.quantity > 0);
+      if (branch !== 'all') {
+        activeBatches = activeBatches.filter(b => b.branch === branch);
+      }
+
+      const totalQty = activeBatches.reduce((acc, b) => acc + b.quantity, 0);
+      let calculatedValue = 0;
+
+      if (method === 'FIFO') {
+        const sorted = [...activeBatches].sort((a, b) => new Date(a.createdAt || a.expiryDate) - new Date(b.createdAt || b.expiryDate));
+        for (const b of sorted) {
+          calculatedValue += b.quantity * (b.receivedCost || ing.unitCost);
+        }
+      } else {
+        const totalBatchCost = activeBatches.reduce((acc, b) => acc + (b.quantity * (b.receivedCost || ing.unitCost)), 0);
+        const avgUnitCost = totalQty > 0 ? (totalBatchCost / totalQty) : ing.unitCost;
+        calculatedValue = totalQty * avgUnitCost;
+      }
+
+      totalPortfolioValue += calculatedValue;
+      items.push({
+        id: ing._id,
+        sku: ing.sku,
+        name: ing.name,
+        category: ing.category,
+        unit: ing.baseUnit,
+        quantity: totalQty,
+        valuation: Math.round(calculatedValue * 100) / 100
+      });
+    }
+
+    sendResponse(res, 200, true, {
+      method,
+      branch,
+      totalPortfolioValue: Math.round(totalPortfolioValue * 100) / 100,
+      items
+    }, `Inventory valuation using ${method}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ==========================================
+// 7. KITCHEN CONSUMPTION
+// ==========================================
+router.post('/recipe/consume', async (req, res, next) => {
+  try {
+    const { branch, orderId, orderNumber, items, preparedBy = 'Kitchen Station' } = req.body;
+    if (!branch || !items || !Array.isArray(items) || items.length === 0) {
+      return sendResponse(res, 400, false, null, 'Branch and valid items array are required');
+    }
+
+    const deducted = [];
+    for (const item of items) {
+      const ing = await Ingredient.findById(item.ingredientId || item.ingredient);
+      if (!ing) return sendResponse(res, 404, false, null, `Ingredient not found: ${item.ingredientId}`);
+
+      const current = ing.stockByBranch.get(branch) || 0;
+      const consumeQty = Number(item.quantity || item.qty);
+      if (current < consumeQty) {
+        return sendResponse(res, 400, false, null, `Insufficient stock for ${ing.name} at ${branch}. Available: ${current}, Required: ${consumeQty}`);
+      }
+
+      const newBalance = current - consumeQty;
+      ing.stockByBranch.set(branch, newBalance);
+      await ing.save();
+
+      const movement = await StockMovement.create({
+        type: 'RECIPE_CONSUMPTION',
+        reference: `ORD-${orderNumber || orderId || 'POS'}`,
+        ingredient: ing._id,
+        branch,
+        deltaQty: -consumeQty,
+        unit: ing.baseUnit,
+        resultingBalance: newBalance,
+        performedBy: preparedBy,
+        notes: `Recipe consumption for order ${orderNumber || orderId}`
+      });
+
+      deducted.push({ ingredient: ing.name, consumed: consumeQty, remaining: newBalance, movementId: movement._id });
+    }
+
+    sendResponse(res, 200, true, { deducted }, 'Recipe ingredients successfully deducted from branch inventory');
   } catch (err) {
     next(err);
   }
