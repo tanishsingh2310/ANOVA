@@ -11,7 +11,7 @@ export default function DevLogin() {
   const submit = (e) => {
     e.preventDefault();
     setToken(value);
-    navigate('/profile');
+    navigate('/');
   };
 
   return (
