@@ -35,3 +35,10 @@ table.data { width: 100%; border-collapse: collapse; font-size: .9rem; }
 table.data th, table.data td { padding: .5rem .6rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 .table-wrap { overflow-x: auto; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; }
+
+.delivery-map { position: relative; z-index: 0; height: 320px; width: 100%; margin: .5rem 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.map-pin { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.45); font: 700 .75rem system-ui, sans-serif; color: #fff; }
+.pin-shop { background: #374151; }
+.pin-home { background: #b3261e; }
+.pin-rider { background: var(--accent); color: var(--accent-ink); width: 32px; height: 32px; }
+.rider-marker { transition: transform 2.8s linear; } /* glides between the 3-second updates */

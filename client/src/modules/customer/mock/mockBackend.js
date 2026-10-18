@@ -6,6 +6,7 @@ import { MOCK_MENU } from './menuData';
 import { MOCK_BRANCHES } from './branchData';
 import { MOCK_COUPONS } from './couponData';
 import { MOCK_STAFF } from './staffData';
+import { simulatedState } from '../utils/geo';
 import { isOpenNow } from '../utils/format';
 
 const KEY = 'anova_mock_orders_v1';
@@ -264,5 +265,19 @@ export async function mockTracking(orderId) {
   const d = readD().find((x) => x.order === orderId);
   if (!d) throw reject(404, 'No delivery for this order yet');
   const staff = MOCK_STAFF.find((s) => s._id === d.deliveryStaff);
-  return { status: d.status, riderName: staff?.name.split(' ')[0], assignedAt: d.assignedAt, deliveredAt: d.deliveredAt };
+  const sim = simulatedState(d);
+  const showMap = ['assigned', 'picked_up', 'on_the_way', 'delivered'].includes(d.status);
+  return {
+    status: d.status,
+    riderName: staff?.name.split(' ')[0],
+    assignedAt: d.assignedAt,
+    deliveredAt: d.deliveredAt,
+    pickup: { name: d.pickup?.name, location: sim.pickup },
+    dropoff: { location: sim.dropoff },
+    route: showMap ? sim.route : [],
+    position: sim.position,
+    progress: sim.progress,
+    etaSeconds: sim.etaSeconds,
+    isSimulated: true,
+  };
 }

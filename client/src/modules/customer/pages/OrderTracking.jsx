@@ -2,12 +2,14 @@
 // Module 4 (simulated GPS map) will plug into this page for out-for-delivery orders.
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import DeliveryMap from '../components/DeliveryMap';
 import { errorMessage } from '../../../api/axios';
 import { getOrder } from '../services/orderService';
 import { getTracking } from '../services/deliveryService';
-import { ORDER_FLOW, TERMINAL_STATUSES, addressLine, deliveryLabel, formatDate, formatPrice, statusLabel } from '../utils/format';
+import { ORDER_FLOW, TERMINAL_STATUSES, addressLine, deliveryLabel, formatDate, formatPrice, statusLabel, trackingText } from '../utils/format';
 
 const POLL_MS = 5000;
+const LIVE_POLL_MS = 3000; // faster while the rider is moving, so the marker keeps up
 
 export default function OrderTracking() {
   const { id } = useParams();
@@ -30,7 +32,9 @@ export default function OrderTracking() {
         setOrder(o);
         setDelivery(d);
         setError('');
-        if (!TERMINAL_STATUSES.includes(o.status)) timer = setTimeout(tick, POLL_MS);
+        if (!TERMINAL_STATUSES.includes(o.status)) {
+          timer = setTimeout(tick, d?.status === 'on_the_way' ? LIVE_POLL_MS : POLL_MS);
+        }
       } catch (err) {
         if (active) setError(errorMessage(err));
       }
@@ -88,6 +92,14 @@ export default function OrderTracking() {
       )}
       {delivery?.riderName && (
         <p role="status">Your rider: <strong>{delivery.riderName}</strong> ({deliveryLabel(delivery.status)})</p>
+      )}
+      {delivery?.position && delivery.route?.length > 0 && (
+        <section aria-label="Delivery map">
+          <h3>Live tracking <span className="muted">(simulated demo)</span></h3>
+          <DeliveryMap route={delivery.route} pickup={delivery.pickup.location}
+            dropoff={delivery.dropoff.location} position={delivery.position} />
+          <p>{trackingText(delivery)}</p>
+        </section>
       )}
       {order.delivery?.address && (
         <p className="muted">

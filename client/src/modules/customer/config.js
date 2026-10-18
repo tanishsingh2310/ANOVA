@@ -17,3 +17,8 @@ export const ENDPOINTS = {
   order: (id) => `/orders/${id}`,
   deliveries: '/deliveries',
 };
+
+// Demo mode only: how long the simulated rider takes to reach the customer.
+// (Real mode: the server decides, see server/services/trackingService.js.)
+export const SIM_TRIP_SECONDS = 90;
+export const SIM_CENTER = { lat: 23.0225, lng: 72.5714 };

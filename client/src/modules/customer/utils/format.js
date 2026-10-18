@@ -72,3 +72,20 @@ export const RIDER_NEXT = {
   picked_up: { to: 'on_the_way', label: 'Start delivery' },
   on_the_way: { to: 'delivered', label: 'Mark delivered' },
 };
+
+// "45 seconds" or "2 min". Demo trips are short, so seconds are shown under a minute.
+export function formatEta(sec) {
+  if (sec == null) return '';
+  return sec < 60 ? `${Math.max(sec, 1)} seconds` : `${Math.ceil(sec / 60)} min`;
+}
+
+// One plain sentence describing the rider's position, shown under the map.
+export function trackingText(t) {
+  switch (t.status) {
+    case 'assigned': return 'Your rider has been assigned and is at the restaurant.';
+    case 'picked_up': return 'Your rider has picked up your order and is about to leave.';
+    case 'on_the_way': return `Your rider is ${Math.round(t.progress * 100)}% of the way. Arriving in about ${formatEta(t.etaSeconds)}.`;
+    case 'delivered': return 'Your order has arrived.';
+    default: return '';
+  }
+}

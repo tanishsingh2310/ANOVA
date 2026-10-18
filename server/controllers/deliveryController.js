@@ -2,6 +2,7 @@
 const mongoose = require('mongoose');
 const Delivery = require('../models/Delivery');
 const { ACTIVE, RIDER_NEXT, createDelivery, listDeliveryStaff } = require('../services/deliveryService');
+const { simulatedState } = require('../services/trackingService');
 const { audit } = require('../utils/audit');
 
 const ok = (res, data, message = 'OK', code = 200) =>
@@ -157,17 +158,30 @@ exports.updateStatus = async (req, res, next) => {
 // ---------- Customer ----------
 
 // GET /api/deliveries/track/:orderId   own delivery only, limited fields
+// Position is SIMULATED (see services/trackingService.js). The shape is what real GPS would return too.
 exports.track = async (req, res, next) => {
   try {
     if (!validId(req.params.orderId)) return fail(res, 400, 'Invalid id');
     const d = await Delivery.findOne({ order: req.params.orderId, customerUser: req.user.id })
-      .select('status assignedAt deliveredAt deliveryStaff pickup.name pickup.location dropoff.location')
+      .select('order status assignedAt deliveredAt deliveryStaff timeline pickup.name pickup.location dropoff.location')
       .populate('deliveryStaff', 'name');
     if (!d) return fail(res, 404, 'No delivery for this order yet');
+
     const riderName = d.deliveryStaff?.name ? String(d.deliveryStaff.name).split(' ')[0] : undefined; // first name only
+    const sim = simulatedState(d);
+    const showMap = ['assigned', 'picked_up', 'on_the_way', 'delivered'].includes(d.status);
     ok(res, {
-      status: d.status, riderName, assignedAt: d.assignedAt, deliveredAt: d.deliveredAt,
-      pickup: d.pickup, dropoff: d.dropoff,
+      status: d.status,
+      riderName,
+      assignedAt: d.assignedAt,
+      deliveredAt: d.deliveredAt,
+      pickup: { name: d.pickup?.name, location: sim.pickup },
+      dropoff: { location: sim.dropoff },
+      route: showMap ? sim.route : [],
+      position: sim.position,
+      progress: sim.progress,
+      etaSeconds: sim.etaSeconds,
+      isSimulated: true,
     });
   } catch (err) { handleError(err, res, next); }
 };
