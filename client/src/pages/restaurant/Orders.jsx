@@ -1,82 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiRequest } from "../../api";
 import "../../styles/orders.css";
 
-const initialOrders = [
-  {
-    id: "ORD-1001",
-    customer: "Aarav Shah",
-    orderType: "Dine-in",
-    table: "T-04",
-    items: [
-      { name: "Paneer Tikka", quantity: 2, price: 280 },
-      { name: "Fresh Lime Soda", quantity: 2, price: 90 },
-    ],
-    status: "Preparing",
-    createdAt: "2026-10-14T12:15:00",
-    notes: "",
-  },
-  {
-    id: "ORD-1002",
-    customer: "Diya Patel",
-    orderType: "Takeaway",
-    table: "—",
-    items: [
-      { name: "Classic Margherita", quantity: 1, price: 320 },
-      { name: "Chocolate Brownie", quantity: 1, price: 160 },
-    ],
-    status: "Ready",
-    createdAt: "2026-10-14T12:25:00",
-    notes: "Pack separately",
-  },
-  {
-    id: "ORD-1003",
-    customer: "Rohan Mehta",
-    orderType: "Dine-in",
-    table: "T-06",
-    items: [
-      { name: "Veg Biryani", quantity: 2, price: 260 },
-      { name: "Dal Makhani", quantity: 1, price: 240 },
-    ],
-    status: "Pending",
-    createdAt: "2026-10-14T12:40:00",
-    notes: "",
-  },
-  {
-    id: "ORD-1004",
-    customer: "Ananya Desai",
-    orderType: "Delivery",
-    table: "—",
-    items: [
-      { name: "Paneer Tikka", quantity: 1, price: 280 },
-      { name: "Veg Biryani", quantity: 1, price: 260 },
-    ],
-    status: "Completed",
-    createdAt: "2026-10-14T11:30:00",
-    notes: "Deliver to reception",
-  },
-  {
-    id: "ORD-1005",
-    customer: "Vivaan Joshi",
-    orderType: "Dine-in",
-    table: "T-02",
-    items: [
-      { name: "Dal Makhani", quantity: 1, price: 240 },
-      { name: "Fresh Lime Soda", quantity: 2, price: 90 },
-    ],
-    status: "Cancelled",
-    createdAt: "2026-10-14T11:50:00",
-    notes: "",
-  },
-];
-
-const menuItems = [
-  { name: "Paneer Tikka", price: 280 },
-  { name: "Classic Margherita", price: 320 },
-  { name: "Dal Makhani", price: 240 },
-  { name: "Veg Biryani", price: 260 },
-  { name: "Chocolate Brownie", price: 160 },
-  { name: "Fresh Lime Soda", price: 90 },
-];
+const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 const orderStatuses = [
   "Pending",
@@ -91,48 +17,125 @@ const orderTypes = ["Dine-in", "Takeaway", "Delivery"];
 const emptyForm = {
   customer: "",
   orderType: "Dine-in",
-  table: "T-01",
-  items: [{ name: "Paneer Tikka", quantity: 1 }],
+  tableId: "",
+  items: [{ menuItemId: "", quantity: 1 }],
   status: "Pending",
   notes: "",
 };
-
-function getOrderTotal(items) {
-  return items.reduce((total, item) => {
-    const menuItem = menuItems.find(
-      (menu) => menu.name === item.name
-    );
-
-    const price = menuItem?.price ?? item.price ?? 0;
-
-    return total + price * Number(item.quantity);
-  }, 0);
-}
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(amount);
+    maximumFractionDigits: 2,
+  }).format(Number(amount) || 0);
 }
 
 function formatOrderTime(dateString) {
-  return new Date(dateString).toLocaleTimeString("en-IN", {
+  if (!dateString) return "—";
+
+  const date = new Date(dateString);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleTimeString("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
   });
 }
 
+function getOrderTotal(items = []) {
+  return items.reduce(
+    (total, item) =>
+      total + (Number(item.price) || 0) * (Number(item.quantity) || 0),
+    0
+  );
+}
+
+function getOrderId(order) {
+  return order.orderNumber || order.id || order._id;
+}
+
 function Orders() {
-  const [orders, setOrders] = useState(initialOrders);
+  const [orders, setOrders] = useState([]);
+  const [menuItems, setMenuItems] = useState([]);
+  const [tables, setTables] = useState([]);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [pageError, setPageError] = useState("");
+  const [formError, setFormError] = useState("");
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setPageError("");
+
+    try {
+      const [ordersData, menuData, tablesData] = await Promise.all([
+        apiRequest(`/api/orders/${BRANCH_ID}`),
+        apiRequest(`/api/menu/${BRANCH_ID}`),
+        apiRequest(`/api/tables/${BRANCH_ID}`),
+      ]);
+
+      if (
+        !Array.isArray(ordersData) ||
+        !Array.isArray(menuData) ||
+        !Array.isArray(tablesData)
+      ) {
+        throw new Error("The server returned an unexpected response.");
+      }
+
+      setOrders(
+        ordersData.map((order) => ({
+          ...order,
+          id: order._id,
+          items: (order.items || []).map((item) => ({
+            ...item,
+            menuItemId: String(item.menuItemId),
+            price: Number(item.price) || 0,
+            quantity: Number(item.quantity) || 1,
+          })),
+        }))
+      );
+
+      setMenuItems(
+        menuData
+          .filter((item) => item.available)
+          .map((item) => ({
+            ...item,
+            id: String(item._id),
+            price: Number(item.price),
+          }))
+      );
+
+      setTables(
+        tablesData.map((table) => ({
+          ...table,
+          id: String(table._id),
+        }))
+      );
+    } catch (error) {
+      setPageError(
+        error.message ||
+          "Unable to load orders. Please check that the backend is running."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const summary = useMemo(
     () => ({
@@ -155,9 +158,11 @@ function Orders() {
 
     return orders
       .filter((order) => {
+        const orderId = String(getOrderId(order) || "").toLowerCase();
+        const customer = String(order.customer || "").toLowerCase();
+
         const matchesSearch =
-          order.id.toLowerCase().includes(query) ||
-          order.customer.toLowerCase().includes(query);
+          orderId.includes(query) || customer.includes(query);
 
         const matchesStatus =
           statusFilter === "All" || order.status === statusFilter;
@@ -174,35 +179,60 @@ function Orders() {
       );
   }, [orders, searchTerm, statusFilter, typeFilter]);
 
+  const availableTables = useMemo(
+    () =>
+      tables.filter(
+        (table) =>
+          table.status === "Available" ||
+          String(table._id) === String(formData.tableId)
+      ),
+    [tables, formData.tableId]
+  );
+
   function openAddModal() {
     setEditingId(null);
+    setFormError("");
+
     setFormData({
       ...emptyForm,
-      items: [{ name: "Paneer Tikka", quantity: 1 }],
+      tableId: "",
+      items: [
+        {
+          menuItemId: menuItems[0]?.id || "",
+          quantity: 1,
+        },
+      ],
     });
+
     setIsModalOpen(true);
   }
 
   function openEditModal(order) {
-    setEditingId(order.id);
+    setEditingId(order._id);
+    setFormError("");
+
     setFormData({
-      customer: order.customer,
+      customer: order.customer || "",
       orderType: order.orderType,
-      table: order.table === "—" ? "" : order.table,
-      items: order.items.map((item) => ({
-        name: item.name,
+      tableId: order.tableId ? String(order.tableId) : "",
+      items: (order.items || []).map((item) => ({
+        menuItemId: String(item.menuItemId),
         quantity: item.quantity,
       })),
       status: order.status,
       notes: order.notes || "",
     });
+
     setIsModalOpen(true);
   }
 
   function closeModal() {
+    if (isSaving) return;
+
     setIsModalOpen(false);
     setEditingId(null);
     setFormData(emptyForm);
+    setFormError("");
   }
 
   function handleInputChange(event) {
@@ -211,6 +241,9 @@ function Orders() {
     setFormData((previous) => ({
       ...previous,
       [name]: value,
+      ...(name === "orderType" && value !== "Dine-in"
+        ? { tableId: "" }
+        : {}),
     }));
   }
 
@@ -221,7 +254,8 @@ function Orders() {
         itemIndex === index
           ? {
               ...item,
-              [field]: field === "quantity" ? Number(value) : value,
+              [field]:
+                field === "quantity" ? Number(value) : value,
             }
           : item
       ),
@@ -233,7 +267,10 @@ function Orders() {
       ...previous,
       items: [
         ...previous.items,
-        { name: menuItems[0].name, quantity: 1 },
+        {
+          menuItemId: menuItems[0]?.id || "",
+          quantity: 1,
+        },
       ],
     }));
   }
@@ -247,16 +284,36 @@ function Orders() {
     }));
   }
 
-  function handleSubmit(event) {
+  function getFormTotal() {
+    return formData.items.reduce((total, item) => {
+      const menuItem = menuItems.find(
+        (menu) => menu.id === item.menuItemId
+      );
+
+      return (
+        total +
+        (Number(menuItem?.price) || 0) *
+          (Number(item.quantity) || 0)
+      );
+    }, 0);
+  }
+
+  async function handleSubmit(event) {
     event.preventDefault();
+    setFormError("");
 
     if (!formData.customer.trim()) {
-      window.alert("Please enter the customer's name.");
+      setFormError("Please enter the customer's name.");
       return;
     }
 
-    if (formData.orderType === "Dine-in" && !formData.table) {
-      window.alert("Please select a table for a dine-in order.");
+    if (formData.customer.trim().length > 100) {
+      setFormError("Customer name cannot exceed 100 characters.");
+      return;
+    }
+
+    if (formData.orderType === "Dine-in" && !formData.tableId) {
+      setFormError("Please select an available table.");
       return;
     }
 
@@ -264,86 +321,132 @@ function Orders() {
       formData.items.length === 0 ||
       formData.items.some(
         (item) =>
-          !item.name ||
+          !item.menuItemId ||
           !Number.isInteger(item.quantity) ||
           item.quantity < 1 ||
           item.quantity > 99
       )
     ) {
-      window.alert(
-        "Add at least one food item and select a quantity between 1 and 99."
+      setFormError(
+        "Select at least one menu item and a quantity between 1 and 99."
       );
       return;
     }
 
-    const normalizedItems = formData.items.map((item) => {
-      const menuItem = menuItems.find(
-        (menu) => menu.name === item.name
+    if (
+      formData.items.some(
+        (item) =>
+          !menuItems.some((menu) => menu.id === item.menuItemId)
+      )
+    ) {
+      setFormError(
+        "One or more selected menu items are no longer available. Refresh the page and try again."
       );
+      return;
+    }
 
-      return {
-        ...item,
-        price: menuItem.price,
-      };
-    });
+    if (formData.notes.length > 500) {
+      setFormError("Special instructions cannot exceed 500 characters.");
+      return;
+    }
 
-    const orderData = {
+    const payload = {
+      branchId: BRANCH_ID,
       customer: formData.customer.trim(),
       orderType: formData.orderType,
-      table: formData.orderType === "Dine-in" ? formData.table : "—",
-      items: normalizedItems,
+      tableId:
+        formData.orderType === "Dine-in" ? formData.tableId : null,
+      items: formData.items.map((item) => ({
+        menuItemId: item.menuItemId,
+        quantity: item.quantity,
+      })),
       status: formData.status,
       notes: formData.notes.trim(),
     };
 
-    if (editingId !== null) {
-      setOrders((previous) =>
-        previous.map((order) =>
-          order.id === editingId
-            ? { ...order, ...orderData }
-            : order
-        )
+    setIsSaving(true);
+
+    try {
+      if (editingId) {
+        await apiRequest(
+          `/api/orders/${BRANCH_ID}/${editingId}`,
+          {
+            method: "PUT",
+            body: JSON.stringify(payload),
+          }
+        );
+      } else {
+        await apiRequest("/api/orders", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      }
+
+      setIsModalOpen(false);
+      setEditingId(null);
+      setFormData(emptyForm);
+
+      await loadData();
+    } catch (error) {
+      setFormError(
+        error.message || "Unable to save the order. Please try again."
       );
-    } else {
-      const nextNumber =
-        Math.max(
-          1000,
-          ...orders.map((order) =>
-            Number(order.id.replace("ORD-", "")) || 0
-          )
-        ) + 1;
-
-      setOrders((previous) => [
-        ...previous,
-        {
-          id: `ORD-${nextNumber}`,
-          ...orderData,
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+    } finally {
+      setIsSaving(false);
     }
-
-    closeModal();
   }
 
-  function handleStatusChange(id, newStatus) {
+  async function handleStatusChange(id, newStatus) {
+    const previousOrders = orders;
+
+    setPageError("");
+
     setOrders((previous) =>
       previous.map((order) =>
-        order.id === id ? { ...order, status: newStatus } : order
+        order._id === id ? { ...order, status: newStatus } : order
       )
     );
+
+    try {
+      await apiRequest(`/api/orders/${BRANCH_ID}/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      await loadData();
+    } catch (error) {
+      setOrders(previousOrders);
+      setPageError(
+        error.message || "Unable to update the order status."
+      );
+    }
   }
 
-  function handleDelete(order) {
+  async function handleDelete(order) {
+    const orderNumber = getOrderId(order);
+
     const confirmed = window.confirm(
-      `Delete order ${order.id} for ${order.customer}?`
+      `Delete order ${orderNumber} for ${order.customer}?`
     );
 
     if (!confirmed) return;
 
-    setOrders((previous) =>
-      previous.filter((item) => item.id !== order.id)
-    );
+    setPageError("");
+
+    try {
+      await apiRequest(
+        `/api/orders/${BRANCH_ID}/${order._id}`,
+        { method: "DELETE" }
+      );
+
+      setOrders((previous) =>
+        previous.filter((item) => item._id !== order._id)
+      );
+    } catch (error) {
+      setPageError(
+        error.message || "Unable to delete the order."
+      );
+    }
   }
 
   function clearFilters() {
@@ -368,10 +471,25 @@ function Orders() {
           className="orders-primary-button"
           type="button"
           onClick={openAddModal}
+          disabled={isLoading || menuItems.length === 0}
+          title={
+            menuItems.length === 0
+              ? "Add available menu items before creating an order"
+              : ""
+          }
         >
           <span aria-hidden="true">+</span> New Order
         </button>
       </div>
+
+      {pageError && (
+        <div className="orders-error-message" role="alert">
+          <span>{pageError}</span>
+          <button type="button" onClick={loadData}>
+            Retry
+          </button>
+        </div>
+      )}
 
       <div className="orders-summary-grid">
         <SummaryCard
@@ -406,6 +524,7 @@ function Orders() {
             <h3>Restaurant Orders</h3>
             <p>Review order details and update their progress.</p>
           </div>
+
           <span className="orders-count">
             {filteredOrders.length}{" "}
             {filteredOrders.length === 1 ? "order" : "orders"}
@@ -452,7 +571,9 @@ function Orders() {
             ))}
           </select>
 
-          {(searchTerm || statusFilter !== "All" || typeFilter !== "All") && (
+          {(searchTerm ||
+            statusFilter !== "All" ||
+            typeFilter !== "All") && (
             <button
               className="orders-clear-button"
               type="button"
@@ -478,27 +599,46 @@ function Orders() {
             </thead>
 
             <tbody>
-              {filteredOrders.map((order) => (
-                <tr key={order.id}>
+              {isLoading ? (
+                <tr>
+                  <td colSpan="7">
+                    <div className="orders-empty-state">
+                      <h3>Loading orders...</h3>
+                      <p>Retrieving orders from the database.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredOrders.map((order) => (
+                <tr key={order._id}>
                   <td>
                     <div className="orders-id-details">
-                      <strong>{order.id}</strong>
+                      <strong>{getOrderId(order)}</strong>
                       <span>{formatOrderTime(order.createdAt)}</span>
                     </div>
                   </td>
 
                   <td>
-                    <div className="orders-customer-details">
-                      <strong>{order.customer}</strong>
-                      {order.notes && <span>{order.notes}</span>}
-                    </div>
-                  </td>
+  <div className="orders-customer-details">
+    <strong>{order.customer}</strong>
+
+    {order.notes?.trim() && (
+      <div className="orders-special-instructions">
+        <span className="orders-special-instructions-label">
+          <span aria-hidden="true">✦</span>
+          Special Instructions
+        </span>
+
+        <p>{order.notes}</p>
+      </div>
+    )}
+  </div>
+</td>
 
                   <td>
                     <div className="orders-type-details">
                       <strong>{order.orderType}</strong>
                       {order.orderType === "Dine-in" && (
-                        <span>{order.table}</span>
+                        <span>{order.table || "—"}</span>
                       )}
                     </div>
                   </td>
@@ -522,7 +662,7 @@ function Orders() {
 
                   <td>
                     <strong className="orders-amount">
-                      {formatCurrency(getOrderTotal(order.items))}
+                      {formatCurrency(order.totalAmount)}
                     </strong>
                   </td>
 
@@ -533,9 +673,12 @@ function Orders() {
                         .replace(/\s+/g, "-")}`}
                       value={order.status}
                       onChange={(event) =>
-                        handleStatusChange(order.id, event.target.value)
+                        handleStatusChange(
+                          order._id,
+                          event.target.value
+                        )
                       }
-                      aria-label={`Change status for ${order.id}`}
+                      aria-label={`Change status for ${getOrderId(order)}`}
                     >
                       {orderStatuses.map((status) => (
                         <option key={status} value={status}>
@@ -551,15 +694,16 @@ function Orders() {
                         className="orders-action-button"
                         type="button"
                         onClick={() => openEditModal(order)}
-                        aria-label={`Edit ${order.id}`}
+                        aria-label={`Edit ${getOrderId(order)}`}
                       >
                         Edit
                       </button>
+
                       <button
                         className="orders-action-button delete"
                         type="button"
                         onClick={() => handleDelete(order)}
-                        aria-label={`Delete ${order.id}`}
+                        aria-label={`Delete ${getOrderId(order)}`}
                       >
                         Delete
                       </button>
@@ -568,15 +712,16 @@ function Orders() {
                 </tr>
               ))}
 
-              {filteredOrders.length === 0 && (
+              {!isLoading && filteredOrders.length === 0 && (
                 <tr>
                   <td colSpan="7">
                     <div className="orders-empty-state">
                       <span aria-hidden="true">▤</span>
                       <h3>No orders found</h3>
                       <p>
-                        Adjust your filters or create a new restaurant
-                        order.
+                        {orders.length === 0
+                          ? "Create your first order to get started."
+                          : "Adjust your filters or create a new restaurant order."}
                       </p>
                     </div>
                   </td>
@@ -606,13 +751,16 @@ function Orders() {
                 <h3 id="orders-modal-title">
                   {editingId ? "Edit Order" : "Create New Order"}
                 </h3>
-                <p>Enter customer details and select the required items.</p>
+                <p>
+                  Enter customer details and select the required items.
+                </p>
               </div>
 
               <button
                 className="orders-modal-close"
                 type="button"
                 onClick={closeModal}
+                disabled={isSaving}
                 aria-label="Close order form"
               >
                 ×
@@ -629,7 +777,7 @@ function Orders() {
                   value={formData.customer}
                   onChange={handleInputChange}
                   placeholder="Enter customer name"
-                  maxLength={80}
+                  maxLength={100}
                   required
                 />
               </div>
@@ -656,21 +804,23 @@ function Orders() {
                     <label htmlFor="order-table">Table *</label>
                     <select
                       id="order-table"
-                      name="table"
-                      value={formData.table}
+                      name="tableId"
+                      value={formData.tableId}
                       onChange={handleInputChange}
                       required
                     >
-                      {Array.from({ length: 12 }, (_, index) => {
-                        const table = `T-${String(index + 1).padStart(2, "0")}`;
+                      <option value="">Select a table</option>
 
-                        return (
-                          <option key={table} value={table}>
-                            {table}
-                          </option>
-                        );
-                      })}
+                      {availableTables.map((table) => (
+                        <option key={table.id} value={table.id}>
+                          {table.number} — {table.status}
+                        </option>
+                      ))}
                     </select>
+
+                    {availableTables.length === 0 && (
+                      <small>No available tables found.</small>
+                    )}
                   </div>
                 )}
               </div>
@@ -680,10 +830,12 @@ function Orders() {
                   <h4>Order items</h4>
                   <p>Select menu items and quantities.</p>
                 </div>
+
                 <button
                   className="orders-add-item-button"
                   type="button"
                   onClick={addItemRow}
+                  disabled={menuItems.length === 0 || isSaving}
                 >
                   + Add item
                 </button>
@@ -696,23 +848,38 @@ function Orders() {
                       <label htmlFor={`item-name-${index}`}>
                         Food item {index + 1}
                       </label>
+
                       <select
                         id={`item-name-${index}`}
-                        value={item.name}
+                        value={item.menuItemId}
                         onChange={(event) =>
-                          handleItemChange(index, "name", event.target.value)
+                          handleItemChange(
+                            index,
+                            "menuItemId",
+                            event.target.value
+                          )
                         }
+                        required
                       >
+                        <option value="">Select a menu item</option>
+
                         {menuItems.map((menuItem) => (
-                          <option key={menuItem.name} value={menuItem.name}>
-                            {menuItem.name} — {formatCurrency(menuItem.price)}
+                          <option
+                            key={menuItem.id}
+                            value={menuItem.id}
+                          >
+                            {menuItem.name} —{" "}
+                            {formatCurrency(menuItem.price)}
                           </option>
                         ))}
                       </select>
                     </div>
 
                     <div className="orders-form-group orders-quantity-group">
-                      <label htmlFor={`item-quantity-${index}`}>Qty.</label>
+                      <label htmlFor={`item-quantity-${index}`}>
+                        Qty.
+                      </label>
+
                       <input
                         id={`item-quantity-${index}`}
                         type="number"
@@ -734,7 +901,7 @@ function Orders() {
                       className="orders-remove-item-button"
                       type="button"
                       onClick={() => removeItemRow(index)}
-                      disabled={formData.items.length === 1}
+                      disabled={formData.items.length === 1 || isSaving}
                       aria-label={`Remove food item ${index + 1}`}
                     >
                       ×
@@ -761,7 +928,9 @@ function Orders() {
                 </div>
 
                 <div className="orders-form-group">
-                  <label htmlFor="order-notes">Special instructions</label>
+                  <label htmlFor="order-notes">
+                    Special instructions
+                  </label>
                   <input
                     id="order-notes"
                     name="notes"
@@ -769,39 +938,42 @@ function Orders() {
                     value={formData.notes}
                     onChange={handleInputChange}
                     placeholder="Optional notes"
-                    maxLength={200}
+                    maxLength={500}
                   />
                 </div>
               </div>
 
               <div className="orders-total-preview">
                 <span>Order total</span>
-                <strong>
-                  {formatCurrency(
-                    getOrderTotal(
-                      formData.items.map((item) => ({
-                        ...item,
-                        price:
-                          menuItems.find(
-                            (menuItem) => menuItem.name === item.name
-                          )?.price ?? 0,
-                      }))
-                    )
-                  )}
-                </strong>
+                <strong>{formatCurrency(getFormTotal())}</strong>
               </div>
+
+              {formError && (
+                <div className="orders-error-message" role="alert">
+                  {formError}
+                </div>
+              )}
 
               <div className="orders-modal-actions">
                 <button
                   className="orders-secondary-button"
                   type="button"
                   onClick={closeModal}
+                  disabled={isSaving}
                 >
                   Cancel
                 </button>
 
-                <button className="orders-primary-button" type="submit">
-                  {editingId ? "Save Changes" : "Create Order"}
+                <button
+                  className="orders-primary-button"
+                  type="submit"
+                  disabled={isSaving || menuItems.length === 0}
+                >
+                  {isSaving
+                    ? "Saving..."
+                    : editingId
+                      ? "Save Changes"
+                      : "Create Order"}
                 </button>
               </div>
             </form>
@@ -816,6 +988,7 @@ function SummaryCard({ icon, label, value, type }) {
   return (
     <div className="orders-summary-card">
       <div className={`orders-summary-icon ${type}`}>{icon}</div>
+
       <div className="orders-summary-info">
         <span>{label}</span>
         <strong>{value}</strong>

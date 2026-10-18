@@ -6,6 +6,7 @@ const connectDB = require("./config/db");
 const menuRoutes = require("./modules/menu/menuRoutes");
 const tableRoutes = require("./modules/tables/tableRoutes");
 const reservationRoutes = require("./modules/reservations/reservationRoutes");
+const orderRoutes = require("./modules/orders/orderRoutes");
 
 const app = express();
 
@@ -18,12 +19,19 @@ app.get("/", (req, res) => {
   });
 });
 
+
+
 // Menu management API
 app.use("/api/menu", menuRoutes);
 // Table management API
 app.use("/api/tables", tableRoutes);
 // Reservations API
 app.use("/api/reservations", reservationRoutes);
+// Orders API
+app.use("/api/orders", orderRoutes);
+
+
+
 
 const startServer = async () => {
   await connectDB();
