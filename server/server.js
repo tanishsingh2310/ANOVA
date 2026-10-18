@@ -7,6 +7,7 @@ const menuRoutes = require("./modules/menu/menuRoutes");
 const tableRoutes = require("./modules/tables/tableRoutes");
 const reservationRoutes = require("./modules/reservations/reservationRoutes");
 const orderRoutes = require("./modules/orders/orderRoutes");
+const paymentRoutes = require("./modules/payments/paymentRoutes");
 
 const app = express();
 
@@ -29,6 +30,8 @@ app.use("/api/tables", tableRoutes);
 app.use("/api/reservations", reservationRoutes);
 // Orders API
 app.use("/api/orders", orderRoutes);
+// Billing & Payments API
+app.use("/api/payments", paymentRoutes);
 
 
 

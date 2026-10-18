@@ -1,193 +1,299 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiRequest } from "../../api";
 import "../../styles/billing-payments.css";
 
-const initialBills = [
-  {
-    id: "INV-1001",
-    orderId: "ORD-1001",
-    customer: "Aarav Shah",
-    branch: "Main Branch",
-    date: "2026-10-15",
-    items: [
-      { name: "Paneer Tikka", quantity: 2, price: 280 },
-      { name: "Butter Naan", quantity: 4, price: 55 },
-      { name: "Dal Makhani", quantity: 1, price: 240 },
-    ],
-    subtotal: 1000,
-    discount: 50,
-    taxRate: 5,
-    total: 997.5,
-    amountPaid: 997.5,
-    paymentMethod: "UPI",
-    status: "Paid",
-  },
-  {
-    id: "INV-1002",
-    orderId: "ORD-1002",
-    customer: "Diya Patel",
-    branch: "West Branch",
-    date: "2026-10-15",
-    items: [
-      { name: "Margherita Pizza", quantity: 1, price: 350 },
-      { name: "Cold Coffee", quantity: 2, price: 140 },
-    ],
-    subtotal: 630,
-    discount: 0,
-    taxRate: 5,
-    total: 661.5,
-    amountPaid: 300,
-    paymentMethod: "Card",
-    status: "Partially Paid",
-  },
-  {
-    id: "INV-1003",
-    orderId: "ORD-1003",
-    customer: "Rohan Mehta",
-    branch: "Main Branch",
-    date: "2026-10-14",
-    items: [
-      { name: "Veg Biryani", quantity: 2, price: 260 },
-      { name: "Raita", quantity: 2, price: 60 },
-    ],
-    subtotal: 640,
-    discount: 40,
-    taxRate: 5,
-    total: 630,
-    amountPaid: 0,
-    paymentMethod: "Not recorded",
-    status: "Pending",
-  },
-  {
-    id: "INV-1004",
-    orderId: "ORD-1004",
-    customer: "Meera Joshi",
-    branch: "East Branch",
-    date: "2026-10-14",
-    items: [
-      { name: "Hakka Noodles", quantity: 1, price: 220 },
-      { name: "Spring Rolls", quantity: 2, price: 160 },
-    ],
-    subtotal: 540,
-    discount: 20,
-    taxRate: 5,
-    total: 546,
-    amountPaid: 546,
-    paymentMethod: "Cash",
-    status: "Paid",
-  },
-  {
-    id: "INV-1005",
-    orderId: "ORD-1005",
-    customer: "Kabir Desai",
-    branch: "South Branch",
-    date: "2026-10-13",
-    items: [
-      { name: "Club Sandwich", quantity: 2, price: 210 },
-      { name: "Lemon Iced Tea", quantity: 2, price: 110 },
-    ],
-    subtotal: 640,
-    discount: 0,
-    taxRate: 5,
-    total: 672,
-    amountPaid: 0,
-    paymentMethod: "Not recorded",
-    status: "Pending",
-  },
-];
+const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 const currency = (amount) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(Number(amount) || 0);
+
+const formatDate = (date) => {
+  if (!date) return "—";
+
+  const parsedDate = new Date(date);
+
+  if (Number.isNaN(parsedDate.getTime())) return "—";
+
+  return parsedDate.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const mapInvoice = (invoice) => ({
+  ...invoice,
+  id: invoice.invoiceNumber,
+  orderId: invoice.orderNumber,
+  date: invoice.createdAt,
+  branch: "Current Branch",
+  items: invoice.items || [],
+  transactions: invoice.transactions || [],
+  subtotal: Number(invoice.subtotal) || 0,
+  discount: Number(invoice.discount) || 0,
+  taxRate: Number(invoice.taxRate) || 0,
+  total: Number(invoice.total) || 0,
+  amountPaid: Number(invoice.amountPaid) || 0,
+  paymentMethod: invoice.paymentMethod || "Not recorded",
+  status: invoice.status || "Pending",
+});
 
 function BillingPayments() {
-  const [bills, setBills] = useState(initialBills);
+  const [bills, setBills] = useState([]);
+  const [orders, setOrders] = useState([]);
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [branchFilter, setBranchFilter] = useState("All");
+
   const [selectedBill, setSelectedBill] = useState(null);
   const [paymentBill, setPaymentBill] = useState(null);
+  const [showCreateInvoice, setShowCreateInvoice] = useState(false);
+
   const [paymentMethod, setPaymentMethod] = useState("UPI");
   const [paymentAmount, setPaymentAmount] = useState("");
 
+  const [selectedOrderId, setSelectedOrderId] = useState("");
+  const [discount, setDiscount] = useState("0");
+  const [taxRate, setTaxRate] = useState("5");
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const loadBillingData = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [invoiceData, orderData] = await Promise.all([
+        apiRequest(`/api/payments/${BRANCH_ID}`),
+        apiRequest(`/api/orders/${BRANCH_ID}`),
+      ]);
+
+      if (!Array.isArray(invoiceData) || !Array.isArray(orderData)) {
+        throw new Error("The server returned an unexpected response.");
+      }
+
+      setBills(invoiceData.map(mapInvoice));
+      setOrders(orderData);
+    } catch (requestError) {
+      setError(
+        requestError.message ||
+          "Unable to load invoices and orders. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBillingData();
+  }, [loadBillingData]);
+
+  const invoicedOrderIds = useMemo(
+    () => new Set(bills.map((bill) => String(bill.orderId))),
+    [bills]
+  );
+
+  const availableOrders = useMemo(
+    () =>
+      orders.filter(
+        (order) =>
+          order.status !== "Cancelled" &&
+          !invoicedOrderIds.has(String(order.orderNumber))
+      ),
+    [orders, invoicedOrderIds]
+  );
+
   const summary = useMemo(() => {
     const paidBills = bills.filter((bill) => bill.status === "Paid");
-    const pendingAmount = bills.reduce(
-      (sum, bill) => sum + Math.max(bill.total - bill.amountPaid, 0),
+
+    const outstanding = bills.reduce(
+      (sum, bill) =>
+        sum + Math.max(bill.total - bill.amountPaid, 0),
       0
     );
 
     return {
-      revenue: bills.reduce((sum, bill) => sum + bill.amountPaid, 0),
+      revenue: bills.reduce(
+        (sum, bill) => sum + bill.amountPaid,
+        0
+      ),
       paid: paidBills.length,
       pending: bills.filter((bill) => bill.status !== "Paid").length,
-      outstanding: pendingAmount,
+      outstanding,
     };
   }, [bills]);
 
-  const filteredBills = bills.filter((bill) => {
-    const query = search.toLowerCase();
+  const filteredBills = useMemo(() => {
+    const query = search.trim().toLowerCase();
 
-    const matchesSearch =
-      bill.id.toLowerCase().includes(query) ||
-      bill.orderId.toLowerCase().includes(query) ||
-      bill.customer.toLowerCase().includes(query);
+    return bills.filter((bill) => {
+      const matchesSearch =
+        bill.id.toLowerCase().includes(query) ||
+        bill.orderId.toLowerCase().includes(query) ||
+        bill.customer.toLowerCase().includes(query);
 
-    const matchesStatus =
-      statusFilter === "All" || bill.status === statusFilter;
+      const matchesStatus =
+        statusFilter === "All" || bill.status === statusFilter;
 
-    const matchesBranch =
-      branchFilter === "All" || bill.branch === branchFilter;
+      const matchesBranch =
+        branchFilter === "All" || bill.branch === branchFilter;
 
-    return matchesSearch && matchesStatus && matchesBranch;
-  });
+      return matchesSearch && matchesStatus && matchesBranch;
+    });
+  }, [bills, search, statusFilter, branchFilter]);
 
-  const recordPayment = (event) => {
+  const closeCreateInvoice = () => {
+    if (saving) return;
+
+    setShowCreateInvoice(false);
+    setSelectedOrderId("");
+    setDiscount("0");
+    setTaxRate("5");
+  };
+
+  const createInvoice = async (event) => {
+    event.preventDefault();
+
+    if (!selectedOrderId) {
+      setError("Please select an order.");
+      return;
+    }
+
+    const numericDiscount = Number(discount);
+    const numericTaxRate = Number(taxRate);
+
+    if (
+      !Number.isFinite(numericDiscount) ||
+      numericDiscount < 0 ||
+      !Number.isFinite(numericTaxRate) ||
+      numericTaxRate < 0 ||
+      numericTaxRate > 100
+    ) {
+      setError("Enter a valid discount and tax rate.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccessMessage("");
+
+    try {
+      const invoice = await apiRequest("/api/payments", {
+        method: "POST",
+        body: JSON.stringify({
+          branchId: BRANCH_ID,
+          orderId: selectedOrderId,
+          discount: numericDiscount,
+          taxRate: numericTaxRate,
+        }),
+      });
+
+      setBills((currentBills) => [
+        mapInvoice(invoice),
+        ...currentBills,
+      ]);
+
+      setShowCreateInvoice(false);
+      setSelectedOrderId("");
+      setDiscount("0");
+      setTaxRate("5");
+
+      setSuccessMessage(
+        `${invoice.invoiceNumber} created successfully.`
+      );
+    } catch (requestError) {
+      setError(
+        requestError.message || "Unable to create the invoice."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const recordPayment = async (event) => {
     event.preventDefault();
 
     if (!paymentBill) return;
 
     const amount = Number(paymentAmount);
-    const balance = paymentBill.total - paymentBill.amountPaid;
+    const balance = Math.max(
+      paymentBill.total - paymentBill.amountPaid,
+      0
+    );
 
-    if (!Number.isFinite(amount) || amount <= 0 || amount > balance) {
-      window.alert(
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      amount > balance + 0.001
+    ) {
+      setError(
         `Enter an amount greater than ₹0 and no more than ${currency(balance)}.`
       );
       return;
     }
 
-    setBills((currentBills) =>
-      currentBills.map((bill) => {
-        if (bill.id !== paymentBill.id) return bill;
+    setSaving(true);
+    setError("");
+    setSuccessMessage("");
 
-        const newAmountPaid = Math.min(bill.amountPaid + amount, bill.total);
+    try {
+      const updatedInvoice = await apiRequest(
+        `/api/payments/${BRANCH_ID}/${paymentBill._id}/payments`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            amount,
+            method: paymentMethod,
+          }),
+        }
+      );
 
-        return {
-          ...bill,
-          amountPaid: newAmountPaid,
-          paymentMethod,
-          status:
-            newAmountPaid >= bill.total
-              ? "Paid"
-              : "Partially Paid",
-        };
-      })
-    );
+      const mappedInvoice = mapInvoice(updatedInvoice);
 
-    setPaymentBill(null);
-    setPaymentAmount("");
-    setPaymentMethod("UPI");
-    window.alert("Payment recorded successfully.");
+      setBills((currentBills) =>
+        currentBills.map((bill) =>
+          bill._id === mappedInvoice._id ? mappedInvoice : bill
+        )
+      );
+
+      setSelectedBill((currentBill) =>
+        currentBill?._id === mappedInvoice._id
+          ? mappedInvoice
+          : currentBill
+      );
+
+      setPaymentBill(null);
+      setPaymentAmount("");
+      setPaymentMethod("UPI");
+
+      setSuccessMessage(
+        `Payment of ${currency(amount)} recorded successfully.`
+      );
+    } catch (requestError) {
+      setError(
+        requestError.message || "Unable to record the payment."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openPaymentForm = (bill) => {
+    setError("");
     setPaymentBill(bill);
+
     setPaymentAmount(
       Math.max(bill.total - bill.amountPaid, 0).toFixed(2)
     );
+
     setPaymentMethod("UPI");
   };
 
@@ -198,6 +304,24 @@ function BillingPayments() {
       window.print();
     }, 100);
   };
+
+  const selectedOrder = orders.find(
+    (order) => String(order._id) === selectedOrderId
+  );
+
+  const selectedOrderSubtotal = selectedOrder
+    ? selectedOrder.items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      )
+    : 0;
+
+  const calculatedDiscount = Number(discount) || 0;
+  const calculatedTaxRate = Number(taxRate) || 0;
+
+  const estimatedTotal =
+    Math.max(selectedOrderSubtotal - calculatedDiscount, 0) *
+    (1 + calculatedTaxRate / 100);
 
   return (
     <main className="billing-page">
@@ -216,14 +340,40 @@ function BillingPayments() {
         </div>
       </header>
 
+      {error && (
+        <div className="billing-alert billing-alert-error" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError("")}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {successMessage && (
+        <div
+          className="billing-alert billing-alert-success"
+          role="status"
+        >
+          <span>{successMessage}</span>
+          <button
+            type="button"
+            onClick={() => setSuccessMessage("")}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <section className="billing-summary-grid">
         <article className="billing-summary-card">
           <div className="billing-summary-top">
-            <span className="billing-summary-label">Collected Revenue</span>
+            <span className="billing-summary-label">
+              Collected Revenue
+            </span>
             <span className="billing-summary-icon">₹</span>
           </div>
           <h2>{currency(summary.revenue)}</h2>
-          <p>Payments recorded across all bills</p>
+          <p>Payments recorded across all invoices</p>
         </article>
 
         <article className="billing-summary-card">
@@ -237,7 +387,9 @@ function BillingPayments() {
 
         <article className="billing-summary-card">
           <div className="billing-summary-top">
-            <span className="billing-summary-label">Unsettled Bills</span>
+            <span className="billing-summary-label">
+              Unsettled Bills
+            </span>
             <span className="billing-summary-icon">◷</span>
           </div>
           <h2>{summary.pending}</h2>
@@ -246,7 +398,9 @@ function BillingPayments() {
 
         <article className="billing-summary-card billing-outstanding-card">
           <div className="billing-summary-top">
-            <span className="billing-summary-label">Outstanding Balance</span>
+            <span className="billing-summary-label">
+              Outstanding Balance
+            </span>
             <span className="billing-summary-icon">↗</span>
           </div>
           <h2>{currency(summary.outstanding)}</h2>
@@ -260,9 +414,29 @@ function BillingPayments() {
             <h2>Invoices &amp; Transactions</h2>
             <p>Review bills and manage their payment status.</p>
           </div>
-          <span className="billing-record-count">
-            {filteredBills.length} records
-          </span>
+
+          <div className="billing-header-actions">
+            <span className="billing-record-count">
+              {filteredBills.length} records
+            </span>
+
+            <button
+              type="button"
+              className="billing-primary-button"
+              onClick={() => {
+                setError("");
+                setShowCreateInvoice(true);
+              }}
+              disabled={availableOrders.length === 0}
+              title={
+                availableOrders.length === 0
+                  ? "There are no uninvoiced orders available."
+                  : "Create an invoice from an existing order"
+              }
+            >
+              + Create Invoice
+            </button>
+          </div>
         </div>
 
         <div className="billing-toolbar">
@@ -293,11 +467,8 @@ function BillingPayments() {
             onChange={(event) => setBranchFilter(event.target.value)}
             aria-label="Filter by branch"
           >
-            <option value="All">All branches</option>
-            <option value="Main Branch">Main Branch</option>
-            <option value="West Branch">West Branch</option>
-            <option value="East Branch">East Branch</option>
-            <option value="South Branch">South Branch</option>
+            <option value="All">Current branch</option>
+            <option value="Current Branch">Current branch</option>
           </select>
         </div>
 
@@ -316,101 +487,109 @@ function BillingPayments() {
             </thead>
 
             <tbody>
-              {filteredBills.map((bill) => {
-                const balance = Math.max(
-                  bill.total - bill.amountPaid,
-                  0
-                );
-
-                return (
-                  <tr key={bill.id}>
-                    <td>
-                      <strong className="billing-invoice-id">
-                        {bill.id}
-                      </strong>
-                      <span className="billing-order-id">
-                        {bill.orderId}
-                      </span>
-                    </td>
-
-                    <td>
-                      <strong>{bill.customer}</strong>
-                    </td>
-
-                    <td>
-                      <span className="billing-branch">
-                        {bill.branch}
-                      </span>
-                      <span className="billing-date">
-                        {new Date(
-                          `${bill.date}T00:00:00`
-                        ).toLocaleDateString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </span>
-                    </td>
-
-                    <td>
-                      <strong>{currency(bill.total)}</strong>
-                    </td>
-
-                    <td>
-                      <strong
-                        className={
-                          balance > 0
-                            ? "billing-balance-due"
-                            : "billing-balance-clear"
-                        }
-                      >
-                        {currency(balance)}
-                      </strong>
-                    </td>
-
-                    <td>
-                      <span
-                        className={`billing-status billing-status-${bill.status
-                          .toLowerCase()
-                          .replace(/\s+/g, "-")}`}
-                      >
-                        {bill.status}
-                      </span>
-                    </td>
-
-                    <td>
-                      <div className="billing-actions">
-                        <button
-                          type="button"
-                          className="billing-action-button"
-                          onClick={() => setSelectedBill(bill)}
-                        >
-                          View
-                        </button>
-
-                        {balance > 0 && (
-                          <button
-                            type="button"
-                            className="billing-pay-button"
-                            onClick={() => openPaymentForm(bill)}
-                          >
-                            Pay
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {filteredBills.length === 0 && (
+              {loading ? (
                 <tr>
                   <td colSpan="7" className="billing-empty">
-                    <span>⌕</span>
-                    <strong>No invoices found</strong>
-                    <p>Try changing your search or filters.</p>
+                    Loading invoices from the server...
                   </td>
                 </tr>
+              ) : (
+                <>
+                  {filteredBills.map((bill) => {
+                    const balance = Math.max(
+                      bill.total - bill.amountPaid,
+                      0
+                    );
+
+                    return (
+                      <tr key={bill._id}>
+                        <td>
+                          <strong className="billing-invoice-id">
+                            {bill.id}
+                          </strong>
+                          <span className="billing-order-id">
+                            {bill.orderId}
+                          </span>
+                        </td>
+
+                        <td>
+                          <strong>{bill.customer}</strong>
+                        </td>
+
+                        <td>
+                          <span className="billing-branch">
+                            {bill.branch}
+                          </span>
+                          <span className="billing-date">
+                            {formatDate(bill.date)}
+                          </span>
+                        </td>
+
+                        <td>
+                          <strong>{currency(bill.total)}</strong>
+                        </td>
+
+                        <td>
+                          <strong
+                            className={
+                              balance > 0
+                                ? "billing-balance-due"
+                                : "billing-balance-clear"
+                            }
+                          >
+                            {currency(balance)}
+                          </strong>
+                        </td>
+
+                        <td>
+                          <span
+                            className={`billing-status billing-status-${bill.status
+                              .toLowerCase()
+                              .replace(/\s+/g, "-")}`}
+                          >
+                            {bill.status}
+                          </span>
+                        </td>
+
+                        <td>
+                          <div className="billing-actions">
+                            <button
+                              type="button"
+                              className="billing-action-button"
+                              onClick={() => setSelectedBill(bill)}
+                            >
+                              View
+                            </button>
+
+                            {balance > 0 && (
+                              <button
+                                type="button"
+                                className="billing-pay-button"
+                                onClick={() => openPaymentForm(bill)}
+                              >
+                                Pay
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {filteredBills.length === 0 && (
+                    <tr>
+                      <td colSpan="7" className="billing-empty">
+                        <span>⌕</span>
+                        <strong>No invoices found</strong>
+                        <p>
+                          {bills.length === 0
+                            ? "Create an invoice from an existing order to get started."
+                            : "Try changing your search or filters."}
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                </>
               )}
             </tbody>
           </table>
@@ -431,9 +610,12 @@ function BillingPayments() {
           >
             <div className="billing-modal-heading">
               <div>
-                <p className="billing-eyebrow">ANOVA · PAYMENT RECEIPT</p>
+                <p className="billing-eyebrow">
+                  ANOVA · PAYMENT RECEIPT
+                </p>
                 <h2 id="billing-receipt-title">Invoice Details</h2>
               </div>
+
               <button
                 type="button"
                 className="billing-modal-close"
@@ -457,17 +639,20 @@ function BillingPayments() {
                 <span>Invoice number</span>
                 <strong>{selectedBill.id}</strong>
               </div>
+
               <div>
                 <span>Order reference</span>
                 <strong>{selectedBill.orderId}</strong>
               </div>
+
               <div>
                 <span>Customer</span>
                 <strong>{selectedBill.customer}</strong>
               </div>
+
               <div>
                 <span>Invoice date</span>
-                <strong>{selectedBill.date}</strong>
+                <strong>{formatDate(selectedBill.date)}</strong>
               </div>
             </div>
 
@@ -479,10 +664,15 @@ function BillingPayments() {
               </div>
 
               {selectedBill.items.map((item, index) => (
-                <div className="billing-receipt-row" key={`${item.name}-${index}`}>
+                <div
+                  className="billing-receipt-row"
+                  key={`${item.name}-${index}`}
+                >
                   <span>{item.name}</span>
                   <span>{item.quantity}</span>
-                  <span>{currency(item.price * item.quantity)}</span>
+                  <span>
+                    {currency(item.price * item.quantity)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -492,28 +682,33 @@ function BillingPayments() {
                 <span>Subtotal</span>
                 <span>{currency(selectedBill.subtotal)}</span>
               </div>
+
               <div>
                 <span>Discount</span>
                 <span>− {currency(selectedBill.discount)}</span>
               </div>
+
               <div>
                 <span>Tax ({selectedBill.taxRate}%)</span>
                 <span>
                   {currency(
-                    (selectedBill.subtotal - selectedBill.discount) *
-                      selectedBill.taxRate /
+                    ((selectedBill.subtotal - selectedBill.discount) *
+                      selectedBill.taxRate) /
                       100
                   )}
                 </span>
               </div>
+
               <div className="billing-receipt-grand-total">
                 <strong>Total</strong>
                 <strong>{currency(selectedBill.total)}</strong>
               </div>
+
               <div>
                 <span>Amount paid</span>
                 <span>{currency(selectedBill.amountPaid)}</span>
               </div>
+
               <div>
                 <span>Balance due</span>
                 <strong>
@@ -530,6 +725,7 @@ function BillingPayments() {
             <div className="billing-receipt-payment">
               <span>Payment method</span>
               <strong>{selectedBill.paymentMethod}</strong>
+
               <span
                 className={`billing-status billing-status-${selectedBill.status
                   .toLowerCase()
@@ -539,6 +735,28 @@ function BillingPayments() {
               </span>
             </div>
 
+            {selectedBill.transactions.length > 0 && (
+              <div className="billing-transaction-history">
+                <h3>Payment History</h3>
+
+                {selectedBill.transactions.map((transaction) => (
+                  <div
+                    className="billing-transaction-row"
+                    key={transaction._id}
+                  >
+                    <div>
+                      <strong>{transaction.method}</strong>
+                      <span>
+                        {formatDate(transaction.transactionDate)}
+                      </span>
+                    </div>
+
+                    <strong>{currency(transaction.amount)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="billing-modal-actions">
               <button
                 type="button"
@@ -547,6 +765,7 @@ function BillingPayments() {
               >
                 Close
               </button>
+
               <button
                 type="button"
                 className="billing-primary-button"
@@ -562,7 +781,7 @@ function BillingPayments() {
       {paymentBill && (
         <div
           className="billing-modal-overlay"
-          onClick={() => setPaymentBill(null)}
+          onClick={() => !saving && setPaymentBill(null)}
         >
           <section
             className="billing-modal billing-payment-modal"
@@ -576,11 +795,13 @@ function BillingPayments() {
                 <p className="billing-eyebrow">PAYMENT COLLECTION</p>
                 <h2 id="billing-payment-title">Record Payment</h2>
               </div>
+
               <button
                 type="button"
                 className="billing-modal-close"
-                onClick={() => setPaymentBill(null)}
+                onClick={() => !saving && setPaymentBill(null)}
                 aria-label="Close payment form"
+                disabled={saving}
               >
                 ×
               </button>
@@ -589,6 +810,7 @@ function BillingPayments() {
             <div className="billing-payment-summary">
               <span>Invoice {paymentBill.id}</span>
               <strong>{paymentBill.customer}</strong>
+
               <div>
                 <span>Outstanding balance</span>
                 <strong>
@@ -606,6 +828,7 @@ function BillingPayments() {
               <label htmlFor="billing-payment-amount">
                 Payment Amount (₹)
               </label>
+
               <input
                 id="billing-payment-amount"
                 type="number"
@@ -616,17 +839,24 @@ function BillingPayments() {
                 )}
                 step="0.01"
                 value={paymentAmount}
-                onChange={(event) => setPaymentAmount(event.target.value)}
+                onChange={(event) =>
+                  setPaymentAmount(event.target.value)
+                }
                 required
+                disabled={saving}
               />
 
               <label htmlFor="billing-payment-method">
                 Payment Method
               </label>
+
               <select
                 id="billing-payment-method"
                 value={paymentMethod}
-                onChange={(event) => setPaymentMethod(event.target.value)}
+                onChange={(event) =>
+                  setPaymentMethod(event.target.value)
+                }
+                disabled={saving}
               >
                 <option value="Cash">Cash</option>
                 <option value="UPI">UPI</option>
@@ -639,14 +869,165 @@ function BillingPayments() {
                   type="button"
                   className="billing-secondary-button"
                   onClick={() => setPaymentBill(null)}
+                  disabled={saving}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="billing-primary-button">
-                  Confirm Payment
+
+                <button
+                  type="submit"
+                  className="billing-primary-button"
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Confirm Payment"}
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {showCreateInvoice && (
+        <div
+          className="billing-modal-overlay"
+          onClick={closeCreateInvoice}
+        >
+          <section
+            className="billing-modal billing-create-invoice-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="billing-create-invoice-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="billing-modal-heading">
+              <div>
+                <p className="billing-eyebrow">RESTAURANT OPERATIONS</p>
+                <h2 id="billing-create-invoice-title">
+                  Create Invoice
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                className="billing-modal-close"
+                onClick={closeCreateInvoice}
+                disabled={saving}
+                aria-label="Close invoice form"
+              >
+                ×
+              </button>
+            </div>
+
+            {availableOrders.length === 0 ? (
+              <div className="billing-empty">
+                <strong>No orders available</strong>
+                <p>
+                  All eligible orders already have invoices, or there
+                  are no non-cancelled orders in this branch.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={createInvoice}>
+                <label htmlFor="billing-order-select">
+                  Select Order
+                </label>
+
+                <select
+                  id="billing-order-select"
+                  value={selectedOrderId}
+                  onChange={(event) =>
+                    setSelectedOrderId(event.target.value)
+                  }
+                  required
+                  disabled={saving}
+                >
+                  <option value="">Choose an order...</option>
+
+                  {availableOrders.map((order) => (
+                    <option key={order._id} value={order._id}>
+                      {order.orderNumber} — {order.customer} —{" "}
+                      {currency(order.totalAmount)}
+                    </option>
+                  ))}
+                </select>
+
+                {selectedOrder && (
+                  <div className="billing-payment-summary">
+                    <span>Order details</span>
+                    <strong>{selectedOrder.customer}</strong>
+
+                    <div>
+                      <span>Order status</span>
+                      <strong>{selectedOrder.status}</strong>
+                    </div>
+
+                    <div>
+                      <span>Order subtotal</span>
+                      <strong>
+                        {currency(selectedOrderSubtotal)}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+
+                <label htmlFor="billing-invoice-discount">
+                  Discount (₹)
+                </label>
+
+                <input
+                  id="billing-invoice-discount"
+                  type="number"
+                  min="0"
+                  max={selectedOrderSubtotal}
+                  step="0.01"
+                  value={discount}
+                  onChange={(event) => setDiscount(event.target.value)}
+                  disabled={saving}
+                />
+
+                <label htmlFor="billing-invoice-tax">Tax Rate (%)</label>
+
+                <input
+                  id="billing-invoice-tax"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={taxRate}
+                  onChange={(event) => setTaxRate(event.target.value)}
+                  required
+                  disabled={saving}
+                />
+
+                {selectedOrder && (
+                  <div className="billing-payment-summary">
+                    <div>
+                      <span>Estimated invoice total</span>
+                      <strong>{currency(estimatedTotal)}</strong>
+                    </div>
+                  </div>
+                )}
+
+                <div className="billing-modal-actions">
+                  <button
+                    type="button"
+                    className="billing-secondary-button"
+                    onClick={closeCreateInvoice}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="billing-primary-button"
+                    disabled={saving || !selectedOrderId}
+                  >
+                    {saving ? "Creating..." : "Create Invoice"}
+                  </button>
+                </div>
+              </form>
+            )}
           </section>
         </div>
       )}
