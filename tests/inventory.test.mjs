@@ -490,4 +490,154 @@ describe('ANOVA Inventory & Supply Chain Suite', () => {
       assert.equal(compMov.deltaQty, -10, 'Compensating transaction restores exact balance with audit record');
     });
   });
+
+  // ==========================================================
+  // PHASE 2: AUTHENTICATION, AUTHORIZATION & RBAC VERIFICATION
+  // ==========================================================
+  describe('Phase 2: Authentication, Authorization & RBAC Verification', () => {
+    test('2.1 - Protect middleware rejects missing or invalid JWT tokens with 401', async () => {
+      const { protect } = await import('../server/src/middleware/auth.js');
+
+      // Case A: Missing authorization header
+      let statusA = 0;
+      let jsonA = null;
+      protect({ headers: {} }, {
+        status: (code) => { statusA = code; return { json: (d) => { jsonA = d; } }; }
+      }, () => {});
+      assert.equal(statusA, 401);
+      assert.equal(jsonA.success, false);
+
+      // Case B: Invalid / malformed token
+      let statusB = 0;
+      protect({ headers: { authorization: 'Bearer invalid.token.signature' } }, {
+        status: (code) => { statusB = code; return { json: () => {} }; }
+      }, () => {});
+      assert.equal(statusB, 401);
+    });
+
+    test('2.2 - Protect middleware verifies valid cryptographic JWT and builds req.user context', async () => {
+      const { protect } = await import('../server/src/middleware/auth.js');
+      const { createDevToken } = await import('../server/src/utils/tokenUtil.js');
+
+      const token = createDevToken('inventory_manager', 'b_downtown', { id: 'usr_test_im_01' });
+      const req = { headers: { authorization: `Bearer ${token}` } };
+      let nextCalled = false;
+
+      protect(req, {}, () => { nextCalled = true; });
+
+      assert.equal(nextCalled, true);
+      assert.equal(req.user.id, 'usr_test_im_01');
+      assert.equal(req.user.role, 'inventory_manager');
+      assert.equal(req.user.branchId, 'b_downtown');
+    });
+
+    test('2.3 - Authorize middleware restricts access based on canonical ANOVA roles', async () => {
+      const { authorize } = await import('../server/src/middleware/auth.js');
+      const { ROLES, SENSITIVE_ADMIN_ROLES, INVENTORY_WRITE_ROLES } = await import('../server/src/config/roles.js');
+
+      const guardAdminOnly = authorize(SENSITIVE_ADMIN_ROLES);
+      const guardWrite = authorize(INVENTORY_WRITE_ROLES);
+
+      // Cashier attempting sensitive admin deletion -> 403 Forbidden
+      let statusCashier = 0;
+      guardAdminOnly({ user: { role: ROLES.CASHIER } }, {
+        status: (code) => { statusCashier = code; return { json: () => {} }; }
+      }, () => {});
+      assert.equal(statusCashier, 403);
+
+      // Inventory Manager attempting sensitive admin deletion -> 403 Forbidden
+      let statusIM = 0;
+      guardAdminOnly({ user: { role: ROLES.INVENTORY_MANAGER } }, {
+        status: (code) => { statusIM = code; return { json: () => {} }; }
+      }, () => {});
+      assert.equal(statusIM, 403);
+
+      // Admin attempting sensitive admin action -> Allowed
+      let adminAllowed = false;
+      guardAdminOnly({ user: { role: ROLES.ADMIN } }, {}, () => { adminAllowed = true; });
+      assert.equal(adminAllowed, true);
+
+      // Inventory Manager attempting normal stock write -> Allowed
+      let writeAllowed = false;
+      guardWrite({ user: { role: ROLES.INVENTORY_MANAGER } }, {}, () => { writeAllowed = true; });
+      assert.equal(writeAllowed, true);
+    });
+
+    test('2.4 - BranchGuard enforces branch isolation and grants enterprise bypass to Owner/Admin', async () => {
+      const branchGuard = (await import('../server/src/middleware/branchGuard.js')).default || (await import('../server/src/middleware/branchGuard.js'));
+      const { ROLES } = await import('../server/src/config/roles.js');
+
+      // Downtown Branch Manager attempting to mutate Uptown inventory -> 403
+      let statusCode = 0;
+      branchGuard(
+        { user: { role: ROLES.BRANCH_MANAGER, branchId: 'b_downtown' }, body: { branch: 'b_uptown' } },
+        { status: (code) => { statusCode = code; return { json: () => {} }; } },
+        () => {}
+      );
+      assert.equal(statusCode, 403);
+
+      // Owner accessing any branch -> Allowed
+      let ownerAllowed = false;
+      branchGuard(
+        { user: { role: ROLES.OWNER, branchId: 'all' }, body: { branch: 'b_uptown' } },
+        {},
+        () => { ownerAllowed = true; }
+      );
+      assert.equal(ownerAllowed, true);
+    });
+  });
+
+  // ==========================================================
+  // PHASE 3: DATA MODELS, SCHEMAS & CROSS-MODULE ENTITY REFERENCES
+  // ==========================================================
+  describe('Phase 3: Data Models, Schemas & Cross-Module References', () => {
+    test('3.1 - Supplier model schema includes User account linkage and supplied catalog', async () => {
+      const Supplier = (await import('../server/src/models/Supplier.js')).default || (await import('../server/src/models/Supplier.js'));
+      const paths = Supplier.schema.paths;
+
+      assert.ok(paths.user, 'Supplier schema must have user field');
+      assert.equal(paths.user.instance, 'ObjectId');
+      assert.ok(paths.suppliedIngredients, 'Supplier schema must have suppliedIngredients field');
+    });
+
+    test('3.2 - PurchaseOrder schema supports branchRef and User audit references', async () => {
+      const PurchaseOrder = (await import('../server/src/models/PurchaseOrder.js')).default || (await import('../server/src/models/PurchaseOrder.js'));
+      const paths = PurchaseOrder.schema.paths;
+
+      assert.ok(paths.branch, 'PurchaseOrder must have branch string/code');
+      assert.ok(paths.branchRef, 'PurchaseOrder must have branchRef ObjectId');
+      assert.ok(paths.createdByUser, 'PurchaseOrder must have createdByUser ObjectId');
+      assert.ok(paths.approvedByUser, 'PurchaseOrder must have approvedByUser ObjectId');
+    });
+
+    test('3.3 - Ingredient model supports flexible branch stock accessors', async () => {
+      const Ingredient = (await import('../server/src/models/Ingredient.js')).default || (await import('../server/src/models/Ingredient.js'));
+      
+      const ing = new Ingredient({
+        sku: 'TEST-SKU-001',
+        name: 'Test Ingredient',
+        category: 'Produce & Greens',
+        baseUnit: 'kg',
+        unitCost: 100,
+        minThreshold: 10,
+        stockByBranch: new Map([
+          ['b_downtown', 45],
+          ['6ad0e90a53cc462cbaaec9fa', 80]
+        ])
+      });
+
+      // Test string code lookup
+      assert.equal(ing.getStock('b_downtown'), 45);
+
+      // Test 24-character hexadecimal ObjectId lookup
+      assert.equal(ing.getStock('6ad0e90a53cc462cbaaec9fa'), 80);
+
+      // Test enterprise global total
+      assert.equal(ing.getStock('all'), 125);
+
+      // Test stock mutation
+      ing.setStock('b_downtown', 50);
+      assert.equal(ing.getStock('b_downtown'), 50);
+    });
+  });
 });

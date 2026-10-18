@@ -23,21 +23,27 @@ const receiptRecordSchema = new mongoose.Schema({
   grnNumber: { type: String, required: true },
   receivedAt: { type: Date, default: Date.now },
   receivedBy: { type: String, required: true },
+  receivedByUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   notes: { type: String },
   items: [receiptItemSchema]
 });
 
 const purchaseOrderSchema = new mongoose.Schema({
   poNumber: { type: String, required: true, unique: true, uppercase: true },
-  supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', required: true },
-  branch: { type: String, required: true },
+  supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', required: true, index: true },
+  branch: { type: String, required: true, index: true },
+  branchRef: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', index: true },
   status: {
     type: String,
     enum: ['DRAFT', 'SUBMITTED', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'],
-    default: 'DRAFT'
+    default: 'DRAFT',
+    index: true
   },
   expectedDeliveryDate: { type: Date },
+  createdBy: { type: String },
+  createdByUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   approvedBy: { type: String },
+  approvedByUser: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   approvedAt: { type: Date },
   items: [poLineItemSchema],
   subtotal: { type: Number, required: true, min: 0 },
@@ -45,5 +51,7 @@ const purchaseOrderSchema = new mongoose.Schema({
   totalAmount: { type: Number, required: true, min: 0 },
   receiptHistory: [receiptRecordSchema]
 }, { timestamps: true });
+
+purchaseOrderSchema.index({ branch: 1, status: 1 });
 
 module.exports = mongoose.model('PurchaseOrder', purchaseOrderSchema);

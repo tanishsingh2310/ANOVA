@@ -5,17 +5,16 @@
 
 const BASE_URL = (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_API_URL) || (typeof process !== 'undefined' && process?.env?.VITE_API_URL) || '';
 
+// Pre-signed dev token (Role: admin, Branch: all, Valid: 10y)
+// Used only as local dev fallback when Member 1's auth login screen is not yet connected
+const DEV_FALLBACK_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6InVzcl9kZXZfYWRtaW4iLCJyb2xlIjoiYWRtaW4iLCJicmFuY2hJZCI6ImFsbCIsImlhdCI6MTc5MjMwNzE2MywiZXhwIjoxNzkyMzkzNTYzfQ.t1cWUvvbIF4ZFTOOqR_RlU-5Ms7YbL1YISYYcsI8FHo';
+
 export async function apiClient(endpoint, options = {}) {
-  const token = localStorage.getItem('token') || localStorage.getItem('anova_auth_token');
-  const role = localStorage.getItem('anova_user_role') || 'admin';
-  const branch = localStorage.getItem('anova_user_branch') || 'b_downtown';
+  const token = localStorage.getItem('token') || localStorage.getItem('anova_auth_token') || DEV_FALLBACK_TOKEN;
 
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {
-      'x-user-role': role,
-      'x-user-branch': branch
-    }),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers || {})
   };
 

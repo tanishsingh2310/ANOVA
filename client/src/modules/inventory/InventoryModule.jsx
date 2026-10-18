@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import InventoryNav from './components/InventoryNav';
 import InventoryDashboard from './pages/InventoryDashboard';
 import IngredientsPage from './pages/IngredientsPage';
 import SuppliersPage from './pages/SuppliersPage';
@@ -7,15 +8,18 @@ import TransfersPage from './pages/TransfersPage';
 import WastagePage from './pages/WastagePage';
 import ReportsPage from './pages/ReportsPage';
 import { InventoryService } from './services/inventoryService';
+import { AnalyticsService } from './services/analyticsService';
 import './styles/inventory.css';
 
 export default function InventoryModule({
   activeSubpage = 'inv-dashboard',
   onSubpageChange = () => {},
-  selectedBranch = 'all'
+  selectedBranch = 'all',
+  showSubnav = true
 }) {
   const [currentTab, setCurrentTab] = useState(activeSubpage);
   const [branches, setBranches] = useState([]);
+  const [alertsCount, setAlertsCount] = useState(0);
 
   useEffect(() => {
     setCurrentTab(activeSubpage);
@@ -23,6 +27,12 @@ export default function InventoryModule({
 
   useEffect(() => {
     setBranches(InventoryService.getBranches());
+    try {
+      const kpis = AnalyticsService.getDashboardKPIs(selectedBranch);
+      setAlertsCount(kpis?.totalAlerts || 0);
+    } catch {
+      setAlertsCount(0);
+    }
   }, [selectedBranch]);
 
   const handleTabChange = (tabId) => {
@@ -32,7 +42,14 @@ export default function InventoryModule({
 
   return (
     <div className="anova-inventory-module">
-      {/* Render Active Subsection */}
+      {/* Sub-Navigation Tabs */}
+      {showSubnav && (
+        <InventoryNav
+          activeTab={currentTab}
+          onTabChange={handleTabChange}
+          alertsCount={alertsCount}
+        />
+      )}
       {currentTab === 'inv-dashboard' && (
         <InventoryDashboard
           branchId={selectedBranch}

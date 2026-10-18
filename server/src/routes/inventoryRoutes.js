@@ -9,6 +9,14 @@ const Wastage = require('../models/Wastage');
 const StockMovement = require('../models/StockMovement');
 const { protect, authorize } = require('../middleware/auth');
 const branchGuard = require('../middleware/branchGuard');
+const {
+  ROLES,
+  ENTERPRISE_ROLES,
+  INVENTORY_READ_ROLES,
+  INVENTORY_WRITE_ROLES,
+  PROCUREMENT_WRITE_ROLES,
+  SENSITIVE_ADMIN_ROLES
+} = require('../config/roles');
 
 // Standard response helper
 const sendResponse = (res, statusCode, success, data, message) => {
@@ -69,7 +77,7 @@ router.get('/ingredients', async (req, res, next) => {
   }
 });
 
-router.post('/ingredients', async (req, res, next) => {
+router.post('/ingredients', authorize(INVENTORY_WRITE_ROLES), async (req, res, next) => {
   try {
     const ingredient = new Ingredient(req.body);
     await ingredient.save();
@@ -79,7 +87,7 @@ router.post('/ingredients', async (req, res, next) => {
   }
 });
 
-router.post('/ingredients/:id/adjust', branchGuard, async (req, res, next) => {
+router.post('/ingredients/:id/adjust', authorize(INVENTORY_WRITE_ROLES), branchGuard, async (req, res, next) => {
   try {
     const { branch, newQuantity, reason, notes, user = 'Manager' } = req.body;
     const ingredient = await Ingredient.findById(req.params.id);
@@ -167,7 +175,7 @@ router.get('/ingredients/:id', async (req, res, next) => {
 });
 
 // PUT /ingredients/:id - Update ingredient details
-router.put('/ingredients/:id', async (req, res, next) => {
+router.put('/ingredients/:id', authorize(INVENTORY_WRITE_ROLES), async (req, res, next) => {
   try {
     const ingredient = await Ingredient.findByIdAndUpdate(
       req.params.id,
@@ -182,7 +190,7 @@ router.put('/ingredients/:id', async (req, res, next) => {
 });
 
 // DELETE /ingredients/:id - Delete ingredient (Admin only)
-router.delete('/ingredients/:id', authorize('owner', 'admin'), async (req, res, next) => {
+router.delete('/ingredients/:id', authorize(SENSITIVE_ADMIN_ROLES), async (req, res, next) => {
   try {
     // Check if open purchase orders reference this ingredient
     const activePO = await PurchaseOrder.findOne({
@@ -211,6 +219,11 @@ router.get('/suppliers', async (req, res, next) => {
     if (status && status !== 'ALL') query.status = status;
     if (category && category !== 'ALL') query.category = category;
 
+    // Supplier Isolation: A supplier can only view their own profile
+    if (req.user.role === ROLES.SUPPLIER && req.user.supplierId) {
+      query._id = req.user.supplierId;
+    }
+
     const suppliers = await Supplier.find(query).sort({ name: 1 });
     sendResponse(res, 200, true, suppliers, 'Suppliers retrieved successfully');
   } catch (err) {
@@ -218,7 +231,7 @@ router.get('/suppliers', async (req, res, next) => {
   }
 });
 
-router.post('/suppliers', authorize('owner', 'admin', 'manager'), async (req, res, next) => {
+router.post('/suppliers', authorize(PROCUREMENT_WRITE_ROLES), async (req, res, next) => {
   try {
     const supplier = new Supplier(req.body);
     await supplier.save();
@@ -228,7 +241,7 @@ router.post('/suppliers', authorize('owner', 'admin', 'manager'), async (req, re
   }
 });
 
-router.patch('/suppliers/:id/status', authorize('owner', 'admin'), async (req, res, next) => {
+router.patch('/suppliers/:id/status', authorize(SENSITIVE_ADMIN_ROLES), async (req, res, next) => {
   try {
     const supplier = await Supplier.findById(req.params.id);
     if (!supplier) return sendResponse(res, 404, false, null, 'Supplier not found');
@@ -244,6 +257,11 @@ router.patch('/suppliers/:id/status', authorize('owner', 'admin'), async (req, r
 // GET /suppliers/:id - Single supplier details
 router.get('/suppliers/:id', async (req, res, next) => {
   try {
+    // Supplier isolation
+    if (req.user.role === ROLES.SUPPLIER && req.user.supplierId && req.user.supplierId !== req.params.id) {
+      return sendResponse(res, 403, false, null, 'Access denied: You can only view your own supplier profile');
+    }
+
     const supplier = await Supplier.findById(req.params.id);
     if (!supplier) return sendResponse(res, 404, false, null, 'Supplier not found');
     sendResponse(res, 200, true, supplier, 'Supplier retrieved successfully');
@@ -253,7 +271,7 @@ router.get('/suppliers/:id', async (req, res, next) => {
 });
 
 // PUT /suppliers/:id - Update supplier details
-router.put('/suppliers/:id', authorize('owner', 'admin', 'manager'), async (req, res, next) => {
+router.put('/suppliers/:id', authorize(PROCUREMENT_WRITE_ROLES), async (req, res, next) => {
   try {
     const supplier = await Supplier.findByIdAndUpdate(
       req.params.id,
@@ -277,6 +295,21 @@ router.get('/purchase-orders', async (req, res, next) => {
     if (branch && branch !== 'all') query.branch = branch;
     if (status && status !== 'ALL') query.status = status;
 
+    // RBAC Data Scoping
+    if (req.user.role === ROLES.SUPPLIER) {
+      // Supplier Isolation: strictly limited to POs addressed to this supplier
+      const supId = req.user.supplierId || req.user.id;
+      if (mongoose.Types.ObjectId.isValid(supId)) {
+        query.supplier = supId;
+      } else {
+        const supDoc = await Supplier.findOne({ $or: [{ code: supId }, { email: req.user.email }, { name: supId }] });
+        query.supplier = supDoc ? supDoc._id : supId;
+      }
+    } else if (req.user.role === ROLES.BRANCH_MANAGER && req.user.branchId && (!branch || branch === 'all')) {
+      // Branch Manager Isolation: scoped to assigned branch
+      query.branch = req.user.branchId;
+    }
+
     const pos = await PurchaseOrder.find(query)
       .populate('supplier', 'name code')
       .populate('items.ingredient', 'name sku baseUnit')
@@ -288,7 +321,7 @@ router.get('/purchase-orders', async (req, res, next) => {
   }
 });
 
-router.post('/purchase-orders', branchGuard, async (req, res, next) => {
+router.post('/purchase-orders', authorize(INVENTORY_WRITE_ROLES), branchGuard, async (req, res, next) => {
   try {
     const poNumber = req.body.poNumber || `PO-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     let { supplier, branch, items = [], expectedDeliveryDate, expectedDate, notes, createdBy } = req.body;
@@ -364,8 +397,8 @@ router.patch('/purchase-orders/:id/approve', async (req, res, next) => {
     const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
 
-    if (!['owner', 'admin', 'director'].includes(req.user.role)) {
-      return sendResponse(res, 403, false, null, 'Access denied: Only enterprise admins or directors can approve purchase orders.');
+    if (!ENTERPRISE_ROLES.includes(req.user.role)) {
+      return sendResponse(res, 403, false, null, 'Access denied: Only enterprise administrators can approve purchase orders.');
     }
 
     po.status = 'APPROVED';
@@ -385,9 +418,9 @@ router.patch('/purchase-orders/:id/status', async (req, res, next) => {
     const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'PO not found');
 
-    // Only enterprise admins/directors can approve POs
-    if (status === 'APPROVED' && !['owner', 'admin', 'director'].includes(req.user.role)) {
-      return sendResponse(res, 403, false, null, 'Access denied: Only enterprise admins or directors can approve purchase orders.');
+    // Only enterprise admins can approve POs
+    if (status === 'APPROVED' && !ENTERPRISE_ROLES.includes(req.user.role)) {
+      return sendResponse(res, 403, false, null, 'Access denied: Only enterprise administrators can approve purchase orders.');
     }
 
     po.status = status;
@@ -403,14 +436,14 @@ router.patch('/purchase-orders/:id/status', async (req, res, next) => {
 });
 
 // GOODS RECEIVING NOTE (GRN) — INCREASES STOCK
-router.post('/purchase-orders/:id/receive', async (req, res, next) => {
+router.post('/purchase-orders/:id/receive', authorize(INVENTORY_WRITE_ROLES), async (req, res, next) => {
   try {
     const { grnNumber, receiverName, items, notes } = req.body;
     const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'PO not found');
 
     // Branch isolation for goods receipt
-    if (!['owner', 'admin', 'director'].includes(req.user.role) && req.user.branchId && po.branch !== req.user.branchId) {
+    if (!ENTERPRISE_ROLES.includes(req.user.role) && req.user.branchId && po.branch !== req.user.branchId) {
       return sendResponse(res, 403, false, null, `Branch access violation: Cannot receive goods for branch '${po.branch}' while assigned to '${req.user.branchId}'.`);
     }
 
@@ -483,6 +516,16 @@ router.get('/purchase-orders/:id', async (req, res, next) => {
   try {
     const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
+
+    // Supplier isolation
+    if (req.user.role === ROLES.SUPPLIER) {
+      const supId = req.user.supplierId || req.user.id;
+      const poSupId = po.supplier?._id ? po.supplier._id.toString() : po.supplier.toString();
+      if (supId && poSupId !== supId) {
+        return sendResponse(res, 403, false, null, 'Access denied: You are not authorized to view purchase orders for other suppliers');
+      }
+    }
+
     await po.populate('supplier');
     await po.populate('items.ingredient', 'name sku baseUnit unitCost');
     sendResponse(res, 200, true, po, 'Purchase order retrieved successfully');
@@ -492,7 +535,7 @@ router.get('/purchase-orders/:id', async (req, res, next) => {
 });
 
 // DELETE /purchase-orders/:id - Cancel or delete DRAFT purchase order
-router.delete('/purchase-orders/:id', async (req, res, next) => {
+router.delete('/purchase-orders/:id', authorize(INVENTORY_WRITE_ROLES), async (req, res, next) => {
   try {
     const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
@@ -526,7 +569,7 @@ router.get('/transfers', async (req, res, next) => {
   }
 });
 
-router.post('/transfers/dispatch', branchGuard, async (req, res, next) => {
+router.post('/transfers/dispatch', authorize(INVENTORY_WRITE_ROLES), branchGuard, async (req, res, next) => {
   try {
     const { fromBranch, toBranch, items, notes, dispatchedBy = req.user.id } = req.body;
     if (fromBranch === toBranch) {
@@ -579,7 +622,7 @@ router.post('/transfers/dispatch', branchGuard, async (req, res, next) => {
   }
 });
 
-router.post('/transfers/:id/receive', async (req, res, next) => {
+router.post('/transfers/:id/receive', authorize(INVENTORY_WRITE_ROLES), async (req, res, next) => {
   try {
     const { receivedBy } = req.body;
     const transfer = await findStockTransfer(req.params.id);
@@ -587,7 +630,7 @@ router.post('/transfers/:id/receive', async (req, res, next) => {
     if (transfer.status !== 'IN_TRANSIT') return sendResponse(res, 400, false, null, 'Transfer not in transit');
 
     // Only destination branch staff or enterprise admins can receive
-    if (!['owner', 'admin', 'director'].includes(req.user.role) && req.user.branchId && transfer.toBranch !== req.user.branchId) {
+    if (!ENTERPRISE_ROLES.includes(req.user.role) && req.user.branchId && transfer.toBranch !== req.user.branchId) {
       return sendResponse(res, 403, false, null, `Branch access violation: Only staff assigned to destination branch '${transfer.toBranch}' can receive this transfer.`);
     }
 
@@ -659,7 +702,7 @@ router.get('/wastage', async (req, res, next) => {
   }
 });
 
-router.post('/wastage', branchGuard, async (req, res, next) => {
+router.post('/wastage', authorize(INVENTORY_WRITE_ROLES), branchGuard, async (req, res, next) => {
   try {
     const { branch, ingredient: ingId, quantity, reason, notes, loggedBy } = req.body;
     const ing = await Ingredient.findById(ingId);
@@ -849,7 +892,11 @@ router.get('/analytics/valuation', async (req, res, next) => {
 // ==========================================
 // 7. KITCHEN CONSUMPTION
 // ==========================================
-router.post('/recipe/consume', branchGuard, async (req, res, next) => {
+router.post(
+  '/recipe/consume',
+  authorize(ROLES.OWNER, ROLES.ADMIN, ROLES.INVENTORY_MANAGER, ROLES.BRANCH_MANAGER, ROLES.CHEF),
+  branchGuard,
+  async (req, res, next) => {
   try {
     const { branch, orderId, orderNumber, items, preparedBy = 'Kitchen Station' } = req.body;
     if (!branch || !items || !Array.isArray(items) || items.length === 0) {

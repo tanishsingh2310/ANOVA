@@ -1,21 +1,45 @@
 import { useState } from 'react';
+import { inventoryNavigation } from '../../modules/inventory';
 
-const navigationSections = [
+const defaultNavigationSections = [
   {
-    title: 'Inventory & Supply Chain',
+    title: `${inventoryNavigation.title} (Member 2)`,
+    items: inventoryNavigation.items
+  },
+  {
+    title: 'Restaurant Operations (Member 3)',
     items: [
-      { id: 'inv-dashboard', label: 'Inventory Overview' },
-      { id: 'inv-ingredients', label: 'Ingredients & Stock' },
-      { id: 'inv-suppliers', label: 'Supplier Directory' },
-      { id: 'inv-orders', label: 'Purchase Orders & GRN' },
-      { id: 'inv-transfers', label: 'Branch Transfers' },
-      { id: 'inv-wastage', label: 'Wastage & Spoilage' },
-      { id: 'inv-reports', label: 'Valuation & Reports' }
+      { id: 'ext-menu', label: 'Menu & Recipes', owner: 'Member 3' },
+      { id: 'ext-kitchen', label: 'Kitchen Workflow', owner: 'Member 3' },
+      { id: 'ext-tables', label: 'Tables & Reservations', owner: 'Member 3' },
+      { id: 'ext-billing', label: 'Billing & POS', owner: 'Member 3' }
+    ]
+  },
+  {
+    title: 'Core Administration & HR (Member 1)',
+    items: [
+      { id: 'ext-users', label: 'Users & Roles', owner: 'Member 1' },
+      { id: 'ext-branches', label: 'Multi-Branch Admin', owner: 'Member 1' },
+      { id: 'ext-hr', label: 'Staff & Payroll', owner: 'Member 1' },
+      { id: 'ext-audit', label: 'System Audit Logs', owner: 'Member 1' }
+    ]
+  },
+  {
+    title: 'Customer Experience & BI (Member 4)',
+    items: [
+      { id: 'ext-customer', label: 'Online Ordering', owner: 'Member 4' },
+      { id: 'ext-delivery', label: 'Delivery Dispatch', owner: 'Member 4' },
+      { id: 'ext-analytics', label: 'Customer Analytics', owner: 'Member 4' }
     ]
   }
 ];
 
-export default function Sidebar({ activePage, setActivePage, alertsCount = 0 }) {
+export default function Sidebar({
+  activePage,
+  setActivePage,
+  alertsCount = 0,
+  sections = defaultNavigationSections
+}) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleNav = (id) => {
@@ -59,7 +83,7 @@ export default function Sidebar({ activePage, setActivePage, alertsCount = 0 }) 
       </div>
 
       <nav className={`anova-sidebar-nav ${mobileOpen ? 'is-open' : ''}`} aria-label="Main navigation">
-        {navigationSections.map((section) => (
+        {sections.map((section) => (
           <div className="anova-nav-section" key={section.title}>
             <p className="anova-nav-heading">{section.title}</p>
             {section.items.map((item) => {

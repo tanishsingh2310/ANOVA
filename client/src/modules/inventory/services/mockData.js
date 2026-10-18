@@ -4,10 +4,10 @@
 // ============================================================
 
 export const SEED_BRANCHES = [
-  { id: 'b_downtown', name: 'Downtown Flagship', code: 'DT-01', city: 'Mumbai', address: 'Bandra West' },
-  { id: 'b_uptown', name: 'Uptown Bistro', code: 'UP-02', city: 'Mumbai', address: 'Powai Central' },
-  { id: 'b_westside', name: 'Westside Diner', code: 'WS-03', city: 'Pune', address: 'Koregaon Park' },
-  { id: 'b_waterfront', name: 'Waterfront Lounge', code: 'WF-04', city: 'Goa', address: 'Panaji Promenade' }
+  { id: 'b_downtown', _id: '6ad0e90a53cc462cbaaec9fa', name: 'Downtown Flagship', code: 'DT-01', city: 'Mumbai', address: 'Bandra West' },
+  { id: 'b_uptown', _id: '6ad0e90a53cc462cbaaec9fb', name: 'Uptown Bistro', code: 'UP-02', city: 'Mumbai', address: 'Powai Central' },
+  { id: 'b_westside', _id: '6ad0e90a53cc462cbaaec9fc', name: 'Westside Diner', code: 'WS-03', city: 'Pune', address: 'Koregaon Park' },
+  { id: 'b_waterfront', _id: '6ad0e90a53cc462cbaaec9fd', name: 'Waterfront Lounge', code: 'WF-04', city: 'Goa', address: 'Panaji Promenade' }
 ];
 
 export const INGREDIENT_CATEGORIES = [

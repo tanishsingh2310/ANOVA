@@ -41,16 +41,10 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
+const connectDB = require("./config/db");
 
-if (MONGO_URI) {
-  mongoose
-    .connect(MONGO_URI)
-    .then(() => console.log("MongoDB connected successfully to ANOVA Atlas cluster"))
-    .catch((err) => console.warn("MongoDB connection deferred (offline mode active):", err.message));
-} else {
-  console.log("MongoDB URI not provided. Running with memory/fallback service mode.");
-}
+// Initialize MongoDB connection
+connectDB();
 
 app.listen(PORT, () => {
   console.log(`ANOVA MBREMS server running on port ${PORT}`);

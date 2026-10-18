@@ -210,18 +210,16 @@ const SEED_INGREDIENTS = [
   }
 ];
 
+const connectDB = require('../config/db');
+
 async function seedDatabase() {
-  const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
-
-  if (!uri) {
-    console.error('❌ Error: MONGODB_URI is not defined in server/.env');
-    console.error('Please create server/.env and add your connection string.');
-    process.exit(1);
-  }
-
   try {
     console.log('🔄 Connecting to MongoDB Atlas cluster...');
-    await mongoose.connect(uri);
+    const conn = await connectDB();
+    if (!conn) {
+      console.error('❌ Error: Could not connect to MongoDB. Please check your connection string.');
+      process.exit(1);
+    }
     console.log(`✅ Connected successfully to database: "${mongoose.connection.name}"`);
 
     // ---------------------------------------------------------
@@ -267,6 +265,16 @@ async function seedDatabase() {
       console.log(`  ✓ Ingredient synced: [${doc.sku}] ${doc.name}`);
     }
 
+    // 2b. Link supplied ingredients to their respective suppliers
+    for (const sup of SEED_SUPPLIERS) {
+      const supId = supplierMap[sup.code];
+      const supplied = await Ingredient.find({ primarySupplier: supId }).select('_id');
+      await Supplier.findByIdAndUpdate(supId, {
+        suppliedIngredients: supplied.map(s => s._id)
+      });
+    }
+    console.log('  ✓ Supplier catalog linkages updated');
+
     // 3. Seed Sample Purchase Order
     const existingPO = await PurchaseOrder.findOne({ poNumber: 'PO-2026-1001' });
     if (!existingPO && supplierMap['VHOF'] && ingredientMap['ING-PRD-001']) {
@@ -274,6 +282,7 @@ async function seedDatabase() {
         poNumber: 'PO-2026-1001',
         supplier: supplierMap['VHOF'],
         branch: 'b_downtown',
+        branchRef: new mongoose.Types.ObjectId('6ad0e90a53cc462cbaaec9fa'),
         status: 'ORDERED',
         expectedDeliveryDate: new Date('2026-10-25'),
         items: [
