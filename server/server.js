@@ -10,6 +10,8 @@ app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json());
 app.use('/api/coupons', require('./routes/couponRoutes'));
 app.use('/api/deliveries', require('./routes/deliveryRoutes'));
+app.use('/api/reviews', require('./routes/reviewRoutes'));
+app.use('/api/complaints', require('./routes/complaintRoutes'));
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'API running' });

@@ -38,7 +38,7 @@ export default function DeliveryMap({ route, pickup, dropoff, position }) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !route?.length) return undefined;
-    const line = L.polyline(route.map((p) => [p.lat, p.lng]), { weight: 4, opacity: 0.75, color: '#0f6b5c' }).addTo(map);
+    const line = L.polyline(route.map((p) => [p.lat, p.lng]), { weight: 4, opacity: 0.75, color: '#2D5652' }).addTo(map);
     const shop = L.marker([pickup.lat, pickup.lng], { icon: pin('pin-shop', 'R'), title: 'Restaurant', alt: 'Restaurant' }).addTo(map);
     const home = L.marker([dropoff.lat, dropoff.lng], { icon: pin('pin-home', 'H'), title: 'Your address', alt: 'Your address' }).addTo(map);
     map.invalidateSize();

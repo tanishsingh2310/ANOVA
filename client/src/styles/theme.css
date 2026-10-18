@@ -1,0 +1,197 @@
+/* =========================================================
+   ANOVA — GLOBAL DESIGN SYSTEM
+   Elegant • Professional • Consistent
+   ========================================================= */
+
+:root {
+  /* ---------------------------------------------------------
+     1. BRAND COLORS
+     --------------------------------------------------------- */
+
+  --color-primary: #183C34;
+  --color-primary-hover: #245247;
+  --color-primary-dark: #102D27;
+  --color-primary-soft: #EAF0EC;
+
+  --color-secondary: #739184;
+  --color-secondary-soft: #EFF4F0;
+
+  --color-accent: #C5A46D;
+  --color-accent-hover: #B4935C;
+  --color-accent-soft: #F7F1E6;
+
+
+  /* ---------------------------------------------------------
+     2. PAGE AND SURFACE COLORS
+     --------------------------------------------------------- */
+
+  --color-background: #F6F7F4;
+  --color-surface: #FFFFFF;
+  --color-surface-muted: #FAFBF9;
+  --color-surface-hover: #F2F5F1;
+
+  --color-sidebar: #183C34;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --color-sidebar-active: rgba(255, 255, 255, 0.13);
+
+
+  /* ---------------------------------------------------------
+     3. TYPOGRAPHY COLORS
+     --------------------------------------------------------- */
+
+  --color-text: #26342F;
+  --color-text-secondary: #53635B;
+  --color-text-muted: #748078;
+  --color-text-light: #929B94;
+  --color-text-inverse: #FFFFFF;
+
+
+  /* ---------------------------------------------------------
+     4. BORDERS AND DIVIDERS
+     --------------------------------------------------------- */
+
+  --color-border: #E2E7E1;
+  --color-border-strong: #D2DAD2;
+  --color-border-focus: #739184;
+
+
+  /* ---------------------------------------------------------
+     5. STATUS COLORS
+     --------------------------------------------------------- */
+
+  --color-success: #287D60;
+  --color-success-bg: #EAF5EF;
+  --color-success-border: #C9E6D5;
+
+  --color-warning: #A96F1D;
+  --color-warning-bg: #FBF3E5;
+  --color-warning-border: #EEDDBB;
+
+  --color-error: #B44747;
+  --color-error-bg: #FBECEC;
+  --color-error-border: #F0CCCC;
+
+  --color-info: #426F8A;
+  --color-info-bg: #EBF3F8;
+  --color-info-border: #CDDFEA;
+
+  --color-neutral: #68766E;
+  --color-neutral-bg: #EFF2EF;
+  --color-neutral-border: #DCE3DC;
+
+
+  /* ---------------------------------------------------------
+     6. TYPOGRAPHY
+     --------------------------------------------------------- */
+
+  --font-primary: "Inter", sans-serif;
+
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.875rem;
+  --font-size-md: 0.9375rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.375rem;
+  --font-size-2xl: 1.75rem;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.7;
+
+
+  /* ---------------------------------------------------------
+     7. SPACING
+     --------------------------------------------------------- */
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+
+  /* ---------------------------------------------------------
+     8. BORDER RADIUS
+     --------------------------------------------------------- */
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-pill: 999px;
+
+
+  /* ---------------------------------------------------------
+     9. SHADOWS
+     --------------------------------------------------------- */
+
+  --shadow-sm: 0 1px 3px rgba(24, 60, 52, 0.04);
+
+  --shadow-md:
+    0 4px 14px rgba(24, 60, 52, 0.06);
+
+  --shadow-lg:
+    0 10px 28px rgba(24, 60, 52, 0.08);
+
+
+  /* ---------------------------------------------------------
+     10. INTERACTION AND TRANSITIONS
+     --------------------------------------------------------- */
+
+  --transition-fast: 0.18s ease;
+  --transition-normal: 0.24s ease;
+
+  --focus-ring:
+    0 0 0 3px rgba(115, 145, 132, 0.20);
+
+
+  /* ---------------------------------------------------------
+     11. COMMON COMPONENT DIMENSIONS
+     --------------------------------------------------------- */
+
+  --control-height: 42px;
+  --button-height: 40px;
+
+  --content-max-width: 1600px;
+
+  --sidebar-width: 258px;
+  --topbar-height: 78px;
+}
+
+
+/* =========================================================
+   GLOBAL INTERACTION BASELINE
+   ========================================================= */
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}

@@ -1,0 +1,681 @@
+
+/* =========================================================
+   ANOVA — APPLICATION LAYOUT
+   Professional • Elegant • Responsive
+   ========================================================= */
+
+
+/* =========================================================
+   1. APPLICATION SHELL
+   ========================================================= */
+
+.anova-app-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--color-background);
+}
+
+
+/* =========================================================
+   2. SIDEBAR
+   ========================================================= */
+
+.anova-sidebar {
+  display: flex;
+  flex: 0 0 var(--sidebar-width);
+  flex-direction: column;
+  width: var(--sidebar-width);
+  min-height: 100vh;
+  padding: 26px 17px 20px;
+
+  color: var(--color-text-inverse);
+  background: var(--color-sidebar);
+
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.anova-sidebar-header {
+  display: block;
+  flex-shrink: 0;
+}
+
+
+/* =========================================================
+   3. BRANDING AND LOGO
+   ========================================================= */
+
+.anova-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+
+  min-width: 0;
+  padding: 0 7px 25px;
+
+  border-bottom: 1px solid rgba(197, 164, 109, 0.24);
+}
+
+.anova-brand-logo-container {
+  display: flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+}
+
+.anova-brand-logo {
+  display: block;
+  flex: 0 0 44px;
+
+  width: 44px;
+  height: 44px;
+
+  object-fit: contain;
+  object-position: center;
+}
+
+.anova-brand-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.anova-brand-details h1 {
+  margin: 0;
+
+  color: var(--color-accent);
+
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 27px;
+  font-weight: 500;
+  letter-spacing: 0.7px;
+  line-height: 1.15;
+}
+
+.anova-brand-details p {
+  margin: 5px 0 0;
+
+  color: #C4D1C9;
+
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.1px;
+  line-height: 1.5;
+}
+
+/* Retained for compatibility with the previous text-based logo. */
+.anova-brand-mark {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+
+  width: 44px;
+  height: 44px;
+
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+
+  color: var(--color-accent);
+
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 27px;
+  font-weight: 500;
+}
+
+
+/* =========================================================
+   4. MOBILE MENU TOGGLE
+   ========================================================= */
+
+.anova-mobile-menu-toggle {
+  display: none;
+}
+
+
+/* =========================================================
+   5. SIDEBAR NAVIGATION
+   ========================================================= */
+
+.anova-sidebar-nav {
+  flex: 1;
+  min-width: 0;
+  padding-top: 25px;
+}
+
+.anova-nav-section {
+  margin-bottom: 25px;
+}
+
+.anova-nav-heading {
+  margin: 0 0 9px;
+  padding: 0 10px;
+
+  color: #B4C4BA;
+
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.05px;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.anova-nav-item {
+  display: flex;
+  align-items: center;
+
+  width: 100%;
+  min-height: 42px;
+  margin: 3px 0;
+  padding: 10px 12px;
+
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+
+  background: transparent;
+  color: #E0E8E2;
+
+  font-family: var(--font-primary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: left;
+
+  cursor: pointer;
+
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.anova-nav-item:hover {
+  background: var(--color-sidebar-hover);
+  color: #FFFFFF;
+}
+
+.anova-nav-item.active {
+  border-color: rgba(197, 164, 109, 0.24);
+
+  background: var(--color-sidebar-active);
+  color: #E6C991;
+
+  font-weight: 600;
+}
+
+.anova-nav-item:focus-visible,
+.anova-mobile-menu-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+
+/* =========================================================
+   6. SIDEBAR FOOTER
+   ========================================================= */
+
+.anova-sidebar-footer {
+  flex-shrink: 0;
+  padding: 17px 9px 0;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.anova-sidebar-footer p {
+  margin: 0 0 6px;
+
+  color: #DCE5DE;
+
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.9px;
+  line-height: 1.5;
+}
+
+.anova-sidebar-footer span {
+  color: #B4C4BA;
+
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+
+/* =========================================================
+   7. MAIN CONTENT
+   ========================================================= */
+
+.anova-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+
+  min-width: 0;
+}
+
+.anova-page-content {
+  width: 100%;
+  max-width: var(--content-max-width);
+
+  margin: 0 auto;
+  padding: 30px 34px;
+}
+
+.anova-page-content .page {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+
+/* =========================================================
+   8. TOPBAR
+   ========================================================= */
+
+.anova-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+
+  min-height: var(--topbar-height);
+  padding: 19px 34px;
+
+  border-bottom: 1px solid var(--color-border);
+
+  background: var(--color-surface);
+}
+
+.anova-topbar-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+.anova-topbar-eyebrow {
+  margin: 0 0 6px;
+
+  color: var(--color-text-muted);
+
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.15px;
+  line-height: 1.5;
+}
+
+.anova-topbar-heading h2 {
+  margin: 0;
+
+  color: var(--color-text);
+
+  font-family: var(--font-primary);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.45px;
+  line-height: 1.35;
+
+  overflow-wrap: anywhere;
+}
+
+.anova-topbar-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 22px;
+}
+
+
+/* =========================================================
+   9. BRANCH INDICATOR
+   ========================================================= */
+
+.anova-branch-indicator {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  color: var(--color-text-secondary);
+
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.anova-branch-dot {
+  flex: 0 0 8px;
+
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+
+/* =========================================================
+   10. PROFILE AREA
+   ========================================================= */
+
+.anova-profile {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+
+  padding-left: 20px;
+
+  border-left: 1px solid var(--color-border);
+}
+
+.anova-profile-avatar {
+  display: flex;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: center;
+
+  width: 38px;
+  height: 38px;
+
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.anova-profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.anova-profile-info strong {
+  color: var(--color-text);
+
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.anova-profile-info span {
+  color: var(--color-text-muted);
+
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+
+/* =========================================================
+   11. TABLET LAYOUT
+   ========================================================= */
+
+@media (max-width: 1100px) and (min-width: 761px) {
+  .anova-sidebar {
+    flex-basis: 230px;
+    width: 230px;
+
+    padding-right: 13px;
+    padding-left: 13px;
+  }
+
+  .anova-sidebar-brand {
+    gap: 10px;
+    padding-right: 4px;
+    padding-left: 4px;
+  }
+
+  .anova-brand-logo-container,
+  .anova-brand-logo {
+    flex-basis: 40px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .anova-brand-details h1 {
+    font-size: 25px;
+  }
+
+  .anova-brand-details p {
+    font-size: 9px;
+  }
+
+  .anova-topbar,
+  .anova-page-content {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+
+  .anova-topbar {
+    gap: 18px;
+  }
+
+  .anova-topbar-actions {
+    gap: 15px;
+  }
+
+  .anova-profile {
+    gap: 8px;
+    padding-left: 13px;
+  }
+
+  .anova-profile-info strong {
+    font-size: 11px;
+  }
+}
+
+
+/* =========================================================
+   12. MOBILE LAYOUT
+   ========================================================= */
+
+@media (max-width: 760px) {
+  .anova-app-shell {
+    flex-direction: column;
+  }
+
+  .anova-sidebar {
+    position: relative;
+    z-index: 20;
+
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: auto;
+
+    padding: 14px 18px;
+  }
+
+  .anova-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .anova-sidebar-brand {
+    flex: 1;
+    align-items: center;
+    gap: 11px;
+
+    min-width: 0;
+    padding: 0;
+
+    border-bottom: none;
+  }
+
+  .anova-brand-logo-container,
+  .anova-brand-logo {
+    flex-basis: 40px;
+    width: 40px;
+    height: 40px;
+  }
+
+  .anova-brand-details {
+    min-width: 0;
+  }
+
+  .anova-brand-details h1 {
+    font-size: 23px;
+  }
+
+  .anova-brand-details p {
+    font-size: 9px;
+    line-height: 1.4;
+  }
+
+  .anova-mobile-menu-toggle {
+    display: inline-flex;
+    flex: 0 0 42px;
+    align-items: center;
+    justify-content: center;
+
+    width: 42px;
+    height: 42px;
+    padding: 0;
+
+    border: 1px solid rgba(197, 164, 109, 0.35);
+    border-radius: var(--radius-md);
+
+    background: transparent;
+    color: #FFFFFF;
+
+    font-family: Arial, sans-serif;
+    font-size: 25px;
+    line-height: 1;
+
+    cursor: pointer;
+
+    transition:
+      background var(--transition-fast),
+      border-color var(--transition-fast);
+  }
+
+  .anova-mobile-menu-toggle:hover {
+    border-color: var(--color-accent);
+    background: var(--color-sidebar-hover);
+  }
+
+  .anova-sidebar-nav {
+    display: none;
+
+    max-height: min(65vh, 520px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+
+    padding: 18px 0 4px;
+  }
+
+  .anova-sidebar-nav.is-open {
+    display: block;
+  }
+
+  .anova-nav-section {
+    margin-bottom: 19px;
+  }
+
+  .anova-nav-heading {
+    margin-bottom: 7px;
+  }
+
+  .anova-nav-item {
+    min-height: 44px;
+    padding: 11px 12px;
+    font-size: 13px;
+  }
+
+  .anova-sidebar-footer {
+    display: none;
+  }
+
+  /* Mobile topbar */
+
+  .anova-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 15px;
+
+    min-height: auto;
+    padding: 21px 20px;
+  }
+
+  .anova-topbar-heading {
+    width: 100%;
+  }
+
+  .anova-topbar-heading h2 {
+    font-size: 22px;
+  }
+
+  .anova-topbar-actions {
+    flex-wrap: wrap;
+    gap: 14px;
+
+    width: 100%;
+  }
+
+  .anova-profile {
+    padding-left: 14px;
+  }
+
+  /* Mobile page content */
+
+  .anova-page-content {
+    padding: 22px 20px;
+  }
+}
+
+
+/* =========================================================
+   13. SMALL MOBILE SCREENS
+   ========================================================= */
+
+@media (max-width: 420px) {
+  .anova-sidebar {
+    padding: 12px 14px;
+  }
+
+  .anova-brand-logo-container,
+  .anova-brand-logo {
+    flex-basis: 36px;
+    width: 36px;
+    height: 36px;
+  }
+
+  .anova-brand-details h1 {
+    font-size: 21px;
+  }
+
+  .anova-brand-details p {
+    max-width: 210px;
+    font-size: 9px;
+    line-height: 1.4;
+  }
+
+  .anova-topbar {
+    padding: 19px 16px;
+  }
+
+  .anova-topbar-eyebrow {
+    font-size: 9px;
+    letter-spacing: 0.9px;
+  }
+
+  .anova-topbar-heading h2 {
+    font-size: 21px;
+  }
+
+  .anova-topbar-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .anova-profile {
+    padding-left: 0;
+    border-left: none;
+  }
+
+  .anova-page-content {
+    padding: 20px 14px;
+  }
+}
