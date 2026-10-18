@@ -20,6 +20,9 @@ const LEAVE_USERS = [
   "admin",
   "manager",
   "hr",
+  "inventory_manager",
+  "chef",
+  "cashier",
   "employee",
 ];
 

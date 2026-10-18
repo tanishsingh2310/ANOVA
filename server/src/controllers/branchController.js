@@ -166,6 +166,7 @@ exports.getBranches = async (req, res) => {
 
 
 
+
 exports.getBranchById = async (req, res) => {
   try {
     const id = req.params.id;
@@ -189,7 +190,12 @@ exports.getBranchById = async (req, res) => {
         });
       }
 
-      filter._id = req.user.branch;
+      if (String(req.user.branch) !== String(id)) {
+        return res.status(404).json({
+          message: "Branch not found.",
+        });
+      }
+
       filter.isActive = true;
     } else if (req.query.includeInactive !== "true") {
       filter.isActive = true;
@@ -205,9 +211,14 @@ exports.getBranchById = async (req, res) => {
 
     return res.status(200).json({ branch });
   } catch (error) {
-    return handleDatabaseError(error, res, "Branch retrieval error");
+    return handleDatabaseError(
+      error,
+      res,
+      "Branch retrieval error"
+    );
   }
 };
+
 
 
 exports.updateBranch = async (req, res) => {

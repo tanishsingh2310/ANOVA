@@ -251,23 +251,39 @@ exports.createShift = async (req, res) => {
   }
 };
 
+
 exports.getShifts = async (req, res) => {
   try {
-    if (!canManageShifts(req.user)) {
+    const isEmployee = req.user.role === "employee";
+
+    if (!isEmployee && !canManageShifts(req.user)) {
       return res.status(403).json({
         message: "You cannot view the shift schedule.",
       });
     }
 
-    if (!canManageAllBranches(req.user) && !req.user.branch) {
+    if (isEmployee) {
+      // Employees can query only their own shifts.
+      if (!req.user.branch) {
+        return res.status(403).json({
+          message: "Your account is not assigned to a branch.",
+        });
+      }
+    } else if (
+      !canManageAllBranches(req.user) &&
+      !req.user.branch
+    ) {
       return res.status(403).json({
         message: "Your account is not assigned to a branch.",
       });
     }
 
-    const filter = {
-      ...branchFilter(req.user),
-    };
+    const filter = isEmployee
+      ? {
+          employee: req.user._id,
+          branch: req.user.branch,
+        }
+      : { ...branchFilter(req.user) };
 
     if (req.query.branchId) {
       if (!validId(req.query.branchId)) {
@@ -288,10 +304,20 @@ exports.getShifts = async (req, res) => {
       filter.branch = req.query.branchId;
     }
 
+    // Never allow an employee-supplied employeeId to change their scope.
     if (req.query.employeeId) {
       if (!validId(req.query.employeeId)) {
         return res.status(400).json({
           message: "Invalid employee ID.",
+        });
+      }
+
+      if (
+        isEmployee &&
+        String(req.query.employeeId) !== String(req.user._id)
+      ) {
+        return res.status(403).json({
+          message: "You can only view your own shifts.",
         });
       }
 
@@ -366,7 +392,9 @@ exports.getShifts = async (req, res) => {
 
 exports.getShiftById = async (req, res) => {
   try {
-    if (!canManageShifts(req.user)) {
+    const isEmployee = req.user.role === "employee";
+
+    if (!isEmployee && !canManageShifts(req.user)) {
       return res.status(403).json({
         message: "You cannot view shift details.",
       });
@@ -378,10 +406,31 @@ exports.getShiftById = async (req, res) => {
       });
     }
 
-    const shift = await Shift.findOne({
+    const filter = {
       _id: req.params.id,
       ...branchFilter(req.user),
-    })
+    };
+
+    if (isEmployee) {
+      if (!req.user.branch) {
+        return res.status(403).json({
+          message: "Your account is not assigned to a branch.",
+        });
+      }
+
+      filter.employee = req.user._id;
+      filter.branch = req.user.branch;
+      filter.status = { $ne: "cancelled" };
+    } else if (
+      !canManageAllBranches(req.user) &&
+      !req.user.branch
+    ) {
+      return res.status(403).json({
+        message: "Your account is not assigned to a branch.",
+      });
+    }
+
+    const shift = await Shift.findOne(filter)
       .populate("employee", "name email role")
       .populate("branch", "name code")
       .populate("createdBy", "name email")

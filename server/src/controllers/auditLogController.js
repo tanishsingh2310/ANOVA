@@ -139,11 +139,15 @@ const getAuditLogs = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const [logs, total] = await Promise.all([
-      AuditLog.find(filter)
-        .sort({ createdAt: -1, _id: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
+      
+AuditLog.find(filter)
+  .select(
+  "actor actorName actorRole action resource resourceId branch status createdAt"
+)
+  .sort({ createdAt: -1, _id: -1 })
+  .skip(skip)
+  .limit(limit)
+  .lean(),
       AuditLog.countDocuments(filter),
     ]);
 

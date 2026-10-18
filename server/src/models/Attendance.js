@@ -15,6 +15,12 @@ const attendanceSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    shift: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Shift",
+  default: null,
+  index: true,
+},
     attendanceDate: {
       type: Date,
       required: true,
@@ -40,6 +46,21 @@ const attendanceSchema = new mongoose.Schema(
       default: "present",
       index: true,
     },
+    requiresReview: {
+  type: Boolean,
+  default: false,
+  index: true,
+},
+reviewReason: {
+  type: String,
+  enum: [
+    "no_scheduled_shift",
+    "ambiguous_shift",
+    "outside_shift_window",
+    null,
+  ],
+  default: null,
+},
     notes: {
       type: String,
       trim: true,

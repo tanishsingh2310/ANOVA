@@ -21,8 +21,17 @@ router.use(protect);
 
 const shiftManagers = ["owner", "admin", "hr", "manager"];
 
-router.get("/", authorize(...shiftManagers), getShifts);
-router.get("/:id", authorize(...shiftManagers), getShiftById);
+router.get(
+  "/",
+  authorize(...shiftManagers, "employee"),
+  getShifts
+);
+
+router.get(
+  "/:id",
+  authorize(...shiftManagers, "employee"),
+  getShiftById
+);
 
 router.post("/", authorize(...shiftManagers), createShift);
 

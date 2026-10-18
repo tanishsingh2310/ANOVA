@@ -14,6 +14,16 @@ const EMPLOYEE_ROLES = [
   "cashier",
   "employee",
 ];
+const LEAVE_APPROVAL_HIERARCHY = {
+  employee: ["manager", "hr", "admin", "owner"],
+  inventory_manager: ["manager", "hr", "admin", "owner"],
+  chef: ["manager", "hr", "admin", "owner"],
+  cashier: ["manager", "hr", "admin", "owner"],
+  manager: ["hr", "admin", "owner"],
+  hr: ["admin", "owner"],
+  admin: ["owner"],
+  owner: [],
+};
 
 function isValidId(id) {
   return mongoose.Types.ObjectId.isValid(id);
@@ -36,7 +46,9 @@ function getBranchFilter(user) {
 function canReviewLeaves(user) {
   return LEAVE_REVIEWERS.includes(user.role);
 }
-
+function getAllowedLeaveReviewers(employeeRole) {
+  return LEAVE_APPROVAL_HIERARCHY[employeeRole] || [];
+}
 function getDateRange(dateValue, isEnd = false) {
   if (typeof dateValue !== "string") {
     return null;
@@ -122,22 +134,29 @@ function populateLeave(query) {
 // Submit a leave request.
 exports.createLeaveRequest = async (req, res) => {
   try {
-    const isEmployee = req.user.role === "employee";
-    const employeeId = isEmployee
-      ? req.user._id
-      : req.body.employeeId;
-    const branchId = isEmployee
-      ? req.user.branch
-      : req.body.branchId;
+    const canSubmitForOthers = canReviewLeaves(req.user);
+const hasEmployeeId =
+  req.body.employeeId !== undefined &&
+  req.body.employeeId !== null &&
+  req.body.employeeId !== "";
 
-    if (
-      !isEmployee &&
-      !LEAVE_REVIEWERS.includes(req.user.role)
-    ) {
-      return res.status(403).json({
-        message: "You are not authorized to submit leave for employees.",
-      });
-    }
+const isSelfSubmission =
+  EMPLOYEE_ROLES.includes(req.user.role) &&
+  (!canSubmitForOthers || !hasEmployeeId);
+
+const employeeId = isSelfSubmission
+  ? req.user._id
+  : req.body.employeeId;
+
+const branchId = isSelfSubmission
+  ? req.user.branch
+  : req.body.branchId;
+
+if (!isSelfSubmission && !canSubmitForOthers) {
+  return res.status(403).json({
+    message: "You are not authorized to submit leave for other employees.",
+  });
+}
 
     if (!branchId) {
       return res.status(400).json({
@@ -236,9 +255,9 @@ exports.getLeaveRequests = async (req, res) => {
   try {
     const filter = { ...getBranchFilter(req.user) };
 
-    if (req.user.role === "employee") {
-      filter.employee = req.user._id;
-    } else if (req.query.employeeId) {
+    if (!canReviewLeaves(req.user)) {
+  filter.employee = req.user._id;
+} else if (req.query.employeeId) {
       if (!isValidId(req.query.employeeId)) {
         return res.status(400).json({
           message: "Invalid employee ID.",
@@ -329,9 +348,9 @@ exports.getLeaveRequestById = async (req, res) => {
       ...getBranchFilter(req.user),
     };
 
-    if (req.user.role === "employee") {
-      filter.employee = req.user._id;
-    }
+    if (!canReviewLeaves(req.user)) {
+  filter.employee = req.user._id;
+}
 
     const leaveRequest = await populateLeave(
       LeaveRequest.findOne(filter)
@@ -397,7 +416,30 @@ exports.reviewLeaveRequest = async (req, res) => {
         message: "Pending leave request not found in your branch.",
       });
     }
+    if (
+  leaveRequest.employee.toString() === req.user._id.toString()
+) {
+  return res.status(403).json({
+    message: "You cannot approve or reject your own leave request.",
+  });
+}
 
+const employee = await User.findById(leaveRequest.employee)
+  .select("role");
+
+if (!employee) {
+  return res.status(404).json({
+    message: "Leave request employee not found.",
+  });
+}
+
+const allowedReviewers = getAllowedLeaveReviewers(employee.role);
+
+if (!allowedReviewers.includes(req.user.role)) {
+  return res.status(403).json({
+    message: "You are not authorized to review this employee's leave request.",
+  });
+}
     leaveRequest.status = status;
     leaveRequest.reviewNote = reviewNote.trim();
     leaveRequest.reviewedBy = req.user._id;
@@ -435,13 +477,9 @@ exports.cancelLeaveRequest = async (req, res) => {
       ...getBranchFilter(req.user),
     };
 
-    if (req.user.role === "employee") {
-      filter.employee = req.user._id;
-    } else if (!canReviewLeaves(req.user)) {
-      return res.status(403).json({
-        message: "You are not authorized to cancel leave requests.",
-      });
-    }
+    if (!canReviewLeaves(req.user)) {
+  filter.employee = req.user._id;
+}
 
     const leaveRequest = await LeaveRequest.findOne(filter);
 

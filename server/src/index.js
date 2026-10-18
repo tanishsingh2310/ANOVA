@@ -11,6 +11,7 @@ const attendanceRoutes = require("./routes/attendanceRoutes");
 const leaveRoutes = require("./routes/leaveRoutes");
 const payrollRoutes = require("./routes/payrollRoutes");
 const auditLogRoutes = require("./routes/auditLogRoutes");
+const errorMiddleware = require("./middleware/errorMiddleware");
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use("/api/attendance", attendanceRoutes);
 app.use("/api/leaves", leaveRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
+app.use(errorMiddleware);
 
 app.use((req, res) => {
   res.status(404).json({ message: "API endpoint not found." });

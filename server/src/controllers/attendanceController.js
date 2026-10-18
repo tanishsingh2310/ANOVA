@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const Attendance = require("../models/Attendance");
 const User = require("../models/User");
 const Branch = require("../models/Branch");
+const Shift = require("../models/Shift");
 
 const ATTENDANCE_MANAGERS = ["owner", "admin", "hr", "manager"];
 
@@ -133,69 +134,155 @@ function canAccessEmployee(user, employeeId) {
 
 // Employees can clock themselves in.
 // HR and managers can record attendance for employees in their branch.
+
 exports.clockIn = async (req, res) => {
   try {
+    const allowedRoles = ["owner", "admin", "hr", "manager", "employee"];
+
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({
+        message: "You are not authorized to record attendance.",
+      });
+    }
+
+    // Employees can only clock themselves in.
     const employeeId =
-      req.user.role === "employee" ? String(req.user._id) : req.body.employeeId;
+      req.user.role === "employee"
+        ? String(req.user._id)
+        : req.body.employeeId;
 
     const branchId =
-      req.user.role === "employee" ? String(req.user.branch || "") : req.body.branchId;
+      req.user.role === "employee"
+        ? String(req.user.branch || "")
+        : req.body.branchId;
 
     if (!canAccessEmployee(req.user, employeeId)) {
-      return res.status(403).json({ message: "You cannot record attendance for this employee." });
+      return res.status(403).json({
+        message: "You cannot record attendance for this employee.",
+      });
     }
 
     const validation = await validateEmployee(employeeId, branchId);
 
     if (validation.error) {
-      return res.status(validation.status).json({ message: validation.error });
+      return res.status(validation.status).json({
+        message: validation.error,
+      });
     }
 
-    if (!canManageAllBranches(req.user) &&
-        String(req.user.branch || "") !== String(validation.branch._id)) {
-      return res.status(403).json({ message: "You cannot record attendance for another branch." });
+    if (
+      !canManageAllBranches(req.user) &&
+      String(req.user.branch || "") !== String(validation.branch._id)
+    ) {
+      return res.status(403).json({
+        message: "You cannot record attendance for another branch.",
+      });
     }
 
     const now = new Date();
-    const range = getTodayRange(now);
+    const matchingStart = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    const matchingEnd = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+    // Find at most two candidates: two are enough to identify ambiguity.
+    const candidates = await Shift.find({
+      employee: validation.employee._id,
+      branch: validation.branch._id,
+      status: "scheduled",
+      startTime: { $lte: matchingEnd },
+      endTime: { $gte: matchingStart },
+    })
+      .sort({ startTime: 1 })
+      .limit(2)
+      .select("_id startTime endTime");
+
+    let matchedShift = null;
+    let requiresReview = false;
+    let reviewReason = null;
+
+    if (candidates.length === 1) {
+      matchedShift = candidates[0];
+
+      // A matched shift can still need review if the clock-in is
+      // before its start or after its end.
+      if (
+        now < matchedShift.startTime ||
+        now > matchedShift.endTime
+      ) {
+        requiresReview = true;
+        reviewReason = "outside_shift_window";
+      }
+    } else if (candidates.length === 0) {
+      requiresReview = true;
+      reviewReason = "no_scheduled_shift";
+    } else {
+      // Do not choose arbitrarily when multiple shifts are plausible.
+      requiresReview = true;
+      reviewReason = "ambiguous_shift";
+    }
+
+    // Matched overnight shifts belong to the shift's start date.
+    // Unmatched/ambiguous clock-ins use the local clock-in date.
+    const attendanceDateRange = getTodayRange(
+      matchedShift ? matchedShift.startTime : now
+    );
+
+    if (!attendanceDateRange) {
+      return res.status(400).json({
+        message: "Unable to determine the attendance date.",
+      });
+    }
 
     const existing = await Attendance.findOne({
-      employee: employeeId,
-      attendanceDate: { $gte: range.start, $lt: range.end },
+      employee: validation.employee._id,
+      attendanceDate: attendanceDateRange.start,
     });
 
     if (existing) {
       return res.status(409).json({
-        message: "Attendance has already been recorded for this employee today.",
+        message:
+          "Attendance has already been recorded for this employee for the attendance date.",
       });
     }
 
-    const expectedStartTime = req.body.expectedStartTime;
-    const status = getAttendanceStatus(now, expectedStartTime);
+    // Never use req.body.expectedStartTime to determine lateness.
+    const status = getAttendanceStatus(
+      now,
+      matchedShift ? matchedShift.startTime : null
+    );
 
     const attendance = await Attendance.create({
       branch: validation.branch._id,
       employee: validation.employee._id,
-      attendanceDate: range.start,
+      shift: matchedShift ? matchedShift._id : null,
+      attendanceDate: attendanceDateRange.start,
       clockIn: now,
       status,
-      notes: typeof req.body.notes === "string" ? req.body.notes.trim() : "",
+      requiresReview,
+      reviewReason,
+      notes:
+        typeof req.body.notes === "string"
+          ? req.body.notes.trim()
+          : "",
       createdBy: req.user._id,
     });
 
     const populated = await Attendance.findById(attendance._id)
       .populate("employee", "name email role")
       .populate("branch", "name code")
+      .populate("shift", "title startTime endTime status")
       .populate("createdBy", "name email");
 
     return res.status(201).json({
-      message: "Clock-in recorded successfully.",
+      message: requiresReview
+        ? "Clock-in recorded; attendance requires review."
+        : "Clock-in recorded successfully.",
       attendance: populated,
     });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({
-        message: "Attendance has already been recorded for this employee today.",
+        message:
+          "Attendance has already been recorded for this employee for the attendance date.",
       });
     }
 
@@ -204,13 +291,30 @@ exports.clockIn = async (req, res) => {
     }
 
     console.error("Clock-in error:", error.message);
-    return res.status(500).json({ message: "Unable to record clock-in." });
+
+    return res.status(500).json({
+      message: "Unable to record clock-in.",
+    });
   }
 };
+
 
 // Employees can clock themselves out; managers can clock out employees in their branch.
 exports.clockOut = async (req, res) => {
   try {
+    if (
+  ![
+    "owner",
+    "admin",
+    "hr",
+    "manager",
+    "employee",
+  ].includes(req.user.role)
+) {
+  return res.status(403).json({
+    message: "You are not authorized to clock out attendance.",
+  });
+}
     if (!isValidId(req.params.id)) {
       return res.status(400).json({ message: "A valid attendance ID is required." });
     }
@@ -448,6 +552,67 @@ exports.updateAttendance = async (req, res) => {
         }
 
         attendance[field] = value;
+      }
+    }
+    
+   
+    // Recalculate present/late when the clock-in time is corrected.
+    // Preserve explicit absent/half-day corrections.
+    if (attendance.shift && req.body.clockIn !== undefined) {
+      const linkedShift = await Shift.findById(attendance.shift)
+        .select("_id startTime endTime");
+
+      if (!linkedShift) {
+        return res.status(409).json({
+          message:
+            "The linked shift could not be found. Attendance was not updated.",
+        });
+      }
+
+      if (
+        attendance.status !== "absent" &&
+        attendance.status !== "half-day"
+      ) {
+        attendance.status = getAttendanceStatus(
+          attendance.clockIn,
+          linkedShift.startTime
+        );
+      }
+
+      const outsideShift =
+        attendance.clockIn < linkedShift.startTime ||
+        attendance.clockIn > linkedShift.endTime;
+
+      if (outsideShift) {
+        attendance.requiresReview = true;
+        attendance.reviewReason = "outside_shift_window";
+      } else if (
+        attendance.reviewReason === "outside_shift_window"
+      ) {
+        // Clear only this specific review reason.
+        attendance.requiresReview = false;
+        attendance.reviewReason = null;
+      }
+    }
+
+        if (
+      attendance.clockOut &&
+      attendance.clockOut <= attendance.clockIn
+    ) {
+      return res.status(400).json({
+        message: "Clock-out must be after clock-in.",
+      });
+    }
+
+    if (attendance.clockOut) {
+      const durationMinutes =
+        (attendance.clockOut.getTime() - attendance.clockIn.getTime()) /
+        60000;
+
+      if (attendance.breakMinutes > durationMinutes) {
+        return res.status(400).json({
+          message: "Break duration cannot exceed the attendance duration.",
+        });
       }
     }
 
