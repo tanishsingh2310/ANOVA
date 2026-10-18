@@ -1,85 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiRequest } from "../../api";
 import "../../styles/kitchen-workflow.css";
 
-const initialKitchenOrders = [
-  {
-    id: "ORD-1001",
-    customer: "Aarav Shah",
-    orderType: "Dine-in",
-    table: "T-04",
-    items: [
-      { name: "Paneer Tikka", quantity: 2 },
-      { name: "Fresh Lime Soda", quantity: 2 },
-    ],
-    status: "Pending",
-    createdAt: "2026-10-15T12:05:00",
-    notes: "Less spicy",
-  },
-  {
-    id: "ORD-1002",
-    customer: "Diya Patel",
-    orderType: "Takeaway",
-    table: "—",
-    items: [
-      { name: "Classic Margherita", quantity: 1 },
-      { name: "Chocolate Brownie", quantity: 1 },
-    ],
-    status: "Preparing",
-    createdAt: "2026-10-15T12:10:00",
-    notes: "Pack separately",
-  },
-  {
-    id: "ORD-1003",
-    customer: "Rohan Mehta",
-    orderType: "Dine-in",
-    table: "T-06",
-    items: [
-      { name: "Veg Biryani", quantity: 2 },
-      { name: "Dal Makhani", quantity: 1 },
-    ],
-    status: "Pending",
-    createdAt: "2026-10-15T12:14:00",
-    notes: "",
-  },
-  {
-    id: "ORD-1004",
-    customer: "Ananya Desai",
-    orderType: "Delivery",
-    table: "—",
-    items: [
-      { name: "Paneer Tikka", quantity: 1 },
-      { name: "Veg Biryani", quantity: 1 },
-    ],
-    status: "Ready",
-    createdAt: "2026-10-15T12:00:00",
-    notes: "Deliver to reception",
-  },
-  {
-    id: "ORD-1005",
-    customer: "Vivaan Joshi",
-    orderType: "Dine-in",
-    table: "T-02",
-    items: [
-      { name: "Dal Makhani", quantity: 1 },
-      { name: "Fresh Lime Soda", quantity: 2 },
-    ],
-    status: "Preparing",
-    createdAt: "2026-10-15T12:08:00",
-    notes: "",
-  },
-  {
-    id: "ORD-1006",
-    customer: "Myra Trivedi",
-    orderType: "Takeaway",
-    table: "—",
-    items: [
-      { name: "Classic Margherita", quantity: 2 },
-    ],
-    status: "Completed",
-    createdAt: "2026-10-15T11:45:00",
-    notes: "",
-  },
-];
+const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 const workflowStages = [
   {
@@ -105,12 +28,31 @@ const workflowStages = [
   },
 ];
 
-function getElapsedMinutes(createdAt) {
-  const elapsed = Math.floor(
-    (Date.now() - new Date(createdAt).getTime()) / 60000
-  );
+function mapOrder(order) {
+  return {
+    id: order._id,
+    orderNumber: order.orderNumber,
+    customer: order.customer || "Guest",
+    orderType: order.orderType || "Dine-in",
+    table: order.table || "",
+    items: (order.items || []).map((item) => ({
+      name: item.name || "Menu item",
+      quantity: Number(item.quantity) || 0,
+    })),
+    status: order.status || "Pending",
+    createdAt: order.createdAt,
+    notes: order.notes || "",
+  };
+}
 
-  return Math.max(0, elapsed);
+function getElapsedMinutes(createdAt) {
+  const timestamp = new Date(createdAt).getTime();
+
+  if (!Number.isFinite(timestamp)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor((Date.now() - timestamp) / 60000));
 }
 
 function formatElapsedTime(minutes) {
@@ -127,25 +69,61 @@ function formatElapsedTime(minutes) {
 }
 
 function KitchenWorkflow() {
-  const [orders, setOrders] = useState(initialKitchenOrders);
+  const [orders, setOrders] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [orderTypeFilter, setOrderTypeFilter] = useState("All");
   const [showCompleted, setShowCompleted] = useState(false);
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [updatingOrderId, setUpdatingOrderId] = useState(null);
+  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const loadOrders = useCallback(async (showLoader = false) => {
+    if (showLoader) {
+      setIsLoading(true);
+    }
+
+    try {
+      const data = await apiRequest(`/api/orders/${BRANCH_ID}`);
+
+      if (!Array.isArray(data)) {
+        throw new Error("The server returned an unexpected orders response.");
+      }
+
+      setOrders(data.map(mapOrder));
+      setError("");
+      setLastUpdated(new Date());
+    } catch (err) {
+      setError(
+        err.message ||
+          "Unable to load kitchen orders. Please check your connection."
+      );
+    } finally {
+      if (showLoader) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    loadOrders(true);
+
+    // Refresh periodically so changes made in Orders can appear here.
+    const refreshInterval = window.setInterval(() => {
+      loadOrders(false);
+    }, 15000);
+
+    return () => window.clearInterval(refreshInterval);
+  }, [loadOrders]);
+
   const summary = useMemo(
     () => ({
-      pending: orders.filter(
-        (order) => order.status === "Pending"
-      ).length,
-      preparing: orders.filter(
-        (order) => order.status === "Preparing"
-      ).length,
-      ready: orders.filter(
-        (order) => order.status === "Ready"
-      ).length,
-      completed: orders.filter(
-        (order) => order.status === "Completed"
-      ).length,
+      pending: orders.filter((order) => order.status === "Pending").length,
+      preparing: orders.filter((order) => order.status === "Preparing").length,
+      ready: orders.filter((order) => order.status === "Ready").length,
+      completed: orders.filter((order) => order.status === "Completed").length,
     }),
     [orders]
   );
@@ -154,16 +132,19 @@ function KitchenWorkflow() {
     const query = searchTerm.trim().toLowerCase();
 
     return orders.filter((order) => {
+      // Cancelled orders do not belong on the kitchen preparation board.
+      if (order.status === "Cancelled") {
+        return false;
+      }
+
       const matchesSearch =
-        order.id.toLowerCase().includes(query) ||
+        order.orderNumber?.toLowerCase().includes(query) ||
         order.customer.toLowerCase().includes(query) ||
-        order.items.some((item) =>
-          item.name.toLowerCase().includes(query)
-        );
+        order.items.some((item) => item.name.toLowerCase().includes(query)) ||
+        order.notes.toLowerCase().includes(query);
 
       const matchesType =
-        orderTypeFilter === "All" ||
-        order.orderType === orderTypeFilter;
+        orderTypeFilter === "All" || order.orderType === orderTypeFilter;
 
       const matchesCompletion =
         showCompleted || order.status !== "Completed";
@@ -172,14 +153,46 @@ function KitchenWorkflow() {
     });
   }, [orders, searchTerm, orderTypeFilter, showCompleted]);
 
-  function advanceOrder(orderId, nextStatus) {
-    setOrders((previous) =>
-      previous.map((order) =>
-        order.id === orderId
-          ? { ...order, status: nextStatus }
-          : order
-      )
-    );
+  async function advanceOrder(orderId, nextStatus) {
+    setUpdatingOrderId(orderId);
+    setActionError("");
+
+    try {
+      const updatedOrder = await apiRequest(
+        `/api/orders/${BRANCH_ID}/${orderId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ status: nextStatus }),
+        }
+      );
+
+      // Use the server response when available; otherwise update the local
+      // view after the successful API response.
+      if (updatedOrder && updatedOrder._id) {
+        setOrders((previous) =>
+          previous.map((order) =>
+            order.id === orderId ? mapOrder(updatedOrder) : order
+          )
+        );
+      } else {
+        setOrders((previous) =>
+          previous.map((order) =>
+            order.id === orderId
+              ? { ...order, status: nextStatus }
+              : order
+          )
+        );
+      }
+
+      setLastUpdated(new Date());
+    } catch (err) {
+      setActionError(
+        err.message ||
+          "Unable to update this order. Please try again."
+      );
+    } finally {
+      setUpdatingOrderId(null);
+    }
   }
 
   function clearFilters() {
@@ -276,190 +289,236 @@ function KitchenWorkflow() {
             Clear filters
           </button>
         )}
+
+        <button
+          className="kitchen-clear-button"
+          type="button"
+          onClick={() => loadOrders(true)}
+          disabled={isLoading || updatingOrderId !== null}
+        >
+          Refresh orders
+        </button>
       </div>
 
-      <div className="kitchen-workflow-heading">
-        <div>
-          <h3>Order Preparation Board</h3>
-          <p>
-            Move each order forward as the kitchen completes its work.
-          </p>
+      {lastUpdated && !error && (
+        <p role="status" aria-live="polite">
+          Last synchronized: {lastUpdated.toLocaleTimeString()}
+        </p>
+      )}
+
+      {error && (
+        <div role="alert">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={() => loadOrders(true)}
+            disabled={isLoading}
+          >
+            Try again
+          </button>
         </div>
-        <span className="kitchen-order-count">
-          {filteredOrders.length}{" "}
-          {filteredOrders.length === 1 ? "order" : "orders"}
-        </span>
-      </div>
+      )}
 
-      <div className="kitchen-workflow-board">
-        {workflowStages.map((stage) => {
-          const stageOrders = filteredOrders
-            .filter((order) => order.status === stage.name)
-            .sort(
-              (a, b) =>
-                new Date(a.createdAt).getTime() -
-                new Date(b.createdAt).getTime()
-            );
+      {actionError && (
+        <p role="alert">
+          {actionError}
+        </p>
+      )}
 
-          return (
-            <section
-              className={`kitchen-stage ${stage.className}`}
-              key={stage.name}
-            >
-              <div className="kitchen-stage-header">
-                <div className="kitchen-stage-title">
-                  <span className="kitchen-stage-indicator" />
-                  <h4>{stage.name}</h4>
-                  <span className="kitchen-stage-count">
-                    {stageOrders.length}
-                  </span>
+      {isLoading ? (
+        <div className="kitchen-stage-empty" role="status">
+          <p>Loading kitchen orders...</p>
+        </div>
+      ) : !error ? (
+        <>
+          <div className="kitchen-workflow-heading">
+            <div>
+              <h3>Order Preparation Board</h3>
+              <p>
+                Move each order forward as the kitchen completes its work.
+              </p>
+            </div>
+            <span className="kitchen-order-count">
+              {filteredOrders.length}{" "}
+              {filteredOrders.length === 1 ? "order" : "orders"}
+            </span>
+          </div>
+
+          <div className="kitchen-workflow-board">
+            {workflowStages.map((stage) => {
+              const stageOrders = filteredOrders
+                .filter((order) => order.status === stage.name)
+                .sort(
+                  (a, b) =>
+                    new Date(a.createdAt).getTime() -
+                    new Date(b.createdAt).getTime()
+                );
+
+              return (
+                <section
+                  className={`kitchen-stage ${stage.className}`}
+                  key={stage.name}
+                >
+                  <div className="kitchen-stage-header">
+                    <div className="kitchen-stage-title">
+                      <span className="kitchen-stage-indicator" />
+                      <h4>{stage.name}</h4>
+                      <span className="kitchen-stage-count">
+                        {stageOrders.length}
+                      </span>
+                    </div>
+                    <p>{stage.description}</p>
+                  </div>
+
+                  <div className="kitchen-stage-orders">
+                    {stageOrders.map((order) => {
+                      const elapsed = getElapsedMinutes(order.createdAt);
+                      const isPriority = elapsed >= 20;
+                      const isUpdating = updatingOrderId === order.id;
+
+                      return (
+                        <article
+                          className="kitchen-order-card"
+                          key={order.id}
+                        >
+                          <div className="kitchen-order-card-header">
+                            <strong>{order.orderNumber}</strong>
+                            <span
+                              className={`kitchen-order-timer ${
+                                isPriority ? "priority" : ""
+                              }`}
+                            >
+                              ◷ {formatElapsedTime(elapsed)}
+                            </span>
+                          </div>
+
+                          <div className="kitchen-order-customer">
+                            <h5>{order.customer}</h5>
+                            <span>
+                              {order.orderType}
+                              {order.orderType === "Dine-in" && order.table
+                                ? ` · ${order.table}`
+                                : ""}
+                            </span>
+                          </div>
+
+                          {isPriority && (
+                            <div className="kitchen-priority-label">
+                              <span aria-hidden="true">!</span>
+                              Waiting longer than 20 minutes
+                            </div>
+                          )}
+
+                          <div className="kitchen-order-items">
+                            <span className="kitchen-section-label">
+                              ORDER ITEMS
+                            </span>
+
+                            {order.items.map((item, index) => (
+                              <div
+                                className="kitchen-order-item"
+                                key={`${order.id}-${item.name}-${index}`}
+                              >
+                                <span>{item.name}</span>
+                                <strong>× {item.quantity}</strong>
+                              </div>
+                            ))}
+                          </div>
+
+                          {order.notes.trim() && (
+                            <div className="kitchen-order-notes">
+                              <span>Customer Demand</span>
+                              {order.notes}
+                            </div>
+                          )}
+
+                          <div className="kitchen-order-card-footer">
+                            <span>
+                              {order.items.reduce(
+                                (total, item) => total + item.quantity,
+                                0
+                              )}{" "}
+                              total items
+                            </span>
+
+                            <button
+                              type="button"
+                              className="kitchen-advance-button"
+                              onClick={() =>
+                                advanceOrder(order.id, stage.nextStatus)
+                              }
+                              disabled={isUpdating || updatingOrderId !== null}
+                            >
+                              {isUpdating ? "Updating..." : stage.actionLabel}
+                              {!isUpdating && (
+                                <span aria-hidden="true">→</span>
+                              )}
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
+
+                    {stageOrders.length === 0 && (
+                      <div className="kitchen-stage-empty">
+                        <span aria-hidden="true">✓</span>
+                        <p>No orders in this stage</p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+
+          {showCompleted && (
+            <section className="kitchen-completed-section">
+              <div className="kitchen-workflow-heading">
+                <div>
+                  <h3>Completed Orders</h3>
+                  <p>Orders that have finished the kitchen workflow.</p>
                 </div>
-                <p>{stage.description}</p>
+                <span className="kitchen-order-count">
+                  {
+                    filteredOrders.filter(
+                      (order) => order.status === "Completed"
+                    ).length
+                  }{" "}
+                  completed
+                </span>
               </div>
 
-              <div className="kitchen-stage-orders">
-                {stageOrders.map((order) => {
-                  const elapsed = getElapsedMinutes(order.createdAt);
-                  const isPriority = elapsed >= 20;
-
-                  return (
+              <div className="kitchen-completed-list">
+                {filteredOrders
+                  .filter((order) => order.status === "Completed")
+                  .map((order) => (
                     <article
-                      className="kitchen-order-card"
+                      className="kitchen-completed-card"
                       key={order.id}
                     >
-                      <div className="kitchen-order-card-header">
-                        <strong>{order.id}</strong>
-                        <span
-                          className={`kitchen-order-timer ${
-                            isPriority ? "priority" : ""
-                          }`}
-                        >
-                          ◷ {formatElapsedTime(elapsed)}
-                        </span>
+                      <span className="kitchen-completed-check">✓</span>
+                      <div>
+                        <strong>{order.orderNumber}</strong>
+                        <span>{order.customer}</span>
                       </div>
-
-                      <div className="kitchen-order-customer">
-                        <h5>{order.customer}</h5>
-                        <span>
-                          {order.orderType}
-                          {order.orderType === "Dine-in"
-                            ? ` · ${order.table}`
-                            : ""}
-                        </span>
-                      </div>
-
-                      {isPriority && (
-                        <div className="kitchen-priority-label">
-                          <span aria-hidden="true">!</span>
-                          Waiting longer than 20 minutes
-                        </div>
-                      )}
-
-                      <div className="kitchen-order-items">
-                        <span className="kitchen-section-label">
-                          ORDER ITEMS
-                        </span>
-
-                        {order.items.map((item, index) => (
-                          <div
-                            className="kitchen-order-item"
-                            key={`${order.id}-${item.name}-${index}`}
-                          >
-                            <span>{item.name}</span>
-                            <strong>× {item.quantity}</strong>
-                          </div>
-                        ))}
-                      </div>
-
-                      {order.notes && (
-                        <div className="kitchen-order-notes">
-                          <span>Note</span>
-                          {order.notes}
-                        </div>
-                      )}
-
-                      <div className="kitchen-order-card-footer">
-                        <span>
-                          {order.items.reduce(
-                            (total, item) => total + item.quantity,
-                            0
-                          )}{" "}
-                          total items
-                        </span>
-
-                        <button
-                          type="button"
-                          className="kitchen-advance-button"
-                          onClick={() =>
-                            advanceOrder(order.id, stage.nextStatus)
-                          }
-                        >
-                          {stage.actionLabel}
-                          <span aria-hidden="true">→</span>
-                        </button>
-                      </div>
+                      <span className="kitchen-completed-type">
+                        {order.orderType}
+                      </span>
                     </article>
-                  );
-                })}
+                  ))}
 
-                {stageOrders.length === 0 && (
-                  <div className="kitchen-stage-empty">
-                    <span aria-hidden="true">✓</span>
-                    <p>No orders in this stage</p>
+                {filteredOrders.every(
+                  (order) => order.status !== "Completed"
+                ) && (
+                  <div className="kitchen-completed-empty">
+                    No completed orders match your current filters.
                   </div>
                 )}
               </div>
             </section>
-          );
-        })}
-      </div>
-
-      {showCompleted && (
-        <section className="kitchen-completed-section">
-          <div className="kitchen-workflow-heading">
-            <div>
-              <h3>Completed Orders</h3>
-              <p>Orders that have finished the kitchen workflow.</p>
-            </div>
-            <span className="kitchen-order-count">
-              {
-                filteredOrders.filter(
-                  (order) => order.status === "Completed"
-                ).length
-              }{" "}
-              completed
-            </span>
-          </div>
-
-          <div className="kitchen-completed-list">
-            {filteredOrders
-              .filter((order) => order.status === "Completed")
-              .map((order) => (
-                <article
-                  className="kitchen-completed-card"
-                  key={order.id}
-                >
-                  <span className="kitchen-completed-check">✓</span>
-                  <div>
-                    <strong>{order.id}</strong>
-                    <span>{order.customer}</span>
-                  </div>
-                  <span className="kitchen-completed-type">
-                    {order.orderType}
-                  </span>
-                </article>
-              ))}
-
-            {filteredOrders.every(
-              (order) => order.status !== "Completed"
-            ) && (
-              <div className="kitchen-completed-empty">
-                No completed orders match your current filters.
-              </div>
-            )}
-          </div>
-        </section>
-      )}
+          )}
+        </>
+      ) : null}
     </section>
   );
 }

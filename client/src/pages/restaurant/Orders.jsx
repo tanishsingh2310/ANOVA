@@ -625,7 +625,7 @@ function Orders() {
       <div className="orders-special-instructions">
         <span className="orders-special-instructions-label">
           <span aria-hidden="true">✦</span>
-          Special Instructions
+          Customer Demand
         </span>
 
         <p>{order.notes}</p>
