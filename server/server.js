@@ -5,6 +5,7 @@ const cors = require("cors");
 const connectDB = require("./config/db");
 const menuRoutes = require("./modules/menu/menuRoutes");
 const tableRoutes = require("./modules/tables/tableRoutes");
+const reservationRoutes = require("./modules/reservations/reservationRoutes");
 
 const app = express();
 
@@ -21,6 +22,8 @@ app.get("/", (req, res) => {
 app.use("/api/menu", menuRoutes);
 // Table management API
 app.use("/api/tables", tableRoutes);
+// Reservations API
+app.use("/api/reservations", reservationRoutes);
 
 const startServer = async () => {
   await connectDB();

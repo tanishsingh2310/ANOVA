@@ -1,80 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiRequest } from "../../api";
 import "../../styles/reservations.css";
 
-const initialReservations = [
-  {
-    id: 1,
-    customerName: "Aarav Shah",
-    phone: "9876543210",
-    email: "aarav@example.com",
-    date: "2026-10-14",
-    time: "19:00",
-    guests: 4,
-    tableNumber: "T-04",
-    status: "Confirmed",
-    occasion: "Birthday",
-  },
-  {
-    id: 2,
-    customerName: "Diya Patel",
-    phone: "9876501234",
-    email: "diya@example.com",
-    date: "2026-10-14",
-    time: "20:00",
-    guests: 2,
-    tableNumber: "T-02",
-    status: "Pending",
-    occasion: "Anniversary",
-  },
-  {
-    id: 3,
-    customerName: "Rohan Mehta",
-    phone: "9812345670",
-    email: "rohan@example.com",
-    date: "2026-10-15",
-    time: "13:00",
-    guests: 6,
-    tableNumber: "T-06",
-    status: "Confirmed",
-    occasion: "Family Dining",
-  },
-  {
-    id: 4,
-    customerName: "Ananya Desai",
-    phone: "9898765432",
-    email: "ananya@example.com",
-    date: "2026-10-15",
-    time: "19:30",
-    guests: 3,
-    tableNumber: "T-03",
-    status: "Pending",
-    occasion: "Regular Dining",
-  },
-  {
-    id: 5,
-    customerName: "Vivaan Joshi",
-    phone: "9823456710",
-    email: "vivaan@example.com",
-    date: "2026-10-13",
-    time: "20:30",
-    guests: 5,
-    tableNumber: "T-05",
-    status: "Completed",
-    occasion: "Family Dining",
-  },
-  {
-    id: 6,
-    customerName: "Myra Trivedi",
-    phone: "9901234567",
-    email: "myra@example.com",
-    date: "2026-10-16",
-    time: "12:30",
-    guests: 2,
-    tableNumber: "Unassigned",
-    status: "Cancelled",
-    occasion: "Regular Dining",
-  },
-];
+const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 const emptyForm = {
   customerName: "",
@@ -122,18 +50,68 @@ function formatTime(timeString) {
   });
 }
 
+function getToday() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeReservation(reservation) {
+  return {
+    ...reservation,
+    id: reservation._id || reservation.id,
+    email: reservation.email || "",
+    guests: Number(reservation.guests),
+    tableNumber: reservation.tableNumber || "Unassigned",
+    status: reservation.status || "Pending",
+    occasion: reservation.occasion || "Regular Dining",
+  };
+}
+
 function Reservations() {
-  const [reservations, setReservations] = useState(
-    initialReservations
-  );
+  const [reservations, setReservations] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [pageError, setPageError] = useState("");
+  const [formError, setFormError] = useState("");
 
-  const today = new Date().toLocaleDateString("en-CA");
+  const today = getToday();
+
+  const loadReservations = useCallback(async () => {
+    setIsLoading(true);
+    setPageError("");
+
+    try {
+      const data = await apiRequest(
+        `/api/reservations/${BRANCH_ID}`
+      );
+
+      if (!Array.isArray(data)) {
+        throw new Error("The server returned an unexpected reservations response.");
+      }
+
+      setReservations(data.map(normalizeReservation));
+    } catch (error) {
+      setPageError(
+        error.message || "Unable to load reservations. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadReservations();
+  }, [loadReservations]);
 
   const summary = useMemo(() => {
     return {
@@ -156,10 +134,12 @@ function Reservations() {
     return reservations
       .filter((reservation) => {
         const matchesSearch =
-          reservation.customerName.toLowerCase().includes(query) ||
-          reservation.phone.includes(query) ||
-          reservation.email.toLowerCase().includes(query) ||
-          reservation.tableNumber.toLowerCase().includes(query);
+          (reservation.customerName || "").toLowerCase().includes(query) ||
+          (reservation.phone || "").includes(query) ||
+          (reservation.email || "").toLowerCase().includes(query) ||
+          (reservation.tableNumber || "Unassigned")
+            .toLowerCase()
+            .includes(query);
 
         const matchesStatus =
           statusFilter === "All" ||
@@ -180,6 +160,7 @@ function Reservations() {
 
   function openAddModal() {
     setEditingId(null);
+    setFormError("");
     setFormData({
       ...emptyForm,
       date: today,
@@ -189,10 +170,12 @@ function Reservations() {
 
   function openEditModal(reservation) {
     setEditingId(reservation.id);
+    setFormError("");
+
     setFormData({
       customerName: reservation.customerName,
       phone: reservation.phone,
-      email: reservation.email,
+      email: reservation.email || "",
       date: reservation.date,
       time: reservation.time,
       guests: reservation.guests,
@@ -203,13 +186,17 @@ function Reservations() {
       status: reservation.status,
       occasion: reservation.occasion,
     });
+
     setIsModalOpen(true);
   }
 
   function closeModal() {
+    if (isSaving) return;
+
     setIsModalOpen(false);
     setEditingId(null);
     setFormData(emptyForm);
+    setFormError("");
   }
 
   function handleInputChange(event) {
@@ -219,38 +206,89 @@ function Reservations() {
       ...previous,
       [name]: name === "guests" ? Number(value) : value,
     }));
+
+    if (formError) {
+      setFormError("");
+    }
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setFormError("");
 
     if (!formData.customerName.trim() || !formData.phone.trim()) {
-      window.alert("Please enter the customer's name and phone number.");
+      setFormError("Please enter the guest's name and phone number.");
       return;
     }
 
-    if (!/^\+?[0-9\s()-]{7,18}$/.test(formData.phone.trim())) {
-      window.alert("Please enter a valid phone number.");
-      return;
-    }
+  
+const phone = formData.phone.trim();
+const email = formData.email.trim();
 
-    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
-      window.alert("Please enter a valid email address.");
-      return;
-    }
+// Phone: allow an optional +, spaces, hyphens and parentheses.
+// Require 7–15 digits, with no other characters.
+const phoneDigits = phone.replace(/\D/g, "");
+
+const validPhone =
+  /^\+?[0-9\s()-]+$/.test(phone) &&
+  phoneDigits.length >= 7 &&
+  phoneDigits.length <= 15 &&
+  !/^[+]/.test(phone.slice(1)) &&
+  !/\(\s*\)/.test(phone);
+
+if (!validPhone) {
+  setFormError(
+    "Enter a valid phone number."
+  );
+  return;
+}
+
+// Email: validate its basic structure and reject malformed domains.
+const emailParts = email.split("@");
+
+const validEmail =
+  email === "" ||
+  (
+    emailParts.length === 2 &&
+    emailParts[0].length > 0 &&
+    emailParts[0].length <= 64 &&
+    /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$/.test(emailParts[0]) &&
+    !emailParts[0].startsWith(".") &&
+    !emailParts[0].endsWith(".") &&
+    !emailParts[0].includes("..") &&
+    emailParts[1].length <= 253 &&
+    /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(emailParts[1]) &&
+    emailParts[1].split(".").every(
+      (label) =>
+        label.length >= 1 &&
+        label.length <= 63 &&
+        !label.startsWith("-") &&
+        !label.endsWith("-")
+    )
+  );
+
+if (!validEmail) {
+  setFormError("Enter a valid email address.");
+  return;
+}
+
 
     if (!formData.date || !formData.time) {
-      window.alert("Please select a reservation date and time.");
+      setFormError("Please select a reservation date and time.");
       return;
     }
 
     if (formData.date < today) {
-      window.alert("Please select today or a future date.");
+      setFormError("Please select today or a future date.");
       return;
     }
 
-    if (!Number.isInteger(formData.guests) || formData.guests < 1 || formData.guests > 50) {
-      window.alert("Guest count must be between 1 and 50.");
+    if (
+      !Number.isInteger(formData.guests) ||
+      formData.guests < 1 ||
+      formData.guests > 50
+    ) {
+      setFormError("Guest count must be between 1 and 50.");
       return;
     }
 
@@ -258,21 +296,22 @@ function Reservations() {
 
     const duplicatePhone = reservations.some(
       (reservation) =>
-        reservation.id !== editingId &&
+        String(reservation.id) !== String(editingId) &&
         reservation.phone.replace(/\D/g, "") === normalizedPhone &&
         reservation.date === formData.date &&
         reservation.time === formData.time &&
-        reservation.status !== "Cancelled"
+        !["Cancelled", "Completed"].includes(reservation.status) &&
+        !["Cancelled", "Completed"].includes(formData.status)
     );
 
     if (duplicatePhone) {
-      window.alert(
+      setFormError(
         "This phone number already has a reservation at the selected date and time."
       );
       return;
     }
 
-    const normalizedTable = formData.tableNumber.trim();
+    const normalizedTable = formData.tableNumber.trim().toUpperCase();
 
     const tableConflict =
       normalizedTable &&
@@ -280,71 +319,139 @@ function Reservations() {
       formData.status !== "Completed" &&
       reservations.some(
         (reservation) =>
-          reservation.id !== editingId &&
-          reservation.tableNumber.toLowerCase() ===
-            normalizedTable.toLowerCase() &&
+          String(reservation.id) !== String(editingId) &&
+          reservation.tableNumber.toUpperCase() === normalizedTable &&
           reservation.date === formData.date &&
           reservation.time === formData.time &&
-          reservation.status !== "Cancelled" &&
-          reservation.status !== "Completed"
+          !["Cancelled", "Completed"].includes(reservation.status)
       );
 
     if (tableConflict) {
-      window.alert(
+      setFormError(
         "That table is already assigned to another reservation at this date and time."
       );
       return;
     }
 
     const reservationData = {
-      ...formData,
       customerName: formData.customerName.trim(),
       phone: formData.phone.trim(),
       email: formData.email.trim(),
+      date: formData.date,
+      time: formData.time,
+      guests: formData.guests,
       tableNumber: normalizedTable || "Unassigned",
+      status: formData.status,
+      occasion: formData.occasion,
     };
 
-    if (editingId !== null) {
+    setIsSaving(true);
+
+    try {
+      if (editingId !== null) {
+        const updatedReservation = await apiRequest(
+          `/api/reservations/${BRANCH_ID}/${editingId}`,
+          {
+            method: "PUT",
+            body: JSON.stringify(reservationData),
+          }
+        );
+
+        const normalizedUpdated = normalizeReservation(updatedReservation);
+
+        setReservations((previous) =>
+          previous.map((reservation) =>
+            String(reservation.id) === String(editingId)
+              ? normalizedUpdated
+              : reservation
+          )
+        );
+      } else {
+        const createdReservation = await apiRequest(
+          "/api/reservations",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              ...reservationData,
+              branchId: BRANCH_ID,
+            }),
+          }
+        );
+
+        setReservations((previous) => [
+          ...previous,
+          normalizeReservation(createdReservation),
+        ]);
+      }
+
+      setIsModalOpen(false);
+      setEditingId(null);
+      setFormData(emptyForm);
+      setFormError("");
+    } catch (error) {
+      setFormError(
+        error.message || "Unable to save the reservation. Please try again."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleStatusChange(id, newStatus) {
+    const reservation = reservations.find(
+      (item) => String(item.id) === String(id)
+    );
+
+    if (!reservation) return;
+
+    try {
+      const updatedReservation = await apiRequest(
+        `/api/reservations/${BRANCH_ID}/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ status: newStatus }),
+        }
+      );
+
+      const normalizedUpdated = normalizeReservation(updatedReservation);
+
       setReservations((previous) =>
-        previous.map((reservation) =>
-          reservation.id === editingId
-            ? { ...reservation, ...reservationData }
-            : reservation
+        previous.map((item) =>
+          String(item.id) === String(id) ? normalizedUpdated : item
         )
       );
-    } else {
-      setReservations((previous) => [
-        ...previous,
-        {
-          id: Date.now(),
-          ...reservationData,
-        },
-      ]);
+    } catch (error) {
+      window.alert(
+        error.message || "Unable to update reservation status."
+      );
     }
-
-    closeModal();
   }
 
-  function handleStatusChange(id, newStatus) {
-    setReservations((previous) =>
-      previous.map((reservation) =>
-        reservation.id === id
-          ? { ...reservation, status: newStatus }
-          : reservation
-      )
-    );
-  }
-
-  function handleDelete(reservation) {
+  async function handleDelete(reservation) {
     const confirmed = window.confirm(
       `Delete the reservation for ${reservation.customerName}?`
     );
 
     if (!confirmed) return;
 
-    setReservations((previous) =>
-      previous.filter((item) => item.id !== reservation.id)
-    );
+    try {
+      await apiRequest(
+        `/api/reservations/${BRANCH_ID}/${reservation.id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      setReservations((previous) =>
+        previous.filter(
+          (item) => String(item.id) !== String(reservation.id)
+        )
+      );
+    } catch (error) {
+      window.alert(
+        error.message || "Unable to delete the reservation."
+      );
+    }
   }
 
   return (
@@ -415,6 +522,29 @@ function Reservations() {
           </span>
         </div>
 
+        {pageError && (
+          <div
+            role="alert"
+            style={{
+              margin: "16px 0",
+              padding: "12px 16px",
+              border: "1px solid #e5b7b7",
+              borderRadius: "8px",
+              background: "#fff4f4",
+              color: "#963b3b",
+            }}
+          >
+            <p style={{ margin: "0 0 8px" }}>{pageError}</p>
+            <button
+              type="button"
+              className="reservations-secondary-button"
+              onClick={loadReservations}
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
         <div className="reservations-toolbar">
           <div className="reservations-search">
             <span
@@ -483,7 +613,16 @@ function Reservations() {
             </thead>
 
             <tbody>
-              {filteredReservations.map((reservation) => (
+              {isLoading ? (
+                <tr>
+                  <td colSpan="6">
+                    <div className="reservations-empty-state">
+                      <h3>Loading reservations...</h3>
+                      <p>Please wait while we retrieve your bookings.</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredReservations.map((reservation) => (
                 <tr key={reservation.id}>
                   <td>
                     <div className="reservation-guest">
@@ -555,7 +694,7 @@ function Reservations() {
                 </tr>
               ))}
 
-              {filteredReservations.length === 0 && (
+              {!isLoading && filteredReservations.length === 0 && (
                 <tr>
                   <td colSpan="6">
                     <div className="reservations-empty-state">
@@ -758,11 +897,28 @@ function Reservations() {
                 </div>
               </div>
 
+              {formError && (
+                <div
+                  role="alert"
+                  style={{
+                    padding: "12px 14px",
+                    border: "1px solid #e5b7b7",
+                    borderRadius: "8px",
+                    background: "#fff4f4",
+                    color: "#963b3b",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  {formError}
+                </div>
+              )}
+
               <div className="reservations-modal-actions">
                 <button
                   className="reservations-secondary-button"
                   type="button"
                   onClick={closeModal}
+                  disabled={isSaving}
                 >
                   Cancel
                 </button>
@@ -770,10 +926,13 @@ function Reservations() {
                 <button
                   className="reservations-primary-button"
                   type="submit"
+                  disabled={isSaving}
                 >
-                  {editingId !== null
-                    ? "Save Changes"
-                    : "Create Reservation"}
+                  {isSaving
+                    ? "Saving..."
+                    : editingId !== null
+                      ? "Save Changes"
+                      : "Create Reservation"}
                 </button>
               </div>
             </form>
