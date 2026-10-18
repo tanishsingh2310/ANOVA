@@ -1,6 +1,11 @@
 
 const express = require("express");
-const { register, login } = require("../controllers/authController");
+const {
+  register,
+  login,
+  registerCustomer,
+  loginCustomer,
+} = require("../controllers/authController");
 const {
   protect,
   authorize,
@@ -8,6 +13,11 @@ const {
 
 const router = express.Router();
 
+// Public customer registration and sign-in.
+router.post("/customer/register", registerCustomer);
+router.post("/customer/login", loginCustomer);
+
+// Legacy registration remains customer-only for safety.
 router.post("/register", register);
 router.post("/login", login);
 
