@@ -131,14 +131,23 @@ exports.createBranch = async (req, res) => {
   }
 };
 
+
 exports.getBranches = async (req, res) => {
   try {
+    const isEnterpriseAdmin = ["owner", "admin"].includes(
+      req.user.role
+    );
+
     const filter = {};
 
-    if (
-      req.user.role !== "owner" &&
-      req.user.role !== "admin"
-    ) {
+    if (!isEnterpriseAdmin) {
+      if (!req.user.branch) {
+        return res.status(403).json({
+          message: "Your account is not assigned to a branch.",
+        });
+      }
+
+      filter._id = req.user.branch;
       filter.isActive = true;
     } else if (req.query.includeInactive !== "true") {
       filter.isActive = true;
@@ -155,6 +164,8 @@ exports.getBranches = async (req, res) => {
   }
 };
 
+
+
 exports.getBranchById = async (req, res) => {
   try {
     const id = req.params.id;
@@ -165,14 +176,28 @@ exports.getBranchById = async (req, res) => {
       });
     }
 
-    const branch = await Branch.findById(id);
+    const isEnterpriseAdmin = ["owner", "admin"].includes(
+      req.user.role
+    );
 
-    if (
-      !branch ||
-      (!branch.isActive &&
-        req.user.role !== "owner" &&
-        req.user.role !== "admin")
-    ) {
+    const filter = { _id: id };
+
+    if (!isEnterpriseAdmin) {
+      if (!req.user.branch) {
+        return res.status(403).json({
+          message: "Your account is not assigned to a branch.",
+        });
+      }
+
+      filter._id = req.user.branch;
+      filter.isActive = true;
+    } else if (req.query.includeInactive !== "true") {
+      filter.isActive = true;
+    }
+
+    const branch = await Branch.findOne(filter);
+
+    if (!branch) {
       return res.status(404).json({
         message: "Branch not found.",
       });
@@ -183,6 +208,7 @@ exports.getBranchById = async (req, res) => {
     return handleDatabaseError(error, res, "Branch retrieval error");
   }
 };
+
 
 exports.updateBranch = async (req, res) => {
   try {

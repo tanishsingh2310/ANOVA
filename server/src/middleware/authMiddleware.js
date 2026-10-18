@@ -19,7 +19,13 @@ async function protect(req, res, next) {
     const token = authorization.slice(7);
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const user = await User.findById(decoded.id);
+    if (!decoded.id || !require("mongoose").isValidObjectId(decoded.id)) {
+  return res.status(401).json({
+    message: "Invalid authentication token.",
+  });
+}
+
+const user = await User.findById(decoded.id);
 
     if (!user || !user.isActive) {
       return res.status(401).json({
