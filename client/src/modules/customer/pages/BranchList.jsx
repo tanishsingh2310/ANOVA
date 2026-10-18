@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { errorMessage } from '../../../api/axios';
 import { getBranches } from '../services/branchService';
+import { getReviewSummary } from '../services/feedbackService';
 import { useCart } from '../context/CartContext';
 import { addressLine, hoursLabel, isOpenNow } from '../utils/format';
 
 export default function BranchList() {
   const [branches, setBranches] = useState(null);
   const [error, setError] = useState('');
+  const [ratings, setRatings] = useState({}); // branchId -> { average, count }
   const [pending, setPending] = useState(null); // branch waiting for "switch and empty cart" confirmation
   const cart = useCart();
   const navigate = useNavigate();
@@ -21,7 +23,13 @@ export default function BranchList() {
       setError(errorMessage(err));
     }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // Ratings are a nice extra: if they cannot load, the branch list still works.
+    getReviewSummary()
+      .then((rows) => setRatings(Object.fromEntries(rows.map((r) => [r.branch, r]))))
+      .catch(() => setRatings({}));
+  }, []);
 
   const go = (b) => {
     cart.chooseBranch(b);
@@ -76,6 +84,11 @@ export default function BranchList() {
                 <p className="muted">{addressLine(b.address)}</p>
                 {b.phone && <p className="muted">Phone: {b.phone}</p>}
                 <p className="muted">Open {hoursLabel(b.operatingHours)}</p>
+                <p className="muted">
+                  {ratings[b._id]
+                    ? <><span className="stars" aria-hidden="true">★</span> {ratings[b._id].average} out of 5 ({ratings[b._id].count} review{ratings[b._id].count > 1 ? 's' : ''})</>
+                    : 'No reviews yet'}
+                </p>
               </div>
               <div className="dish-foot">
                 <span className={`badge ${open ? '' : 'closed'}`}>{open ? 'Open now' : 'Closed now'}</span>

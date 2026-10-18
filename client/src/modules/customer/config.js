@@ -16,6 +16,8 @@ export const ENDPOINTS = {
   myOrders: '/orders/my',
   order: (id) => `/orders/${id}`,
   deliveries: '/deliveries',
+  reviews: '/reviews',
+  complaints: '/complaints',
 };
 
 // Demo mode only: how long the simulated rider takes to reach the customer.

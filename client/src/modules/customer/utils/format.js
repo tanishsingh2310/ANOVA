@@ -89,3 +89,10 @@ export function trackingText(t) {
     default: return '';
   }
 }
+
+// ---------- Feedback ----------
+export const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+
+export const COMPLAINT_LABELS = { open: 'Open', in_review: 'Being reviewed', resolved: 'Resolved', rejected: 'Not upheld' };
+export const complaintLabel = (s) => COMPLAINT_LABELS[s] || s;
+export const CATEGORY_LABELS = { food: 'Food', delivery: 'Delivery', service: 'Service', billing: 'Billing', other: 'Other' };

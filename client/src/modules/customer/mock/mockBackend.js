@@ -7,6 +7,7 @@ import { MOCK_BRANCHES } from './branchData';
 import { MOCK_COUPONS } from './couponData';
 import { MOCK_STAFF } from './staffData';
 import { simulatedState } from '../utils/geo';
+import { MOCK_REVIEWS, MOCK_COMPLAINTS } from './feedbackData';
 import { isOpenNow } from '../utils/format';
 
 const KEY = 'anova_mock_orders_v1';
@@ -280,4 +281,148 @@ export async function mockTracking(orderId) {
     etaSeconds: sim.etaSeconds,
     isSimulated: true,
   };
+}
+
+// ---------- Reviews and complaints (demo) ----------
+const RKEY = 'anova_mock_reviews_v1';
+const CKEY = 'anova_mock_complaints_v1';
+const readList = (key, seed) => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return JSON.parse(raw);
+  } catch { /* fall through to the seed */ }
+  const copy = seed.map((x) => ({ ...x }));
+  try { localStorage.setItem(key, JSON.stringify(copy)); } catch { /* ignore */ }
+  return copy;
+};
+const saveList = (key, list) => {
+  try { localStorage.setItem(key, JSON.stringify(list)); } catch { /* ignore */ }
+};
+const whole = (v) => (Number.isInteger(Number(v)) && Number(v) >= 1 && Number(v) <= 5 ? Number(v) : null);
+const myOrder = (id) => {
+  const o = read().find((x) => x._id === id);
+  return o ? withStatus(o) : null;
+};
+
+export async function mockCreateReview(b) {
+  await wait(300);
+  const food = whole(b.foodRating);
+  if (food === null) throw reject(400, 'Give the food a rating from 1 to 5');
+  const hasDelivery = b.deliveryRating !== undefined && b.deliveryRating !== null && b.deliveryRating !== '';
+  const delivery = hasDelivery ? whole(b.deliveryRating) : undefined;
+  if (hasDelivery && delivery === null) throw reject(400, 'Give the delivery a rating from 1 to 5');
+
+  const order = myOrder(b.order);
+  if (!order) throw reject(404, 'Order not found');
+  if (!['delivered', 'completed'].includes(order.status)) throw reject(409, 'You can review an order after it is delivered or collected');
+  if (hasDelivery && order.orderType !== 'delivery') throw reject(400, 'Delivery ratings only apply to delivery orders');
+
+  const list = readList(RKEY, MOCK_REVIEWS);
+  if (list.some((r) => r.order === order._id)) throw reject(409, 'You have already reviewed this order');
+  const review = {
+    _id: `mock-r-${Date.now().toString(36)}`, order: order._id, orderNumber: order.orderNumber,
+    branch: { _id: order.branch._id, name: order.branch.name }, orderType: order.orderType,
+    foodRating: food, deliveryRating: delivery, comment: String(b.comment || '').trim().slice(0, 500) || undefined,
+    isHidden: false, reply: null, customerName: 'You', mine: true, createdAt: new Date().toISOString(),
+  };
+  saveList(RKEY, [review, ...list]);
+  return review;
+}
+
+export async function mockMyReviews() {
+  await wait(150);
+  return readList(RKEY, MOCK_REVIEWS).filter((r) => r.mine);
+}
+
+export async function mockReviewSummary() {
+  await wait(150);
+  const by = {};
+  readList(RKEY, MOCK_REVIEWS).filter((r) => !r.isHidden).forEach((r) => {
+    const k = r.branch._id;
+    by[k] = by[k] || { sum: 0, count: 0 };
+    by[k].sum += r.foodRating;
+    by[k].count += 1;
+  });
+  return Object.entries(by).map(([branch, v]) => ({ branch, average: Math.round((v.sum / v.count) * 10) / 10, count: v.count }));
+}
+
+export async function mockListReviews({ low, hidden } = {}) {
+  await wait();
+  let items = readList(RKEY, MOCK_REVIEWS);
+  if (low) items = items.filter((r) => r.foodRating <= 2);
+  if (hidden) items = items.filter((r) => r.isHidden);
+  return { items, total: items.length };
+}
+
+export async function mockModerateReview(id, b) {
+  await wait(200);
+  const list = readList(RKEY, MOCK_REVIEWS);
+  const r = list.find((x) => x._id === id);
+  if (!r) throw reject(404, 'Review not found');
+  if (typeof b.isHidden === 'boolean') r.isHidden = b.isHidden;
+  if (b.reply !== undefined) {
+    const text = String(b.reply).trim();
+    r.reply = text ? { text: text.slice(0, 500), at: new Date().toISOString() } : null;
+  }
+  saveList(RKEY, list);
+  return r;
+}
+
+export async function mockCreateComplaint(b) {
+  await wait(300);
+  if (!String(b.subject || '').trim()) throw reject(400, 'Please add a subject');
+  if (b.category !== undefined && !['food', 'delivery', 'service', 'billing', 'other'].includes(b.category)) throw reject(400, 'Invalid category');
+  const list = readList(CKEY, MOCK_COMPLAINTS);
+  if (list.filter((c) => c.mine && ['open', 'in_review'].includes(c.status)).length >= 5) {
+    throw reject(409, 'You already have 5 complaints being handled. Please wait for a reply first.');
+  }
+  let order = null;
+  if (b.order) {
+    order = myOrder(b.order);
+    if (!order) throw reject(404, 'Order not found');
+  }
+  const c = {
+    _id: `mock-c-${Date.now().toString(36)}`, order: order?._id, orderNumber: order?.orderNumber,
+    branch: order ? { _id: order.branch._id, name: order.branch.name } : undefined,
+    category: b.category || 'other', subject: String(b.subject).trim().slice(0, 100),
+    description: String(b.description || '').trim().slice(0, 1000) || undefined,
+    status: 'open', customerName: 'You', mine: true, createdAt: new Date().toISOString(),
+  };
+  saveList(CKEY, [c, ...list]);
+  return c;
+}
+
+export async function mockMyComplaints() {
+  await wait(150);
+  return readList(CKEY, MOCK_COMPLAINTS).filter((c) => c.mine);
+}
+
+export async function mockListComplaints({ status } = {}) {
+  await wait();
+  const all = readList(CKEY, MOCK_COMPLAINTS);
+  const counts = {};
+  all.forEach((c) => { counts[c.status] = (counts[c.status] || 0) + 1; });
+  const items = status ? all.filter((c) => c.status === status) : all;
+  return { items, total: items.length, counts };
+}
+
+const COMPLAINT_NEXT = { open: ['in_review', 'resolved', 'rejected'], in_review: ['resolved', 'rejected'] };
+export async function mockUpdateComplaint(id, b) {
+  await wait(250);
+  const list = readList(CKEY, MOCK_COMPLAINTS);
+  const c = list.find((x) => x._id === id);
+  if (!c) throw reject(404, 'Complaint not found');
+  if (['resolved', 'rejected'].includes(c.status)) throw reject(409, 'This complaint is already closed');
+  let next = c.status;
+  if (b.status !== undefined && b.status !== c.status) {
+    if (!(COMPLAINT_NEXT[c.status] || []).includes(b.status)) throw reject(409, 'That status change is not allowed');
+    next = b.status;
+  }
+  const response = b.response !== undefined ? String(b.response).trim().slice(0, 1000) : c.response;
+  if (['resolved', 'rejected'].includes(next) && !response) throw reject(400, 'Write a response before closing this complaint');
+  c.status = next;
+  c.response = response || undefined;
+  c.respondedAt = new Date().toISOString();
+  saveList(CKEY, list);
+  return c;
 }

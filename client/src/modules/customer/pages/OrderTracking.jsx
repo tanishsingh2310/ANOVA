@@ -3,9 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import DeliveryMap from '../components/DeliveryMap';
+import Stars from '../components/Stars';
 import { errorMessage } from '../../../api/axios';
 import { getOrder } from '../services/orderService';
 import { getTracking } from '../services/deliveryService';
+import { getMyReviews } from '../services/feedbackService';
 import { ORDER_FLOW, TERMINAL_STATUSES, addressLine, deliveryLabel, formatDate, formatPrice, statusLabel, trackingText } from '../utils/format';
 
 const POLL_MS = 5000;
@@ -14,6 +16,7 @@ const LIVE_POLL_MS = 3000; // faster while the rider is moving, so the marker ke
 export default function OrderTracking() {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
+  const [myReview, setMyReview] = useState(undefined); // undefined = still loading, null = none yet
   const [delivery, setDelivery] = useState(null); // rider name and delivery status, if any
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -42,6 +45,14 @@ export default function OrderTracking() {
     tick();
     return () => { active = false; clearTimeout(timer); };
   }, [id, attempt]);
+
+  const finished = order && ['delivered', 'completed'].includes(order.status);
+  useEffect(() => {
+    if (!finished) return;
+    getMyReviews()
+      .then((list) => setMyReview(list.find((r) => r.order === order._id) || null))
+      .catch(() => setMyReview(undefined)); // feedback links are optional; stay quiet if this fails
+  }, [finished, order?._id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) {
     return (
@@ -125,7 +136,18 @@ export default function OrderTracking() {
       {order.tax !== undefined && <div className="summary"><span>Tax</span><span>{formatPrice(order.tax)}</span></div>}
       <div className="summary"><span>Total</span><strong>{formatPrice(order.total)}</strong></div>
 
+      {finished && myReview !== undefined && (
+        <section aria-label="Your feedback">
+          {myReview ? (
+            <p>You rated this order <Stars value={myReview.foodRating} />. <Link to="/feedback">See my feedback</Link></p>
+          ) : (
+            <p><Link className="btn" to={`/orders/${order._id}/review`}>Rate this order</Link></p>
+          )}
+        </section>
+      )}
+
       <div className="actions">
+        <Link className="btn secondary" to={`/feedback?order=${order._id}`}>Report a problem</Link>
         <Link className="btn secondary" to="/orders">All my orders</Link>
         <Link className="btn secondary" to="/branches">Order again</Link>
       </div>

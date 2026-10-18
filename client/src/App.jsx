@@ -15,6 +15,9 @@ import Offers from './modules/customer/pages/Offers';
 import AdminCoupons from './modules/customer/pages/AdminCoupons';
 import AdminDeliveries from './modules/customer/pages/AdminDeliveries';
 import MyDeliveries from './modules/customer/pages/MyDeliveries';
+import ReviewForm from './modules/customer/pages/ReviewForm';
+import Feedback from './modules/customer/pages/Feedback';
+import AdminFeedback from './modules/customer/pages/AdminFeedback';
 import OrderTracking from './modules/customer/pages/OrderTracking';
 import RequireRole from './modules/customer/components/RequireRole';
 import { CartProvider, useCart } from './modules/customer/context/CartContext';
@@ -39,6 +42,7 @@ function TopBar() {
               Cart{cart.count > 0 && <span className="cart-count">{cart.count}</span>}
             </NavLink>
             <NavLink to="/orders">My orders</NavLink>
+            <NavLink to="/feedback">Feedback</NavLink>
             <NavLink to="/profile">Profile</NavLink>
           </nav>
         )}
@@ -46,6 +50,7 @@ function TopBar() {
           <nav aria-label="Staff">
             <NavLink to="/admin/deliveries">Deliveries</NavLink>
             <NavLink to="/admin/coupons">Promotions</NavLink>
+            <NavLink to="/admin/feedback">Feedback</NavLink>
           </nav>
         )}
         {role === 'delivery' && (
@@ -84,6 +89,9 @@ export default function App() {
           <Route path="/cart" element={customerOnly(<Cart />)} />
           <Route path="/checkout" element={customerOnly(<Checkout />)} />
           <Route path="/orders" element={customerOnly(<MyOrders />)} />
+          <Route path="/orders/:id/review" element={customerOnly(<ReviewForm />)} />
+          <Route path="/feedback" element={customerOnly(<Feedback />)} />
+          <Route path="/admin/feedback" element={staffOnly(<AdminFeedback />)} />
           <Route path="/orders/:id" element={customerOnly(<OrderTracking />)} />
           <Route path="/profile" element={customerOnly(<Profile />)} />
           <Route path="*" element={<Navigate to={homeFor(getRole())} replace />} />
