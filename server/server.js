@@ -4,6 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
 const menuRoutes = require("./modules/menu/menuRoutes");
+const tableRoutes = require("./modules/tables/tableRoutes");
 
 const app = express();
 
@@ -18,6 +19,8 @@ app.get("/", (req, res) => {
 
 // Menu management API
 app.use("/api/menu", menuRoutes);
+// Table management API
+app.use("/api/tables", tableRoutes);
 
 const startServer = async () => {
   await connectDB();

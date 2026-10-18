@@ -1,16 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "../../styles/table-management.css";
+import { apiRequest } from "../../api";
 
-const initialTables = [
-  { id: 1, number: "T-01", capacity: 2, location: "Indoor", status: "Available" },
-  { id: 2, number: "T-02", capacity: 4, location: "Indoor", status: "Occupied" },
-  { id: 3, number: "T-03", capacity: 4, location: "Indoor", status: "Available" },
-  { id: 4, number: "T-04", capacity: 6, location: "Outdoor", status: "Reserved" },
-  { id: 5, number: "T-05", capacity: 2, location: "Outdoor", status: "Available" },
-  { id: 6, number: "T-06", capacity: 8, location: "Private Dining", status: "Occupied" },
-  { id: 7, number: "T-07", capacity: 4, location: "Outdoor", status: "Available" },
-  { id: 8, number: "T-08", capacity: 6, location: "Private Dining", status: "Reserved" },
-];
+const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 const emptyForm = {
   number: "",
@@ -23,12 +15,53 @@ const statuses = ["Available", "Occupied", "Reserved"];
 const locations = ["Indoor", "Outdoor", "Private Dining"];
 
 function TableManagement() {
-  const [tables, setTables] = useState(initialTables);
+  const [tables, setTables] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Statuses");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  // Convert MongoDB documents to the format used by the existing UI.
+  function normalizeTable(table) {
+    return {
+      ...table,
+      id: table._id,
+    };
+  }
+
+  // Load tables from MongoDB when the page opens.
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadTables() {
+      try {
+        setLoadError("");
+
+        const data = await apiRequest(`/api/tables/${BRANCH_ID}`);
+
+        if (isMounted) {
+          setTables(data.map(normalizeTable));
+        }
+      } catch (error) {
+        if (isMounted) {
+          setLoadError(error.message);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadTables();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const filteredTables = useMemo(() => {
     return tables.filter((table) => {
@@ -63,28 +96,41 @@ function TableManagement() {
 
   function openEditForm(table) {
     setEditingId(table.id);
+
     setForm({
       number: table.number,
       capacity: String(table.capacity),
       location: table.location,
       status: table.status,
     });
+
     setShowForm(true);
   }
 
   function handleChange(event) {
     const { name, value } = event.target;
-    setForm((current) => ({ ...current, [name]: value }));
+
+    setForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
 
     const number = form.number.trim().toUpperCase();
     const capacity = Number(form.capacity);
 
-    if (!number || !Number.isInteger(capacity) || capacity < 1) {
-      window.alert("Enter a valid table number and seating capacity.");
+    if (
+      !number ||
+      !Number.isInteger(capacity) ||
+      capacity < 1 ||
+      capacity > 100
+    ) {
+      window.alert(
+        "Enter a valid table number and a seating capacity between 1 and 100."
+      );
       return;
     }
 
@@ -95,50 +141,111 @@ function TableManagement() {
     );
 
     if (duplicate) {
-      window.alert("This table number already exists. Please use another number.");
+      window.alert(
+        "This table number already exists. Please use another number."
+      );
       return;
     }
 
-    const updatedTable = {
-      id: editingId ?? Date.now(),
+    const tableData = {
       number,
       capacity,
       location: form.location,
       status: form.status,
     };
 
-    if (editingId !== null) {
-      setTables((current) =>
-        current.map((table) =>
-          table.id === editingId ? updatedTable : table
-        )
-      );
-    } else {
-      setTables((current) => [...current, updatedTable]);
+    try {
+      if (editingId !== null) {
+        // Update the existing table in MongoDB.
+        const updatedTable = await apiRequest(
+          `/api/tables/${BRANCH_ID}/${editingId}`,
+          {
+            method: "PUT",
+            body: JSON.stringify(tableData),
+          }
+        );
+
+        setTables((current) =>
+          current.map((table) =>
+            table.id === editingId ? normalizeTable(updatedTable) : table
+          )
+        );
+
+        window.alert("Table updated successfully.");
+      } else {
+        // Create a new table in MongoDB.
+        const createdTable = await apiRequest("/api/tables", {
+          method: "POST",
+          body: JSON.stringify({
+            branchId: BRANCH_ID,
+            ...tableData,
+          }),
+        });
+
+        setTables((current) => [
+          ...current,
+          normalizeTable(createdTable),
+        ]);
+
+        window.alert("Table added successfully.");
+      }
+
+      setShowForm(false);
+      setEditingId(null);
+      setForm(emptyForm);
+      setLoadError("");
+    } catch (error) {
+      window.alert(`Unable to save table: ${error.message}`);
+    }
+  }
+
+  async function updateStatus(id, status) {
+    const table = tables.find((item) => item.id === id);
+
+    if (!table || table.status === status) {
+      return;
     }
 
-    setShowForm(false);
-    setEditingId(null);
-    setForm(emptyForm);
+    try {
+      const updatedTable = await apiRequest(
+        `/api/tables/${BRANCH_ID}/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ status }),
+        }
+      );
+
+      setTables((current) =>
+        current.map((item) =>
+          item.id === id ? normalizeTable(updatedTable) : item
+        )
+      );
+    } catch (error) {
+      window.alert(`Unable to change table status: ${error.message}`);
+    }
   }
 
-  function updateStatus(id, status) {
-    setTables((current) =>
-      current.map((table) =>
-        table.id === id ? { ...table, status } : table
-      )
-    );
-  }
-
-  function deleteTable(table) {
+  async function deleteTable(table) {
     const confirmed = window.confirm(
       `Are you sure you want to delete table ${table.number}?`
     );
 
-    if (confirmed) {
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await apiRequest(`/api/tables/${BRANCH_ID}/${table.id}`, {
+        method: "DELETE",
+      });
+
       setTables((current) =>
         current.filter((item) => item.id !== table.id)
       );
+
+      window.alert("Table deleted successfully.");
+    } catch (error) {
+      window.alert(`Unable to delete table: ${error.message}`);
     }
   }
 
@@ -217,9 +324,27 @@ function TableManagement() {
         <div className="table-list-heading">
           <div>
             <h2>Restaurant Tables</h2>
-            <p>{filteredTables.length} tables found</p>
+            <p>
+              {loading
+                ? "Loading tables..."
+                : `${filteredTables.length} tables found`}
+            </p>
           </div>
         </div>
+
+        {loadError && (
+          <div role="alert" className="table-load-error">
+            <strong>Unable to load restaurant tables.</strong>
+            <p>{loadError}</p>
+            <button
+              type="button"
+              className="table-secondary-button"
+              onClick={() => window.location.reload()}
+            >
+              Try Again
+            </button>
+          </div>
+        )}
 
         <div className="table-list-scroll">
           <table className="restaurant-table">
@@ -297,7 +422,7 @@ function TableManagement() {
                 </tr>
               ))}
 
-              {filteredTables.length === 0 && (
+              {!loading && !loadError && filteredTables.length === 0 && (
                 <tr>
                   <td colSpan="6" className="table-empty-state">
                     <strong>No tables found</strong>
