@@ -207,24 +207,34 @@ function Orders() {
     setIsModalOpen(true);
   }
 
-  function openEditModal(order) {
-    setEditingId(order._id);
-    setFormError("");
+ function openEditModal(order) {
+  const orderStatus = String(order.status || "").toLowerCase();
 
-    setFormData({
-      customer: order.customer || "",
-      orderType: order.orderType,
-      tableId: order.tableId ? String(order.tableId) : "",
-      items: (order.items || []).map((item) => ({
-        menuItemId: String(item.menuItemId),
-        quantity: item.quantity,
-      })),
-      status: order.status,
-      notes: order.notes || "",
-    });
-
-    setIsModalOpen(true);
+  // Only pending orders can be edited.
+  if (orderStatus !== "pending") {
+    setFormError(
+      "This order cannot be edited because kitchen preparation has started."
+    );
+    return;
   }
+
+  setEditingId(order._id);
+  setFormError("");
+
+  setFormData({
+    customer: order.customer || "",
+    orderType: order.orderType,
+    tableId: order.tableId ? String(order.tableId) : "",
+    items: (order.items || []).map((item) => ({
+      menuItemId: String(item.menuItemId),
+      quantity: item.quantity,
+    })),
+    status: order.status,
+    notes: order.notes || "",
+  });
+
+  setIsModalOpen(true);
+}
 
   function closeModal() {
     if (isSaving) return;
@@ -689,25 +699,27 @@ function Orders() {
                   </td>
 
                   <td>
-                    <div className="orders-actions">
+                  <div className="orders-actions">
+                    {String(order.status || "").toLowerCase() === "pending" && (
                       <button
                         className="orders-action-button"
                         type="button"
                         onClick={() => openEditModal(order)}
                         aria-label={`Edit ${getOrderId(order)}`}
                       >
-                        Edit
+                      Edit
                       </button>
+                    )}
 
-                      <button
+                       <button
                         className="orders-action-button delete"
                         type="button"
                         onClick={() => handleDelete(order)}
                         aria-label={`Delete ${getOrderId(order)}`}
-                      >
-                        Delete
+                       >
+                       Delete
                       </button>
-                    </div>
+                  </div>
                   </td>
                 </tr>
               ))}

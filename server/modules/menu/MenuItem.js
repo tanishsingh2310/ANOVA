@@ -35,6 +35,13 @@ const menuItemSchema = new mongoose.Schema(
       maxlength: 500,
     },
 
+    image: {
+     type: String,
+     trim: true,
+     default: "",
+     maxlength: 500,
+    },
+
     price: {
       type: Number,
       required: true,

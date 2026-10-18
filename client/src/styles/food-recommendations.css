@@ -107,10 +107,11 @@
   width: 43px;
   height: 43px;
   place-items: center;
-  border-radius: 11px;
-  background: #EDF3EF;
+  border: 1px solid rgba(197, 164, 109, 0.24);
+  border-radius: 10px;
+  background: #F6F1E7;
   color: var(--color-primary);
-  font-size: 20px;
+  font-size: 19px;
 }
 
 .food-overview-card > div:last-child {
@@ -128,9 +129,11 @@
 .food-overview-card strong {
   overflow-wrap: anywhere;
   color: var(--color-primary);
-  font-size: 23px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.65px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- SMART RECOMMENDATIONS ---------- */
@@ -138,9 +141,13 @@
 .food-smart-panel {
   margin-bottom: 28px;
   padding: 25px;
-  border: 1px solid #D9E4DA;
+  border: 1px solid rgba(197, 164, 109, 0.28);
   border-radius: var(--radius-lg);
-  background: #F2F6F0;
+  background: linear-gradient(
+    135deg,
+    #FBF9F4 0%,
+    #F6F5EF 100%
+  );
   box-shadow: var(--shadow-sm);
 }
 
@@ -277,15 +284,21 @@
   align-items: center;
   gap: 12px;
   min-width: 0;
-  padding: 13px;
-  border: 1px solid #DFE7DE;
+  padding: 14px;
+  border: 1px solid var(--color-border);
   border-radius: 10px;
-  background: #FFFFFF;
+  background: var(--color-surface);
   text-align: left;
   cursor: pointer;
   transition:
     border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
     transform var(--transition-fast);
+}
+
+.food-recommendation-item:hover {
+  border-color: rgba(197, 164, 109, 0.65);
+  box-shadow: 0 4px 12px rgba(24, 60, 52, 0.06);
 }
 
 .food-recommendation-item:hover {
@@ -358,25 +371,30 @@
 .food-menu-heading h2 {
   margin: 0;
   color: var(--color-primary);
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 21px;
+  font-weight: 650;
+  line-height: 1.35;
+  letter-spacing: -0.45px;
 }
 
 .food-menu-heading p {
   margin: 7px 0 0;
   color: var(--color-text-muted);
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
 .food-result-count {
   padding: 7px 10px;
+  border: 1px solid rgba(197, 164, 109, 0.28);
   border-radius: 7px;
-  background: #EDF3EF;
+  background: #F8F5ED;
   color: var(--color-primary);
   font-size: 11px;
   font-weight: 600;
+  line-height: 1.4;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- FILTER PANEL ---------- */
@@ -397,8 +415,11 @@
   padding: 0 13px;
   border: 1px solid var(--color-border);
   border-radius: 9px;
-  background: #FFFFFF;
+  background: var(--color-surface);
   color: var(--color-text-muted);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .food-search > span {
@@ -424,10 +445,9 @@
 }
 
 .food-search:focus-within {
-  border-color: var(--color-secondary);
-  box-shadow: 0 0 0 3px rgba(115, 145, 132, 0.12);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(197, 164, 109, 0.13);
 }
-
 .food-filter-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -456,20 +476,24 @@
   border: 1px solid var(--color-border);
   border-radius: 8px;
   outline: none;
-  background: #FFFFFF;
+  background: var(--color-surface);
   color: var(--color-text);
   font-family: inherit;
   font-size: 11px;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
-.food-filter-control select:focus {
-  border-color: var(--color-secondary);
+.food-filter-control select:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(197, 164, 109, 0.13);
 }
 
 .food-price-filter {
   margin-top: 20px;
   padding-top: 17px;
-  border-top: 1px solid #EDF0EC;
+  border-top: 1px solid var(--color-border);
 }
 
 .food-price-heading {
@@ -483,6 +507,8 @@
 .food-price-heading strong {
   color: var(--color-primary);
   font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
 .food-price-filter input[type="range"] {
@@ -493,6 +519,11 @@
   cursor: pointer;
 }
 
+.food-price-filter input[type="range"]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 5px;
+}
+
 .food-filter-footer {
   display: flex;
   align-items: center;
@@ -500,7 +531,7 @@
   gap: 15px;
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #EDF0EC;
+  border-top: 1px solid var(--color-border);
 }
 
 .food-popular-toggle {
@@ -524,18 +555,28 @@
   padding: 8px 11px;
   border: 1px solid var(--color-border);
   border-radius: 7px;
-  background: #FFFFFF;
+  background: var(--color-surface);
   color: var(--color-primary);
   font-family: inherit;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .food-reset-button:hover {
-  background: #F1F5F1;
+  border-color: rgba(197, 164, 109, 0.55);
+  background: #F8F5ED;
+  color: var(--color-primary);
 }
 
+.food-reset-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
 /* ---------- DISH GRID ---------- */
 
 .food-dish-grid {
@@ -558,9 +599,9 @@
 }
 
 .food-dish-card:hover {
-  transform: translateY(-3px);
-  border-color: #D1DED3;
-  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+  border-color: rgba(197, 164, 109, 0.65);
+  box-shadow: 0 8px 22px rgba(24, 60, 52, 0.08);
 }
 
 .food-dish-visual {
@@ -569,7 +610,7 @@
   min-height: 145px;
   place-items: center;
   overflow: hidden;
-  background: #F0F2EA;
+  background: #F6F4ED;
 }
 
 .food-dish-emoji {
@@ -582,9 +623,8 @@
 }
 
 .food-dish-card:hover .food-dish-emoji {
-  transform: scale(1.06);
+  transform: scale(1.04);
 }
-
 .food-popular-badge {
   position: absolute;
   top: 12px;
@@ -606,12 +646,13 @@
   align-items: center;
   gap: 6px;
   padding: 6px 9px;
-  border: 1px solid rgba(24, 60, 52, 0.08);
-  border-radius: 6px;
-  background: #FFFFFF;
+  border: 1px solid rgba(197, 164, 109, 0.3);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.97);
   color: var(--color-text);
   font-size: 10px;
-  font-weight: 500;
+  font-weight: 550;
+  line-height: 1.4;
 }
 
 .food-dietary-dot {
@@ -619,7 +660,7 @@
   flex-shrink: 0;
   width: 8px;
   height: 8px;
-  border: 1px solid currentColor;
+  border: 1.5px solid currentColor;
   border-radius: 50%;
 }
 
@@ -650,16 +691,21 @@
   margin: 0;
   color: var(--color-primary);
   font-size: 14px;
-  font-weight: 700;
-  line-height: 1.5;
+  font-weight: 650;
+  line-height: 1.45;
+  letter-spacing: -0.15px;
+  overflow-wrap: anywhere;
 }
 
 .food-dish-title-row > strong {
   flex-shrink: 0;
   color: var(--color-primary);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 650;
+  line-height: 1.45;
+  letter-spacing: -0.2px;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .food-dish-description {
@@ -672,6 +718,7 @@
   line-height: 1.8;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .food-dish-meta {
@@ -680,16 +727,17 @@
   justify-content: space-between;
   gap: 10px;
   padding-bottom: 14px;
-  border-bottom: 1px solid #EDF0EC;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .food-rating {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: #A7792D;
+  color: var(--color-primary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
 .food-rating small {
@@ -697,7 +745,6 @@
   font-size: 10px;
   font-weight: 400;
 }
-
 .food-dish-meta > span:last-child {
   color: var(--color-text-muted);
   font-size: 10px;
@@ -734,8 +781,23 @@
   color: var(--color-primary);
   font-family: inherit;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 650;
+  line-height: 1.5;
   cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    gap var(--transition-fast);
+}
+
+.food-details-button:hover {
+  gap: 10px;
+  color: #A7792D;
+}
+
+.food-details-button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+  border-radius: 3px;
 }
 
 .food-details-button:hover {
@@ -1122,5 +1184,49 @@
 
   .food-modal-title-row h2 {
     font-size: 19px;
+  }
+}
+
+
+/* =========================================
+   ANOVA — FOOD RECOMMENDATION PHOTOGRAPHS
+   ========================================= */
+
+/* Recommendation list thumbnails */
+.food-recommendation-photo {
+  display: block;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 9px;
+}
+
+/* Main food recommendation cards */
+.food-dish-photo {
+  display: block;
+  width: 100%;
+  height: 145px;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* Selected dish details modal */
+.food-modal-photo {
+  display: block;
+  width: 100%;
+  height: 190px;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* Prevent oversized images on smaller screens */
+@media (max-width: 600px) {
+  .food-dish-photo {
+    height: 125px;
+  }
+
+  .food-modal-photo {
+    height: 160px;
   }
 }

@@ -2,6 +2,28 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../api";
 import "../../styles/food-recommendations.css";
 
+function DishPhoto({ dish, containerClass, photoClass }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  if (!dish.image || imageFailed) {
+    return (
+      <span className={containerClass} aria-hidden="true">
+        {dish.imageFallback || "🍽️"}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      className={photoClass}
+      src={dish.image}
+      alt={dish.name || "Menu dish"}
+      loading="lazy"
+      onError={() => setImageFailed(true)}
+    />
+  );
+}
+
 const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 
@@ -96,31 +118,40 @@ function FoodRecommendations() {
     return totals;
   }, [orders]);
 
-    const recommendationDishes = useMemo(() => {
+    
+  const recommendationDishes = useMemo(() => {
+    const categoryIcons = {
+      Starters: "🥗",
+      "Main Course": "🍽️",
+      Pizza: "🍕",
+      Desserts: "🍰",
+      Beverages: "🥤",
+    };
+
     return dishes.map((dish) => {
       const salesCount =
         salesByMenuItemId[String(dish._id)] || 0;
-
-      const categoryIcons = {
-        Starters: "🥗",
-        "Main Course": "🍽️",
-        Pizza: "🍕",
-        Desserts: "🍰",
-        Beverages: "🥤",
-      };
 
       return {
         ...dish,
         id: String(dish._id),
         salesCount,
         popular: salesCount > 0,
-        image: categoryIcons[dish.category] || "🍽️",
+
+        // Preserve the actual image path stored in MongoDB.
+        image: dish.image || "",
+
+        // Keep an emoji available as a fallback.
+        imageFallback: categoryIcons[dish.category] || "🍽️",
+
         ingredients: Array.isArray(dish.ingredients)
           ? dish.ingredients
           : [],
       };
     });
   }, [dishes, salesByMenuItemId]);
+
+
 
     const categories = [
     "All",
@@ -361,9 +392,11 @@ function FoodRecommendations() {
                   key={dish.id}
                   onClick={() => setSelectedDish(dish)}
                 >
-                  <span className="food-recommendation-emoji">
-                    {dish.image}
-                  </span>
+                   <DishPhoto
+                           dish={dish}
+                           containerClass="food-recommendation-emoji"
+                           photoClass="food-recommendation-photo"
+                    />
                   <span className="food-recommendation-info">
                     <strong>{dish.name}</strong>
                     <small>
@@ -453,21 +486,7 @@ function FoodRecommendations() {
             </div>
           </div>
 
-          <div className="food-price-filter">
-            <div className="food-price-heading">
-              <label htmlFor="food-max-price">Maximum dish price</label>
-              <strong>{currency(maxPrice)}</strong>
-            </div>
-            <input
-              id="food-max-price"
-              type="range"
-              min="100"
-              max="500"
-              step="10"
-              value={maxPrice}
-              onChange={(event) => setMaxPrice(Number(event.target.value))}
-            />
-          </div>
+          
 
           <div className="food-filter-footer">
             <label className="food-popular-toggle">
@@ -494,9 +513,11 @@ function FoodRecommendations() {
             {filteredDishes.map((dish) => (
               <article className="food-dish-card" key={dish.id}>
                 <div className="food-dish-visual">
-                  <span className="food-dish-emoji" aria-hidden="true">
-                    {dish.image}
-                  </span>
+                  <DishPhoto
+                      dish={dish}
+                      containerClass="food-dish-emoji"
+                      photoClass="food-dish-photo"
+                   />
 
                   {dish.popular && (
                     <span className="food-popular-badge">Popular choice</span>
@@ -570,7 +591,11 @@ function FoodRecommendations() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="food-modal-top">
-              <div className="food-modal-visual">{selectedDish.image}</div>
+              <DishPhoto
+                dish={selectedDish}
+                containerClass="food-modal-visual"
+                photoClass="food-modal-photo"
+              />
               <button
                 type="button"
                 className="food-modal-close"
