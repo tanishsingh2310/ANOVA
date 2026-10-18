@@ -55,17 +55,28 @@ router.get("/:branchId", verifyBranch, async (req, res, next) => {
 // POST: Add a menu item to a branch.
 router.post("/", verifyBranch, async (req, res, next) => {
   try {
-    const { name, category, description, price, available } = req.body;
+   const {
+  name,
+  category,
+  description,
+  price,
+  available,
+  dietary,
+  spice,
+  ingredients,
+} = req.body;
 
-    const menuItem = await MenuItem.create({
-      branchId: req.branchId,
-      name,
-      category,
-      description,
-      price,
-      available,
-    });
-
+   const menuItem = await MenuItem.create({
+  branchId: req.branchId,
+  name,
+  category,
+  description,
+  price,
+  available,
+  dietary,
+  spice,
+  ingredients,
+});
     res.status(201).json(menuItem);
   } catch (error) {
     next(error);
@@ -86,12 +97,15 @@ router.put("/:branchId/:itemId", verifyBranch, async (req, res, next) => {
     }
 
     const allowedFields = [
-      "name",
-      "category",
-      "description",
-      "price",
-      "available",
-    ];
+  "name",
+  "category",
+  "description",
+  "price",
+  "available",
+  "dietary",
+  "spice",
+  "ingredients",
+];
 
     const updates = {};
 

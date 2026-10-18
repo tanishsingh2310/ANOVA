@@ -9,6 +9,9 @@ const emptyForm = {
   category: "Starters",
   description: "",
   price: "",
+  dietary: "Vegetarian",
+  spice: "Medium",
+  ingredients: "",
 };
 
 const categories = [
@@ -95,17 +98,22 @@ function MenuManagement() {
   }
 
   function openEditForm(item) {
-    setEditingId(item.id);
+  setEditingId(item.id);
 
-    setForm({
-      name: item.name,
-      category: item.category,
-      description: item.description,
-      price: String(item.price),
-    });
+  setForm({
+    name: item.name,
+    category: item.category,
+    description: item.description,
+    price: String(item.price),
+    dietary: item.dietary || "Vegetarian",
+    spice: item.spice || "Medium",
+    ingredients: Array.isArray(item.ingredients)
+      ? item.ingredients.join(", ")
+      : "",
+  });
 
-    setShowForm(true);
-  }
+  setShowForm(true);
+}
 
   function handleFormChange(event) {
     const { name, value } = event.target;
@@ -147,11 +155,17 @@ function MenuManagement() {
     }
 
     const menuItemData = {
-      name,
-      category: form.category,
-      description,
-      price,
-    };
+  name,
+  category: form.category,
+  description,
+  price,
+  dietary: form.dietary,
+  spice: form.spice,
+  ingredients: form.ingredients
+    .split(",")
+    .map((ingredient) => ingredient.trim())
+    .filter(Boolean),
+};
 
     try {
       if (editingId !== null) {
@@ -520,19 +534,61 @@ function MenuManagement() {
               </label>
 
               <label>
-                Price (₹)
+  Dietary Preference
 
-                <input
-                  name="price"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={form.price}
-                  onChange={handleFormChange}
-                  placeholder="e.g. 280"
-                  required
-                />
-              </label>
+  <select
+    name="dietary"
+    value={form.dietary}
+    onChange={handleFormChange}
+    required
+  >
+    <option value="Vegetarian">Vegetarian</option>
+    <option value="Vegan">Vegan</option>
+    <option value="Non-Vegetarian">Non-Vegetarian</option>
+  </select>
+</label>
+
+<label>
+  Spice Level
+
+  <select
+    name="spice"
+    value={form.spice}
+    onChange={handleFormChange}
+    required
+  >
+    <option value="Mild">Mild</option>
+    <option value="Medium">Medium</option>
+    <option value="Hot">Hot</option>
+  </select>
+</label>
+
+<label>
+  Ingredients
+
+  <textarea
+    name="ingredients"
+    value={form.ingredients}
+    onChange={handleFormChange}
+    placeholder="e.g. Paneer, Tomato, Onion, Capsicum"
+    rows={3}
+  />
+</label>
+<label>
+  Price (₹)
+
+  <input
+    name="price"
+    type="number"
+    min="0.01"
+    step="0.01"
+    value={form.price}
+    onChange={handleFormChange}
+    placeholder="e.g. 280"
+    required
+  />
+</label>
+
 
               <div className="menu-modal-actions">
                 <button

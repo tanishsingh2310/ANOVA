@@ -1,188 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { apiRequest } from "../../api";
 import "../../styles/food-recommendations.css";
 
-const initialDishes = [
-  {
-    id: 1,
-    name: "Paneer Tikka",
-    category: "Starters",
-    price: 280,
-    rating: 4.8,
-    reviews: 124,
-    dietary: "Vegetarian",
-    spice: "Medium",
-    popular: true,
-    description: "Chargrilled paneer marinated with aromatic Indian spices.",
-    ingredients: ["Paneer", "Yogurt", "Bell peppers", "Indian spices"],
-    image: "🧀",
-    available: true,
-  },
-  {
-    id: 2,
-    name: "Veg Hakka Noodles",
-    category: "Main Course",
-    price: 220,
-    rating: 4.6,
-    reviews: 98,
-    dietary: "Vegan",
-    spice: "Medium",
-    popular: true,
-    description: "Stir-fried noodles tossed with fresh vegetables and sauces.",
-    ingredients: ["Noodles", "Cabbage", "Carrots", "Bell peppers"],
-    image: "🍜",
-    available: true,
-  },
-  {
-    id: 3,
-    name: "Margherita Pizza",
-    category: "Main Course",
-    price: 350,
-    rating: 4.7,
-    reviews: 156,
-    dietary: "Vegetarian",
-    spice: "Mild",
-    popular: true,
-    description: "Classic pizza topped with tomato, mozzarella, and basil.",
-    ingredients: ["Pizza dough", "Tomato sauce", "Mozzarella", "Basil"],
-    image: "🍕",
-    available: true,
-  },
-  {
-    id: 4,
-    name: "Chicken Tikka",
-    category: "Starters",
-    price: 340,
-    rating: 4.9,
-    reviews: 142,
-    dietary: "Non-Vegetarian",
-    spice: "Hot",
-    popular: true,
-    description: "Tender chicken pieces grilled in a spiced yogurt marinade.",
-    ingredients: ["Chicken", "Yogurt", "Ginger", "Spices"],
-    image: "🍗",
-    available: true,
-  },
-  {
-    id: 5,
-    name: "Veg Biryani",
-    category: "Main Course",
-    price: 260,
-    rating: 4.5,
-    reviews: 87,
-    dietary: "Vegetarian",
-    spice: "Medium",
-    popular: false,
-    description: "Fragrant basmati rice cooked with vegetables and whole spices.",
-    ingredients: ["Basmati rice", "Mixed vegetables", "Mint", "Spices"],
-    image: "🍚",
-    available: true,
-  },
-  {
-    id: 6,
-    name: "Dal Makhani",
-    category: "Main Course",
-    price: 240,
-    rating: 4.7,
-    reviews: 76,
-    dietary: "Vegetarian",
-    spice: "Mild",
-    popular: false,
-    description: "Slow-cooked black lentils prepared with a creamy tomato gravy.",
-    ingredients: ["Black lentils", "Tomatoes", "Cream", "Butter"],
-    image: "🥣",
-    available: true,
-  },
-  {
-    id: 7,
-    name: "Garden Fresh Salad",
-    category: "Healthy",
-    price: 180,
-    rating: 4.4,
-    reviews: 53,
-    dietary: "Vegan",
-    spice: "Mild",
-    popular: false,
-    description: "A refreshing bowl of seasonal vegetables with lemon dressing.",
-    ingredients: ["Lettuce", "Cucumber", "Tomatoes", "Lemon"],
-    image: "🥗",
-    available: true,
-  },
-  {
-    id: 8,
-    name: "Grilled Fish",
-    category: "Main Course",
-    price: 420,
-    rating: 4.8,
-    reviews: 91,
-    dietary: "Non-Vegetarian",
-    spice: "Medium",
-    popular: false,
-    description: "Grilled fish fillet seasoned with herbs and lemon.",
-    ingredients: ["Fish fillet", "Lemon", "Herbs", "Olive oil"],
-    image: "🐟",
-    available: true,
-  },
-  {
-    id: 9,
-    name: "Chocolate Brownie",
-    category: "Desserts",
-    price: 160,
-    rating: 4.7,
-    reviews: 113,
-    dietary: "Vegetarian",
-    spice: "Mild",
-    popular: true,
-    description: "Rich chocolate brownie with a soft, fudgy centre.",
-    ingredients: ["Chocolate", "Flour", "Butter", "Sugar"],
-    image: "🍫",
-    available: true,
-  },
-  {
-    id: 10,
-    name: "Fresh Lime Soda",
-    category: "Beverages",
-    price: 90,
-    rating: 4.3,
-    reviews: 64,
-    dietary: "Vegan",
-    spice: "Mild",
-    popular: false,
-    description: "A refreshing lime drink served sweet, salted, or plain.",
-    ingredients: ["Lime", "Soda water", "Sugar or salt"],
-    image: "🍋",
-    available: true,
-  },
-  {
-    id: 11,
-    name: "Butter Chicken",
-    category: "Main Course",
-    price: 380,
-    rating: 4.8,
-    reviews: 135,
-    dietary: "Non-Vegetarian",
-    spice: "Medium",
-    popular: true,
-    description: "Chicken simmered in a rich tomato and butter-based gravy.",
-    ingredients: ["Chicken", "Tomatoes", "Butter", "Cream", "Spices"],
-    image: "🍛",
-    available: true,
-  },
-  {
-    id: 12,
-    name: "Fruit Bowl",
-    category: "Healthy",
-    price: 150,
-    rating: 4.5,
-    reviews: 42,
-    dietary: "Vegan",
-    spice: "Mild",
-    popular: false,
-    description: "A colourful selection of seasonal fresh fruits.",
-    ingredients: ["Seasonal fruits"],
-    image: "🍓",
-    available: true,
-  },
-];
+const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
+
 
 const currency = (amount) =>
   new Intl.NumberFormat("en-IN", {
@@ -192,7 +13,11 @@ const currency = (amount) =>
   }).format(amount);
 
 function FoodRecommendations() {
-  const [dishes] = useState(initialDishes);
+  const [dishes, setDishes] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [dietary, setDietary] = useState("All");
@@ -203,24 +28,118 @@ function FoodRecommendations() {
   const [selectedDish, setSelectedDish] = useState(null);
   const [recommendationMode, setRecommendationMode] = useState(false);
 
-  const categories = [
+
+    useEffect(() => {
+    let isMounted = true;
+
+    async function loadRecommendationData() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const [menuData, orderData] = await Promise.all([
+          apiRequest(`/api/menu/${BRANCH_ID}`),
+          apiRequest(`/api/orders/${BRANCH_ID}`),
+        ]);
+
+        if (!Array.isArray(menuData) || !Array.isArray(orderData)) {
+          throw new Error("The server returned an unexpected data format.");
+        }
+
+        if (isMounted) {
+          setDishes(menuData);
+          setOrders(orderData);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(
+            err.message || "Unable to load menu recommendations."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadRecommendationData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+    const salesByMenuItemId = useMemo(() => {
+    const totals = {};
+
+    for (const order of orders) {
+      if (order.status === "Cancelled" || !Array.isArray(order.items)) {
+        continue;
+      }
+
+      for (const item of order.items) {
+        const menuItemId = String(
+          item.menuItemId?._id ?? item.menuItemId ?? ""
+        );
+
+        if (!menuItemId) {
+          continue;
+        }
+
+        const quantity = Number(item.quantity) || 0;
+
+        totals[menuItemId] = (totals[menuItemId] || 0) + quantity;
+      }
+    }
+
+    return totals;
+  }, [orders]);
+
+    const recommendationDishes = useMemo(() => {
+    return dishes.map((dish) => {
+      const salesCount =
+        salesByMenuItemId[String(dish._id)] || 0;
+
+      const categoryIcons = {
+        Starters: "🥗",
+        "Main Course": "🍽️",
+        Pizza: "🍕",
+        Desserts: "🍰",
+        Beverages: "🥤",
+      };
+
+      return {
+        ...dish,
+        id: String(dish._id),
+        salesCount,
+        popular: salesCount > 0,
+        image: categoryIcons[dish.category] || "🍽️",
+        ingredients: Array.isArray(dish.ingredients)
+          ? dish.ingredients
+          : [],
+      };
+    });
+  }, [dishes, salesByMenuItemId]);
+
+    const categories = [
     "All",
     "Starters",
     "Main Course",
-    "Healthy",
+    "Pizza",
     "Desserts",
     "Beverages",
   ];
 
-  const filteredDishes = useMemo(() => {
+    const filteredDishes = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    const result = dishes.filter((dish) => {
+    const result = recommendationDishes.filter((dish) => {
       const matchesSearch =
-        dish.name.toLowerCase().includes(query) ||
-        dish.description.toLowerCase().includes(query) ||
+        String(dish.name || "").toLowerCase().includes(query) ||
+        String(dish.description || "").toLowerCase().includes(query) ||
         dish.ingredients.some((ingredient) =>
-          ingredient.toLowerCase().includes(query)
+          String(ingredient).toLowerCase().includes(query)
         );
 
       const matchesCategory =
@@ -229,9 +148,10 @@ function FoodRecommendations() {
       const matchesDietary =
         dietary === "All" || dish.dietary === dietary;
 
-      const matchesPrice = dish.price <= maxPrice;
+      const matchesPrice = Number(dish.price) <= maxPrice;
 
-      const matchesPopularity = !showPopularOnly || dish.popular;
+      const matchesPopularity =
+        !showPopularOnly || dish.popular;
 
       return (
         matchesSearch &&
@@ -247,21 +167,24 @@ function FoodRecommendations() {
       result.sort((a, b) => a.price - b.price);
     } else if (sortBy === "price-high") {
       result.sort((a, b) => b.price - a.price);
-    } else if (sortBy === "rating") {
-      result.sort((a, b) => b.rating - a.rating);
-    } else if (sortBy === "popular") {
-      result.sort(
-        (a, b) => Number(b.popular) - Number(a.popular) || b.rating - a.rating
-      );
-    } else {
+    } else if (sortBy === "popular" || sortBy === "recommended") {
       result.sort(
         (a, b) =>
-          Number(b.popular) - Number(a.popular) || b.rating - a.rating
+          b.salesCount - a.salesCount ||
+          a.price - b.price
       );
     }
 
     return result;
-  }, [dishes, search, category, dietary, maxPrice, showPopularOnly, sortBy]);
+  }, [
+    recommendationDishes,
+    search,
+    category,
+    dietary,
+    maxPrice,
+    showPopularOnly,
+    sortBy,
+  ]);
 
   const recommendations = useMemo(() => {
     const amount = Number(budget);
@@ -270,57 +193,89 @@ function FoodRecommendations() {
       return [];
     }
 
-    return [...dishes]
+    return recommendationDishes
       .filter(
         (dish) =>
           dish.available &&
-          dish.price <= amount &&
+          Number(dish.price) <= amount &&
           (dietary === "All" || dish.dietary === dietary)
       )
       .sort(
         (a, b) =>
-          Number(b.popular) - Number(a.popular) || b.rating - a.rating
+          b.salesCount - a.salesCount ||
+          a.price - b.price
       )
       .slice(0, 4);
-  }, [dishes, budget, dietary]);
+  }, [recommendationDishes, budget, dietary]);
 
-  const resetFilters = () => {
-    setSearch("");
-    setCategory("All");
-    setDietary("All");
-    setSortBy("recommended");
-    setMaxPrice(500);
-    setShowPopularOnly(false);
-    setRecommendationMode(false);
-  };
+    const availableDishes = useMemo(
+    () => recommendationDishes.filter((dish) => dish.available),
+    [recommendationDishes]
+  );
+
+  const popularDishesCount = availableDishes.filter(
+    (dish) => dish.salesCount > 0
+  ).length;
+
+  const dietaryOptionsCount = new Set(
+    availableDishes
+      .map((dish) => dish.dietary)
+      .filter(Boolean)
+  ).size;
+
+  const startingPrice = availableDishes.length
+    ? Math.min(...availableDishes.map((dish) => Number(dish.price)))
+    : null;
+
+    const resetFilters = () => {
+  setSearch("");
+  setCategory("All");
+  setDietary("All");
+  setSortBy("recommended");
+  setMaxPrice(500);
+  setShowPopularOnly(false);
+  setRecommendationMode(false);
+};
 
   return (
-    <main className="food-page">
-      <header className="food-header">
-        <div>
-          <p className="food-eyebrow">RESTAURANT OPERATIONS</p>
-          <h1>Food Recommendations</h1>
-          <p className="food-subtitle">
-            Discover popular dishes and suggest the right meal for every guest.
-          </p>
-        </div>
+  <main className="food-page">
+    <header className="food-header">
+      <div>
+        <p className="food-eyebrow">RESTAURANT OPERATIONS</p>
+        <h1>Food Recommendations</h1>
+        <p className="food-subtitle">
+          Discover popular dishes and suggest the right meal for every guest.
+        </p>
+      </div>
 
-        <button
-          type="button"
-          className="food-recommend-button"
-          onClick={() => setRecommendationMode((current) => !current)}
-        >
-          <span aria-hidden="true">✦</span>
-          {recommendationMode ? "Browse Menu" : "Find Recommendations"}
-        </button>
-      </header>
+      <button
+        type="button"
+        className="food-recommend-button"
+        onClick={() => setRecommendationMode((current) => !current)}
+      >
+        <span aria-hidden="true">✦</span>
+        {recommendationMode ? "Browse Menu" : "Find Recommendations"}
+      </button>
+    </header>
 
-      <section className="food-overview">
+    {loading && (
+      <p className="food-no-results" role="status">
+        Loading menu and recommendations...
+      </p>
+    )}
+
+    {!loading && error && (
+      <p className="food-no-results" role="alert">
+        Unable to load food recommendations: {error}
+      </p>
+    )}
+
+    <section className="food-overview">
         <article className="food-overview-card">
           <div className="food-overview-icon">🍽</div>
           <div>
             <span>Available Dishes</span>
-            <strong>{dishes.filter((dish) => dish.available).length}</strong>
+            <strong>{availableDishes.length}</strong>
           </div>
         </article>
 
@@ -328,7 +283,7 @@ function FoodRecommendations() {
           <div className="food-overview-icon">★</div>
           <div>
             <span>Popular Choices</span>
-            <strong>{dishes.filter((dish) => dish.popular).length}</strong>
+            <strong>{popularDishesCount}</strong>
           </div>
         </article>
 
@@ -336,7 +291,7 @@ function FoodRecommendations() {
           <div className="food-overview-icon">♧</div>
           <div>
             <span>Dietary Options</span>
-            <strong>3</strong>
+            <strong>{dietaryOptionsCount}</strong>
           </div>
         </article>
 
@@ -344,7 +299,7 @@ function FoodRecommendations() {
           <div className="food-overview-icon">₹</div>
           <div>
             <span>Starting Price</span>
-            <strong>{currency(Math.min(...dishes.map((dish) => dish.price)))}</strong>
+            <strong>{startingPrice === null ? "—" : currency(startingPrice)}</strong>
           </div>
         </article>
       </section>
@@ -412,7 +367,7 @@ function FoodRecommendations() {
                   <span className="food-recommendation-info">
                     <strong>{dish.name}</strong>
                     <small>
-                      {dish.dietary} · ★ {dish.rating}
+                      {dish.dietary || "Dietary information unavailable"} · {dish.salesCount} ordered
                     </small>
                   </span>
                   <strong className="food-recommendation-price">
@@ -492,7 +447,6 @@ function FoodRecommendations() {
               >
                 <option value="recommended">Recommended</option>
                 <option value="popular">Most Popular</option>
-                <option value="rating">Highest Rated</option>
                 <option value="price-low">Price: Low to High</option>
                 <option value="price-high">Price: High to Low</option>
               </select>
@@ -550,11 +504,11 @@ function FoodRecommendations() {
 
                   <span className="food-dietary-badge">
                     <span
-                      className={`food-dietary-dot food-dietary-${dish.dietary
-                        .toLowerCase()
-                        .replace(/[^a-z]+/g, "-")}`}
-                    />
-                    {dish.dietary}
+    className={`food-dietary-dot food-dietary-${(dish.dietary || "unspecified")
+      .toLowerCase()
+      .replace(/[^a-z]+/g, "-")}`}
+  />
+  {dish.dietary || "Not specified"}
                   </span>
                 </div>
 
@@ -567,17 +521,16 @@ function FoodRecommendations() {
                   <p className="food-dish-description">{dish.description}</p>
 
                   <div className="food-dish-meta">
-                    <span className="food-rating">
-                      ★ {dish.rating}
-                      <small>({dish.reviews})</small>
-                    </span>
-                    <span>{dish.category}</span>
-                  </div>
+  <span className="food-rating">
+    {dish.salesCount} ordered
+  </span>
+  <span>{dish.category}</span>
+</div>
 
                   <div className="food-dish-footer">
                     <span className="food-spice-level">
                       <span aria-hidden="true">♨</span>
-                      {dish.spice}
+                      {dish.spice || "Not specified"}
                     </span>
 
                     <button
@@ -592,7 +545,7 @@ function FoodRecommendations() {
               </article>
             ))}
           </div>
-        ) : (
+         ) : !loading && !error ? (
           <div className="food-empty-state">
             <span aria-hidden="true">⌕</span>
             <h3>No matching dishes</h3>
@@ -601,7 +554,7 @@ function FoodRecommendations() {
               Clear filters
             </button>
           </div>
-        )}
+         ) : null}
       </section>
 
       {selectedDish && (
@@ -637,30 +590,33 @@ function FoodRecommendations() {
               </div>
 
               <div className="food-modal-meta">
-                <span>★ {selectedDish.rating}</span>
-                <span>{selectedDish.reviews} reviews</span>
-                <span>{selectedDish.spice} spice</span>
-              </div>
+  <span>{selectedDish.salesCount} ordered</span>
+  <span>{selectedDish.spice || "Spice level unspecified"}</span>
+</div>
 
               <p className="food-modal-description">
                 {selectedDish.description}
               </p>
 
               <div className="food-modal-diet">
-                <span
-                  className={`food-dietary-dot food-dietary-${selectedDish.dietary
-                    .toLowerCase()
-                    .replace(/[^a-z]+/g, "-")}`}
-                />
-                {selectedDish.dietary}
-              </div>
+  <span
+    className={`food-dietary-dot food-dietary-${(selectedDish.dietary || "unspecified")
+      .toLowerCase()
+      .replace(/[^a-z]+/g, "-")}`}
+  />
+  {selectedDish.dietary || "Not specified"}
+</div>
 
               <div className="food-ingredients-section">
                 <h3>Ingredients</h3>
                 <div className="food-ingredient-list">
-                  {selectedDish.ingredients.map((ingredient) => (
-                    <span key={ingredient}>{ingredient}</span>
-                  ))}
+                  {selectedDish.ingredients.length > 0 ? (
+    selectedDish.ingredients.map((ingredient, index) => (
+      <span key={`${ingredient}-${index}`}>{ingredient}</span>
+    ))
+  ) : (
+    <span>Ingredients not specified</span>
+  )}
                 </div>
               </div>
 

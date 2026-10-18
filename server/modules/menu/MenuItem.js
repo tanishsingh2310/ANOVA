@@ -45,6 +45,32 @@ const menuItemSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+
+    // Food Recommendations: Dietary classification
+    dietary: {
+      type: String,
+      enum: ["Vegetarian", "Vegan", "Non-Vegetarian"],
+      default: null,
+    },
+
+    // Food Recommendations: Spice preference
+    spice: {
+      type: String,
+      enum: ["Mild", "Medium", "Hot"],
+      default: null,
+    },
+
+    // Food Recommendations: Dish ingredients
+    ingredients: {
+      type: [
+        {
+          type: String,
+          trim: true,
+          maxlength: 100,
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true,
