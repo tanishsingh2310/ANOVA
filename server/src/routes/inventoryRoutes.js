@@ -15,8 +15,11 @@ const {
   INVENTORY_READ_ROLES,
   INVENTORY_WRITE_ROLES,
   PROCUREMENT_WRITE_ROLES,
-  SENSITIVE_ADMIN_ROLES
+  SENSITIVE_ADMIN_ROLES,
+  KITCHEN_CONSUME_ROLES
 } = require('../config/roles');
+const { depleteBatchesFIFO, adjustBatches } = require('../utils/batchUtil');
+const { UnitConversion } = require('../utils/unitConversion');
 
 // Standard response helper
 const sendResponse = (res, statusCode, success, data, message) => {
@@ -97,6 +100,7 @@ router.post('/ingredients/:id/adjust', authorize(INVENTORY_WRITE_ROLES), branchG
     const delta = Number(newQuantity) - previousQty;
 
     ingredient.stockByBranch.set(branch, Number(newQuantity));
+    adjustBatches(ingredient.batches, branch, delta, ingredient.unitCost, reason);
     await ingredient.save();
 
     // Audit log
@@ -590,6 +594,7 @@ router.post('/transfers/dispatch', authorize(INVENTORY_WRITE_ROLES), branchGuard
 
       const newStock = current - Number(item.qty);
       ing.stockByBranch.set(fromBranch, newStock);
+      depleteBatchesFIFO(ing.batches, fromBranch, Number(item.qty), item.batchNumber);
       await ing.save();
 
       await StockMovement.create({
@@ -704,7 +709,7 @@ router.get('/wastage', async (req, res, next) => {
 
 router.post('/wastage', authorize(INVENTORY_WRITE_ROLES), branchGuard, async (req, res, next) => {
   try {
-    const { branch, ingredient: ingId, quantity, reason, notes, loggedBy } = req.body;
+    const { branch, ingredient: ingId, quantity, reason, notes, loggedBy, batchNumber } = req.body;
     const ing = await Ingredient.findById(ingId);
     if (!ing) return sendResponse(res, 404, false, null, 'Ingredient not found');
 
@@ -715,6 +720,7 @@ router.post('/wastage', authorize(INVENTORY_WRITE_ROLES), branchGuard, async (re
 
     const newStock = currentStock - Number(quantity);
     ing.stockByBranch.set(branch, newStock);
+    depleteBatchesFIFO(ing.batches, branch, Number(quantity), batchNumber);
     await ing.save();
 
     const unitCost = ing.unitCost;
@@ -840,23 +846,43 @@ router.get('/analytics/valuation', async (req, res, next) => {
     const items = [];
 
     for (const ing of ingredients) {
+      let branchStock = 0;
+      if (branch === 'all') {
+        for (const [_, qty] of ing.stockByBranch.entries()) {
+          branchStock += Number(qty || 0);
+        }
+      } else {
+        branchStock = Number(ing.stockByBranch.get(branch) || 0);
+      }
+
       let activeBatches = ing.batches.filter(b => b.quantity > 0);
       if (branch !== 'all') {
         activeBatches = activeBatches.filter(b => b.branch === branch);
       }
 
-      const totalQty = activeBatches.reduce((acc, b) => acc + b.quantity, 0);
       let calculatedValue = 0;
 
-      if (method === 'FIFO') {
-        const sorted = [...activeBatches].sort((a, b) => new Date(a.createdAt || a.expiryDate) - new Date(b.createdAt || b.expiryDate));
-        for (const b of sorted) {
-          calculatedValue += b.quantity * (b.receivedCost || ing.unitCost);
+      if (activeBatches.length > 0) {
+        if (method === 'FIFO') {
+          const sorted = [...activeBatches].sort((a, b) => new Date(a.createdAt || a.expiryDate) - new Date(b.createdAt || b.expiryDate));
+          let remainingQty = branchStock;
+          for (const b of sorted) {
+            const take = Math.min(b.quantity, remainingQty);
+            calculatedValue += take * (b.receivedCost || ing.unitCost);
+            remainingQty -= take;
+            if (remainingQty <= 0) break;
+          }
+          if (remainingQty > 0) {
+            calculatedValue += remainingQty * ing.unitCost;
+          }
+        } else {
+          const totalBatchCost = activeBatches.reduce((acc, b) => acc + (b.quantity * (b.receivedCost || ing.unitCost)), 0);
+          const totalBatchQty = activeBatches.reduce((acc, b) => acc + b.quantity, 0);
+          const avgUnitCost = totalBatchQty > 0 ? (totalBatchCost / totalBatchQty) : ing.unitCost;
+          calculatedValue = branchStock * avgUnitCost;
         }
       } else {
-        const totalBatchCost = activeBatches.reduce((acc, b) => acc + (b.quantity * (b.receivedCost || ing.unitCost)), 0);
-        const avgUnitCost = totalQty > 0 ? (totalBatchCost / totalQty) : ing.unitCost;
-        calculatedValue = totalQty * avgUnitCost;
+        calculatedValue = branchStock * ing.unitCost;
       }
 
       totalPortfolioValue += calculatedValue;
@@ -867,8 +893,8 @@ router.get('/analytics/valuation', async (req, res, next) => {
         category: ing.category,
         unit: ing.baseUnit,
         baseUnit: ing.baseUnit,
-        quantity: totalQty,
-        unitCost: totalQty > 0 ? Math.round((calculatedValue / totalQty) * 100) / 100 : ing.unitCost,
+        quantity: branchStock,
+        unitCost: branchStock > 0 ? Math.round((calculatedValue / branchStock) * 100) / 100 : ing.unitCost,
         valuation: Math.round(calculatedValue * 100) / 100,
         totalValue: Math.round(calculatedValue * 100) / 100,
         valuationMethod: method
@@ -890,53 +916,292 @@ router.get('/analytics/valuation', async (req, res, next) => {
 });
 
 // ==========================================
-// 7. KITCHEN CONSUMPTION
+// 7. KITCHEN CONSUMPTION & CROSS-MODULE INTEGRATION HANDSHAKES
+// Aligned with Member 3 (Kitchen Workflow) & Member 4 (POS / Billing) Contracts
 // ==========================================
-router.post(
-  '/recipe/consume',
-  authorize(ROLES.OWNER, ROLES.ADMIN, ROLES.INVENTORY_MANAGER, ROLES.BRANCH_MANAGER, ROLES.CHEF),
-  branchGuard,
-  async (req, res, next) => {
+
+// GET /stock-status - Real-time branch 86-list and stock availability
+router.get('/stock-status', async (req, res, next) => {
   try {
-    const { branch, orderId, orderNumber, items, preparedBy = 'Kitchen Station' } = req.body;
-    if (!branch || !items || !Array.isArray(items) || items.length === 0) {
-      return sendResponse(res, 400, false, null, 'Branch and valid items array are required');
-    }
+    const { branch = 'all' } = req.query;
+    const ingredients = await Ingredient.find().sort({ name: 1 });
 
-    const deducted = [];
-    for (const item of items) {
-      const ing = await Ingredient.findById(item.ingredientId || item.ingredient);
-      if (!ing) return sendResponse(res, 404, false, null, `Ingredient not found: ${item.ingredientId}`);
+    const outOfStock = [];
+    const criticallyLow = [];
+    const lowStock = [];
 
-      const current = ing.stockByBranch.get(branch) || 0;
-      const consumeQty = Number(item.quantity || item.qty);
-      if (current < consumeQty) {
-        return sendResponse(res, 400, false, null, `Insufficient stock for ${ing.name} at ${branch}. Available: ${current}, Required: ${consumeQty}`);
+    for (const ing of ingredients) {
+      let stock = 0;
+      if (branch === 'all') {
+        for (const [_, qty] of ing.stockByBranch.entries()) {
+          stock += Number(qty || 0);
+        }
+      } else {
+        stock = Number(ing.stockByBranch.get(branch) || 0);
       }
 
-      const newBalance = current - consumeQty;
-      ing.stockByBranch.set(branch, newBalance);
-      await ing.save();
+      const itemInfo = {
+        ingredientId: ing._id,
+        sku: ing.sku,
+        name: ing.name,
+        category: ing.category,
+        baseUnit: ing.baseUnit,
+        currentStock: stock,
+        minThreshold: ing.minThreshold,
+        reorderLevel: ing.reorderLevel
+      };
 
-      const movement = await StockMovement.create({
-        type: 'RECIPE_CONSUMPTION',
-        reference: `ORD-${orderNumber || orderId || 'POS'}`,
-        ingredient: ing._id,
-        branch,
-        deltaQty: -consumeQty,
-        unit: ing.baseUnit,
-        resultingBalance: newBalance,
-        performedBy: preparedBy,
-        notes: `Recipe consumption for order ${orderNumber || orderId}`
-      });
-
-      deducted.push({ ingredient: ing.name, consumed: consumeQty, remaining: newBalance, movementId: movement._id });
+      if (stock <= 0) {
+        outOfStock.push({ ...itemInfo, status: 'OUT_OF_STOCK' });
+      } else if (stock <= ing.minThreshold * 0.5) {
+        criticallyLow.push({ ...itemInfo, status: 'CRITICALLY_LOW' });
+      } else if (stock <= ing.minThreshold) {
+        lowStock.push({ ...itemInfo, status: 'LOW_STOCK' });
+      }
     }
 
-    sendResponse(res, 200, true, { deducted }, 'Recipe ingredients successfully deducted from branch inventory');
+    sendResponse(res, 200, true, {
+      branch,
+      timestamp: new Date().toISOString(),
+      counts: {
+        outOfStock: outOfStock.length,
+        criticallyLow: criticallyLow.length,
+        lowStock: lowStock.length,
+        totalAlerts: outOfStock.length + criticallyLow.length + lowStock.length
+      },
+      outOfStock,
+      criticallyLow,
+      lowStock
+    }, 'Branch stock status and 86-list retrieved');
   } catch (err) {
     next(err);
   }
 });
+
+// POST /recipe/check-availability - Non-destructive pre-flight check for KDS & POS
+router.post(
+  '/recipe/check-availability',
+  authorize(KITCHEN_CONSUME_ROLES),
+  branchGuard,
+  async (req, res, next) => {
+    try {
+      const { branch, items } = req.body;
+      if (!branch || !items || !Array.isArray(items)) {
+        return sendResponse(res, 400, false, null, 'Branch and valid items array are required');
+      }
+
+      let allAvailable = true;
+      const checkedItems = [];
+
+      for (const item of items) {
+        const ingId = item.ingredientId || item.ingredient;
+        const ing = await Ingredient.findById(ingId);
+        if (!ing) {
+          allAvailable = false;
+          checkedItems.push({
+            ingredientId: ingId,
+            found: false,
+            error: 'Ingredient not found in master catalog'
+          });
+          continue;
+        }
+
+        const rawQty = Number(item.quantity !== undefined ? item.quantity : item.qty);
+        let requiredInBase = rawQty;
+        const requestedUnit = item.unit || ing.baseUnit;
+
+        if (requestedUnit !== ing.baseUnit) {
+          try {
+            requiredInBase = UnitConversion.convert(rawQty, requestedUnit, ing.baseUnit);
+          } catch (unitErr) {
+            allAvailable = false;
+            checkedItems.push({
+              ingredientId: ing._id,
+              name: ing.name,
+              error: unitErr.message
+            });
+            continue;
+          }
+        }
+
+        const available = ing.stockByBranch.get(branch) || 0;
+        const isSufficient = available >= requiredInBase;
+        if (!isSufficient) allAvailable = false;
+
+        checkedItems.push({
+          ingredientId: ing._id,
+          sku: ing.sku,
+          name: ing.name,
+          requestedQty: rawQty,
+          requestedUnit,
+          requiredInBaseUnit: requiredInBase,
+          baseUnit: ing.baseUnit,
+          availableStock: available,
+          isSufficient,
+          deficit: isSufficient ? 0 : UnitConversion.roundQuantity(requiredInBase - available)
+        });
+      }
+
+      sendResponse(res, 200, true, {
+        branch,
+        allAvailable,
+        items: checkedItems
+      }, allAvailable ? 'All ingredients available for order' : 'Insufficient ingredients for order');
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// POST /recipe/consume - Atomic recipe consumption with FIFO depletion and alert triggering
+router.post(
+  '/recipe/consume',
+  authorize(KITCHEN_CONSUME_ROLES),
+  branchGuard,
+  async (req, res, next) => {
+    try {
+      const { branch, orderId, orderNumber, items, preparedBy = req.user?.id || 'Kitchen Station' } = req.body;
+      if (!branch || !items || !Array.isArray(items) || items.length === 0) {
+        return sendResponse(res, 400, false, null, 'Branch and a non-empty items array are required');
+      }
+
+      // STEP 1: ATOMIC PRE-VALIDATION & UNIT CONVERSION STAGING
+      const stagedItems = [];
+      const validationErrors = [];
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const ingId = item.ingredientId || item.ingredient;
+        if (!ingId) {
+          validationErrors.push({ index: i, error: 'Missing ingredientId' });
+          continue;
+        }
+
+        const ing = await Ingredient.findById(ingId);
+        if (!ing) {
+          validationErrors.push({ index: i, ingredientId: ingId, error: `Ingredient not found: ${ingId}` });
+          continue;
+        }
+
+        const rawQty = Number(item.quantity !== undefined ? item.quantity : item.qty);
+        if (isNaN(rawQty) || rawQty <= 0) {
+          validationErrors.push({ index: i, ingredientId: ingId, name: ing.name, error: `Invalid consumption quantity: ${rawQty}` });
+          continue;
+        }
+
+        let consumeQtyInBaseUnit = rawQty;
+        const requestedUnit = item.unit || ing.baseUnit;
+        if (requestedUnit !== ing.baseUnit) {
+          try {
+            consumeQtyInBaseUnit = UnitConversion.convert(rawQty, requestedUnit, ing.baseUnit);
+          } catch (unitErr) {
+            validationErrors.push({
+              index: i,
+              ingredientId: ingId,
+              name: ing.name,
+              error: `Unit conversion error: ${unitErr.message}`
+            });
+            continue;
+          }
+        }
+
+        const currentStock = ing.stockByBranch.get(branch) || 0;
+        if (currentStock < consumeQtyInBaseUnit) {
+          validationErrors.push({
+            index: i,
+            ingredientId: ingId,
+            name: ing.name,
+            available: currentStock,
+            required: consumeQtyInBaseUnit,
+            unit: ing.baseUnit,
+            error: `Insufficient stock for ${ing.name} at branch '${branch}'. Available: ${currentStock} ${ing.baseUnit}, Required: ${consumeQtyInBaseUnit} ${ing.baseUnit}`
+          });
+          continue;
+        }
+
+        stagedItems.push({
+          ing,
+          rawQty,
+          requestedUnit,
+          consumeQtyInBaseUnit,
+          batchNumber: item.batchNumber
+        });
+      }
+
+      // If any validation error occurred, abort immediately WITHOUT mutating any stock
+      if (validationErrors.length > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Recipe consumption aborted: ${validationErrors.length} item(s) failed validation`,
+          errors: validationErrors
+        });
+      }
+
+      // STEP 2: ATOMIC EXECUTION & BATCH LEDGER DEPLETION
+      const deducted = [];
+      const lowStockAlerts = [];
+      const orderRef = orderNumber || orderId || `POS-${Date.now().toString().slice(-4)}`;
+
+      for (const staged of stagedItems) {
+        const { ing, consumeQtyInBaseUnit, requestedUnit, rawQty, batchNumber } = staged;
+        const currentStock = ing.stockByBranch.get(branch) || 0;
+        const newBalance = UnitConversion.roundQuantity(currentStock - consumeQtyInBaseUnit);
+
+        ing.stockByBranch.set(branch, newBalance);
+        depleteBatchesFIFO(ing.batches, branch, consumeQtyInBaseUnit, batchNumber);
+        await ing.save();
+
+        const movement = await StockMovement.create({
+          type: 'RECIPE_CONSUMPTION',
+          reference: `ORD-${orderRef}`,
+          ingredient: ing._id,
+          branch,
+          deltaQty: -consumeQtyInBaseUnit,
+          unit: ing.baseUnit,
+          resultingBalance: newBalance,
+          performedBy: preparedBy,
+          notes: `Recipe consumption for order ${orderRef}. Consumed ${rawQty} ${requestedUnit} (${consumeQtyInBaseUnit} ${ing.baseUnit})`
+        });
+
+        const isOutOfStock = newBalance <= 0;
+        const isLowStock = newBalance <= ing.minThreshold;
+
+        if (isLowStock) {
+          lowStockAlerts.push({
+            ingredientId: ing._id,
+            sku: ing.sku,
+            name: ing.name,
+            currentBalance: newBalance,
+            minThreshold: ing.minThreshold,
+            unit: ing.baseUnit,
+            isOutOfStock
+          });
+        }
+
+        deducted.push({
+          ingredientId: ing._id,
+          sku: ing.sku,
+          name: ing.name,
+          consumedQty: consumeQtyInBaseUnit,
+          baseUnit: ing.baseUnit,
+          remainingBalance: newBalance,
+          movementId: movement._id,
+          isLowStock,
+          isOutOfStock
+        });
+      }
+
+      sendResponse(res, 200, true, {
+        orderRef,
+        branch,
+        totalItemsDeducted: deducted.length,
+        deducted,
+        lowStockAlerts
+      }, 'Recipe ingredients successfully deducted from branch inventory');
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 module.exports = router;

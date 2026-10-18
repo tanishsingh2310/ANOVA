@@ -238,6 +238,37 @@ export const InventoryService = {
     if (!item.stockByBranch) item.stockByBranch = {};
     item.stockByBranch[branchId] = updatedQty;
 
+    // Synchronize batches via FIFO / adjustment batch
+    if (!item.batches) item.batches = [];
+    if (delta < 0) {
+      let remainingToDeduct = Math.abs(delta);
+      const branchBatches = item.batches
+        .filter(b => (b.branchId === branchId || b.branch === branchId) && ((b.qty !== undefined ? b.qty : b.quantity) > 0))
+        .sort((a, b) => new Date(a.expiryDate || 0) - new Date(b.expiryDate || 0));
+
+      for (const batch of branchBatches) {
+        if (remainingToDeduct <= 0) break;
+        const currentBatchQty = batch.qty !== undefined ? batch.qty : batch.quantity;
+        const take = Math.min(currentBatchQty, remainingToDeduct);
+        if (batch.qty !== undefined) batch.qty -= take;
+        if (batch.quantity !== undefined) batch.quantity -= take;
+        remainingToDeduct -= take;
+      }
+    } else if (delta > 0) {
+      const exp = new Date();
+      exp.setDate(exp.getDate() + 90);
+      item.batches.push({
+        id: `bat_${Date.now()}`,
+        branchId,
+        branch: branchId,
+        batchNumber: `ADJ-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+        qty: delta,
+        quantity: delta,
+        expiryDate: exp.toISOString().split('T')[0],
+        receivedCost: Number(item.unitCost || 0)
+      });
+    }
+
     // Create Audit Log
     const movements = getStored(STORAGE_KEYS.MOVEMENTS, SEED_STOCK_MOVEMENTS);
     const movement = {

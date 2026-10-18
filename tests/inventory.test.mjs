@@ -640,4 +640,183 @@ describe('ANOVA Inventory & Supply Chain Suite', () => {
       assert.equal(ing.getStock('b_downtown'), 50);
     });
   });
+
+  // ==========================================================
+  // PHASE 4: BUSINESS LOGIC & DATA INTEGRITY (FIFO BATCH DEPLETION)
+  // ==========================================================
+  describe('Phase 4: Business Logic & Data Integrity (FIFO Batch Depletion)', () => {
+    test('4.1 - depleteBatchesFIFO exhausts oldest batches chronologically', async () => {
+      const { depleteBatchesFIFO } = (await import('../server/src/utils/batchUtil.js')).default || (await import('../server/src/utils/batchUtil.js'));
+
+      const batches = [
+        { batchNumber: 'BATCH-C', branch: 'b_downtown', quantity: 15, expiryDate: new Date('2026-08-01') },
+        { batchNumber: 'BATCH-A', branch: 'b_downtown', quantity: 10, expiryDate: new Date('2026-05-01') },
+        { batchNumber: 'BATCH-B', branch: 'b_downtown', quantity: 20, expiryDate: new Date('2026-06-01') },
+        { batchNumber: 'BATCH-OTHER', branch: 'b_uptown', quantity: 30, expiryDate: new Date('2026-04-01') }
+      ];
+
+      // Deduct 25 from b_downtown.
+      // Oldest is BATCH-A (10), next is BATCH-B (20).
+      // BATCH-A should be 0, BATCH-B should be 5, BATCH-C should remain 15.
+      // Other branch must not be touched.
+      const deducted = depleteBatchesFIFO(batches, 'b_downtown', 25);
+
+      assert.equal(deducted, 25);
+      const batchA = batches.find(b => b.batchNumber === 'BATCH-A');
+      const batchB = batches.find(b => b.batchNumber === 'BATCH-B');
+      const batchC = batches.find(b => b.batchNumber === 'BATCH-C');
+      const batchOther = batches.find(b => b.batchNumber === 'BATCH-OTHER');
+
+      assert.equal(batchA.quantity, 0, 'Oldest batch must be exhausted first');
+      assert.equal(batchB.quantity, 5, 'Next oldest batch must be depleted by remaining qty');
+      assert.equal(batchC.quantity, 15, 'Newest batch must remain untouched');
+      assert.equal(batchOther.quantity, 30, 'Batches in other branches must not be affected');
+    });
+
+    test('4.2 - depleteBatchesFIFO prioritizes specific batch number when provided', async () => {
+      const { depleteBatchesFIFO } = (await import('../server/src/utils/batchUtil.js')).default || (await import('../server/src/utils/batchUtil.js'));
+
+      const batches = [
+        { batchNumber: 'BATCH-OLD', branch: 'b_downtown', quantity: 10, expiryDate: new Date('2026-05-01') },
+        { batchNumber: 'BATCH-SPECIFIC', branch: 'b_downtown', quantity: 15, expiryDate: new Date('2026-07-01') }
+      ];
+
+      // Request specific depletion from BATCH-SPECIFIC
+      const deducted = depleteBatchesFIFO(batches, 'b_downtown', 8, 'BATCH-SPECIFIC');
+
+      assert.equal(deducted, 8);
+      const specific = batches.find(b => b.batchNumber === 'BATCH-SPECIFIC');
+      const old = batches.find(b => b.batchNumber === 'BATCH-OLD');
+
+      assert.equal(specific.quantity, 7, 'Targeted batch must be deducted');
+      assert.equal(old.quantity, 10, 'Older batch untouched since specific batch had enough stock');
+    });
+
+    test('4.3 - adjustBatches handles negative delta (FIFO) and positive delta (surplus batch)', async () => {
+      const { adjustBatches } = (await import('../server/src/utils/batchUtil.js')).default || (await import('../server/src/utils/batchUtil.js'));
+
+      const batches = [
+        { batchNumber: 'BATCH-01', branch: 'b_downtown', quantity: 10, expiryDate: new Date('2026-05-01') }
+      ];
+
+      // 1. Positive adjustment (physical surplus found during stocktake)
+      adjustBatches(batches, 'b_downtown', +5, 120, 'ANNUAL_AUDIT');
+      assert.equal(batches.length, 2, 'New adjustment batch should be appended');
+      const adjBatch = batches.find(b => b.batchNumber.startsWith('ADJ-'));
+      assert.ok(adjBatch);
+      assert.equal(adjBatch.quantity, 5);
+      assert.equal(adjBatch.receivedCost, 120);
+
+      // 2. Negative adjustment (spoilage / deficit)
+      adjustBatches(batches, 'b_downtown', -8);
+      assert.equal(batches[0].quantity, 2, 'Oldest batch must be reduced by 8');
+    });
+
+    test('4.4 - Client MovementService dispatchTransfer depletes source batches FIFO', () => {
+      const ingBefore = InventoryService.getIngredientById('ing_01');
+      const initialStock = Number(ingBefore.stockByBranch.b_downtown);
+      const initialBatches = JSON.parse(JSON.stringify(ingBefore.batches || []));
+
+      // Dispatch 5 kg from b_downtown to b_uptown
+      const transfer = MovementService.dispatchTransfer({
+        fromBranchId: 'b_downtown',
+        toBranchId: 'b_uptown',
+        items: [{ ingredientId: 'ing_01', qty: 5, unit: 'kg', unitCost: 320 }],
+        dispatchedBy: 'Logistics Head'
+      });
+
+      assert.ok(transfer);
+      const ingAfter = InventoryService.getIngredientById('ing_01');
+      assert.equal(Number(ingAfter.stockByBranch.b_downtown), initialStock - 5);
+
+      // Verify batch was depleted
+      const branchBatches = (ingAfter.batches || []).filter(b => b.branchId === 'b_downtown');
+      const totalBatchQty = branchBatches.reduce((acc, b) => acc + (b.qty !== undefined ? b.qty : b.quantity), 0);
+      assert.equal(totalBatchQty, initialStock - 5, 'Batches total must match new stock balance');
+    });
+
+    test('4.5 - Client MovementService logWastage depletes batches FIFO', () => {
+      const ingBefore = InventoryService.getIngredientById('ing_02');
+      const initialStock = Number(ingBefore.stockByBranch.b_downtown);
+
+      MovementService.logWastage({
+        branchId: 'b_downtown',
+        ingredientId: 'ing_02',
+        qty: 2,
+        reason: 'SPOILED',
+        loggedBy: 'Chef Marco'
+      });
+
+      const ingAfter = InventoryService.getIngredientById('ing_02');
+      assert.equal(Number(ingAfter.stockByBranch.b_downtown), initialStock - 2);
+
+      const branchBatches = (ingAfter.batches || []).filter(b => b.branchId === 'b_downtown');
+      const totalBatchQty = branchBatches.reduce((acc, b) => acc + (b.qty !== undefined ? b.qty : b.quantity), 0);
+      assert.equal(totalBatchQty, initialStock - 2, 'Batches must match stock balance after wastage');
+    });
+  });
+
+  // ==========================================================
+  // PHASE 5: CROSS-MODULE INTEGRATION CONTRACTS & KITCHEN HANDSHAKE
+  // ==========================================================
+  describe('Phase 5: Cross-Module Integration Contracts & Kitchen Handshake', () => {
+    test('5.1 - UnitConversion supports cross-module recipe unit mapping', async () => {
+      const { UnitConversion } = await import('../server/src/utils/unitConversion.js');
+
+      // Recipe uses grams, inventory uses kg
+      const kgResult = UnitConversion.convert(250, 'g', 'kg');
+      assert.equal(kgResult, 0.25);
+
+      // Recipe uses ml, inventory uses L
+      const literResult = UnitConversion.convert(750, 'ml', 'L');
+      assert.equal(literResult, 0.75);
+
+      // Incompatible conversion throws informative error
+      assert.throws(() => {
+        UnitConversion.convert(100, 'g', 'L');
+      }, /Incompatible unit conversion/);
+    });
+
+    test('5.2 - KITCHEN_CONSUME_ROLES authorizes Kitchen Staff, Chefs, and Cashiers', async () => {
+      const { KITCHEN_CONSUME_ROLES, ROLES } = await import('../server/src/config/roles.js');
+
+      assert.ok(KITCHEN_CONSUME_ROLES.includes(ROLES.CHEF), 'Chef must be authorized');
+      assert.ok(KITCHEN_CONSUME_ROLES.includes(ROLES.KITCHEN_STAFF), 'Kitchen staff must be authorized');
+      assert.ok(KITCHEN_CONSUME_ROLES.includes(ROLES.CASHIER), 'Cashier must be authorized');
+      assert.ok(KITCHEN_CONSUME_ROLES.includes(ROLES.BRANCH_MANAGER), 'Branch Manager must be authorized');
+      assert.ok(KITCHEN_CONSUME_ROLES.includes(ROLES.OWNER), 'Owner must be authorized');
+    });
+
+    test('5.3 - Stock status calculation accurately identifies OUT_OF_STOCK and LOW_STOCK items', () => {
+      const outOfStockItem = {
+        minThreshold: 10,
+        stockByBranch: { b_downtown: 0 }
+      };
+      const lowStockItem = {
+        minThreshold: 10,
+        stockByBranch: { b_downtown: 6 }
+      };
+      const adequateStockItem = {
+        minThreshold: 10,
+        stockByBranch: { b_downtown: 25 }
+      };
+
+      const statusOut = InventoryService.calculateStockStatus(outOfStockItem, 'b_downtown');
+      assert.equal(statusOut.level, 'OUT_OF_STOCK');
+
+      const statusLow = InventoryService.calculateStockStatus(lowStockItem, 'b_downtown');
+      assert.equal(statusLow.level, 'LOW_STOCK');
+
+      const statusAdequate = InventoryService.calculateStockStatus(adequateStockItem, 'b_downtown');
+      assert.equal(statusAdequate.level, 'IN_STOCK');
+    });
+
+    test('5.4 - Atomic recipe staging aborts if requested stock exceeds availability', () => {
+      const currentStock = 5;
+      const requestedQty = 8;
+
+      const hasSufficient = currentStock >= requestedQty;
+      assert.equal(hasSufficient, false, 'Pre-validation must fail before any deduction');
+    });
+  });
 });

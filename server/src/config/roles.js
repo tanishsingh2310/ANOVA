@@ -11,6 +11,7 @@ const ROLES = {
   HR_MANAGER: 'hr_manager',
   HR_STAFF: 'hr_staff',
   CHEF: 'chef',
+  KITCHEN_STAFF: 'kitchen_staff',
   CASHIER: 'cashier',
   EMPLOYEE: 'employee',
   SUPPLIER: 'supplier',
@@ -51,11 +52,24 @@ const SENSITIVE_ADMIN_ROLES = [
   ROLES.ADMIN
 ];
 
+// Roles authorized to execute recipe consumption and check real-time stock for orders
+const KITCHEN_CONSUME_ROLES = [
+  ROLES.OWNER,
+  ROLES.ADMIN,
+  ROLES.INVENTORY_MANAGER,
+  ROLES.BRANCH_MANAGER,
+  ROLES.CHEF,
+  ROLES.KITCHEN_STAFF,
+  ROLES.CASHIER,
+  ROLES.EMPLOYEE
+];
+
 module.exports = {
   ROLES,
   ENTERPRISE_ROLES,
   INVENTORY_READ_ROLES,
   INVENTORY_WRITE_ROLES,
   PROCUREMENT_WRITE_ROLES,
-  SENSITIVE_ADMIN_ROLES
+  SENSITIVE_ADMIN_ROLES,
+  KITCHEN_CONSUME_ROLES
 };

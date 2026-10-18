@@ -163,6 +163,34 @@ export const MovementService = {
       const newStock = current - Number(it.qty);
       ing.stockByBranch[fromBranchId] = newStock;
 
+      // Deplete batches via FIFO from source branch
+      if (ing.batches) {
+        let remaining = Number(it.qty);
+        if (it.batchNumber && it.batchNumber !== 'TR-BATCH') {
+          const target = ing.batches.find(b => (b.branchId === fromBranchId || b.branch === fromBranchId) && b.batchNumber === it.batchNumber && ((b.qty !== undefined ? b.qty : b.quantity) > 0));
+          if (target) {
+            const bQty = target.qty !== undefined ? target.qty : target.quantity;
+            const take = Math.min(bQty, remaining);
+            if (target.qty !== undefined) target.qty -= take;
+            if (target.quantity !== undefined) target.quantity -= take;
+            remaining -= take;
+          }
+        }
+        if (remaining > 0) {
+          const branchBatches = ing.batches
+            .filter(b => (b.branchId === fromBranchId || b.branch === fromBranchId) && ((b.qty !== undefined ? b.qty : b.quantity) > 0))
+            .sort((a, b) => new Date(a.expiryDate || 0) - new Date(b.expiryDate || 0));
+          for (const b of branchBatches) {
+            if (remaining <= 0) break;
+            const bQty = b.qty !== undefined ? b.qty : b.quantity;
+            const take = Math.min(bQty, remaining);
+            if (b.qty !== undefined) b.qty -= take;
+            if (b.quantity !== undefined) b.quantity -= take;
+            remaining -= take;
+          }
+        }
+      }
+
       movements.unshift({
         id: `mov_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
         type: 'TRANSFER_DISPATCH',
@@ -327,11 +355,31 @@ export const MovementService = {
     const newStock = currentStock - deductQty;
     ing.stockByBranch[branchId] = newStock;
 
-    // Deduct from batch if specified
-    if (batchNumber && ing.batches) {
-      const batch = ing.batches.find(b => b.branchId === branchId && b.batchNumber === batchNumber);
-      if (batch) {
-        batch.qty = Math.max(0, batch.qty - deductQty);
+    // Deduct from batches via FIFO (prioritizing specific batch if passed)
+    if (ing.batches) {
+      let remaining = deductQty;
+      if (batchNumber && batchNumber !== 'GENERAL-STOCK') {
+        const batch = ing.batches.find(b => (b.branchId === branchId || b.branch === branchId) && b.batchNumber === batchNumber && ((b.qty !== undefined ? b.qty : b.quantity) > 0));
+        if (batch) {
+          const bQty = batch.qty !== undefined ? batch.qty : batch.quantity;
+          const take = Math.min(bQty, remaining);
+          if (batch.qty !== undefined) batch.qty -= take;
+          if (batch.quantity !== undefined) batch.quantity -= take;
+          remaining -= take;
+        }
+      }
+      if (remaining > 0) {
+        const branchBatches = ing.batches
+          .filter(b => (b.branchId === branchId || b.branch === branchId) && ((b.qty !== undefined ? b.qty : b.quantity) > 0))
+          .sort((a, b) => new Date(a.expiryDate || 0) - new Date(b.expiryDate || 0));
+        for (const b of branchBatches) {
+          if (remaining <= 0) break;
+          const bQty = b.qty !== undefined ? b.qty : b.quantity;
+          const take = Math.min(bQty, remaining);
+          if (b.qty !== undefined) b.qty -= take;
+          if (b.quantity !== undefined) b.quantity -= take;
+          remaining -= take;
+        }
       }
     }
 
