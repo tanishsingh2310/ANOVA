@@ -12,6 +12,11 @@ const leaveRoutes = require("./routes/leaveRoutes");
 const payrollRoutes = require("./routes/payrollRoutes");
 const auditLogRoutes = require("./routes/auditLogRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
+const menuRoutes = require("./routes/menuRoutes");
+const tableRoutes = require("./routes/tableRoutes");
+const reservationRoutes = require("./routes/reservationRoutes");
+const orderRoutes = require("./routes/orderRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
 const errorMiddleware = require("./middleware/errorMiddleware");
 
 const app = express();
@@ -32,6 +37,11 @@ app.use("/api/leaves", leaveRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/menu", menuRoutes);
+app.use("/api/tables", tableRoutes);
+app.use("/api/reservations", reservationRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/payments", paymentRoutes);
 app.use(errorMiddleware);
 
 app.use((req, res) => {
