@@ -40,7 +40,7 @@ const createInvoice = async (req, res) => {
     const {
       branchId,
       orderId,
-      discount = 0,
+      discount: requestDiscount,
       taxRate = 5,
     } = req.body;
 
@@ -56,21 +56,9 @@ const createInvoice = async (req, res) => {
       });
     }
 
-    if (
-      !Number.isFinite(discount) ||
-      discount < 0 ||
-      !Number.isFinite(taxRate) ||
-      taxRate < 0 ||
-      taxRate > 100
-    ) {
-      return res.status(400).json({
-        message: "Discount or tax rate is invalid.",
-      });
-    }
-
     const order = await Order.findOne({
       _id: orderId,
-      branchId,
+      $or: [{ branch: branchId }, { branchId }],
     });
 
     if (!order) {
@@ -82,6 +70,23 @@ const createInvoice = async (req, res) => {
     if (order.status === "Cancelled") {
       return res.status(400).json({
         message: "An invoice cannot be created for a cancelled order.",
+      });
+    }
+
+    // Inherit discount from order if not explicitly specified in the request
+    const discount = requestDiscount !== undefined
+      ? Number(requestDiscount)
+      : Number(order.discount || 0);
+
+    if (
+      !Number.isFinite(discount) ||
+      discount < 0 ||
+      !Number.isFinite(taxRate) ||
+      taxRate < 0 ||
+      taxRate > 100
+    ) {
+      return res.status(400).json({
+        message: "Discount or tax rate is invalid.",
       });
     }
 
@@ -133,12 +138,16 @@ const createInvoice = async (req, res) => {
       1001 + invoiceCount
     ).padStart(4, "0")}`;
 
+    const customerDisplayName =
+      order.customerName ||
+      (typeof order.customer === "string" ? order.customer : "Customer");
+
     const invoice = await Payment.create({
       branchId,
       orderId: order._id,
       orderNumber: order.orderNumber,
       invoiceNumber,
-      customer: order.customer,
+      customer: customerDisplayName,
       items: order.items.map((item) => ({
         name: item.name,
         quantity: item.quantity,

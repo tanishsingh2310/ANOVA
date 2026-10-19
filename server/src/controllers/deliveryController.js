@@ -1,6 +1,7 @@
 // server/controllers/deliveryController.js  (Member 4, Module 3)
 const mongoose = require('mongoose');
 const Delivery = require('../models/Delivery');
+const Order = require('../models/Order');
 const { ACTIVE, RIDER_NEXT, createDelivery, listDeliveryStaff } = require('../services/deliveryService');
 const { simulatedState } = require('../services/trackingService');
 const { audit } = require('../utils/audit');
@@ -63,10 +64,30 @@ exports.createDelivery = async (req, res, next) => {
   try {
     const b = req.body || {};
     if (!validId(b.order)) return fail(res, 400, 'A valid order id is required');
+
+    // Verify order exists, is of Delivery type, and is not already delivered/cancelled
+    const order = await Order.findById(b.order);
+    if (!order) return fail(res, 404, 'Order not found');
+
+    if (String(order.orderType).toLowerCase() !== 'delivery') {
+      return fail(res, 400, `Cannot create delivery for order with type "${order.orderType}". Must be "Delivery".`);
+    }
+
+    const completedOrCancelled = ['delivered', 'completed', 'cancelled'];
+    if (completedOrCancelled.includes(String(order.status).toLowerCase())) {
+      return fail(res, 400, `Cannot create delivery for order with status "${order.status}". Order must be pending, preparing, or ready.`);
+    }
+
     const d = await createDelivery({
-      orderId: b.order, orderNumber: b.orderNumber, branchId: validId(b.branch) ? b.branch : undefined,
-      pickup: b.pickup, dropoff: b.dropoff, customerUser: validId(b.customerUser) ? b.customerUser : undefined,
-      customerName: b.customerName, customerPhone: b.customerPhone, itemCount: b.itemCount,
+      orderId: order._id,
+      orderNumber: b.orderNumber || order.orderNumber,
+      branchId: validId(b.branch) ? b.branch : (order.branch || order.branchId),
+      pickup: b.pickup,
+      dropoff: b.dropoff,
+      customerUser: validId(b.customerUser) ? b.customerUser : (validId(order.customer) ? order.customer : undefined),
+      customerName: b.customerName || order.customerName,
+      customerPhone: b.customerPhone,
+      itemCount: b.itemCount || (Array.isArray(order.items) ? order.items.reduce((sum, item) => sum + (item.quantity || 1), 0) : 0),
     });
     ok(res, d, 'Delivery created', 201);
   } catch (err) { handleError(err, res, next); }
@@ -195,7 +216,9 @@ exports.track = async (req, res, next) => {
 exports.getOne = async (req, res, next) => {
   try {
     if (!validId(req.params.id)) return fail(res, 400, 'Invalid id');
-    const isRider = req.user.role === 'delivery';
+    const isRider = ['delivery', 'delivery_personnel'].includes(
+      req.user.role
+    );
     const scope = isRider ? { _id: req.params.id, deliveryStaff: req.user.id } : { _id: req.params.id };
     let q = Delivery.findOne(scope).select(isRider ? RIDER_FIELDS : '-customerUser');
     if (!isRider) q = q.populate('deliveryStaff', 'name');

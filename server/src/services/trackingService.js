@@ -7,8 +7,8 @@
 // To use real GPS later, keep the API response shape and replace simulatedState()
 // with the rider's last reported coordinates.
 const DEFAULT_CENTER = {
-  lat: Number(process.env.SIM_CENTER_LAT) || 23.0225,
-  lng: Number(process.env.SIM_CENTER_LNG) || 72.5714,
+  lat: Number(process.env.SIM_CENTER_LAT) || 18.5204,
+  lng: Number(process.env.SIM_CENTER_LNG) || 73.8567,
 };
 const TRIP_SECONDS = Number(process.env.SIM_TRIP_SECONDS) > 0 ? Number(process.env.SIM_TRIP_SECONDS) : 90;
 const ROUTE_POINTS = 40;
