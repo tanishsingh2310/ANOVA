@@ -1,4 +1,4 @@
-﻿const express = require("express");
+const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -11,6 +11,7 @@ const attendanceRoutes = require("./routes/attendanceRoutes");
 const leaveRoutes = require("./routes/leaveRoutes");
 const payrollRoutes = require("./routes/payrollRoutes");
 const auditLogRoutes = require("./routes/auditLogRoutes");
+const inventoryRoutes = require("./routes/inventoryRoutes");
 const errorMiddleware = require("./middleware/errorMiddleware");
 
 const app = express();
@@ -30,6 +31,7 @@ app.use("/api/attendance", attendanceRoutes);
 app.use("/api/leaves", leaveRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/inventory", inventoryRoutes);
 app.use(errorMiddleware);
 
 app.use((req, res) => {

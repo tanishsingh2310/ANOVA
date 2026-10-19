@@ -1,0 +1,68 @@
+﻿/**
+ * Inventory permissions aligned with the existing Core HR User role enum.
+ */
+
+const ROLES = {
+  OWNER: "owner",
+  ADMIN: "admin",
+  BRANCH_MANAGER: "manager",
+  INVENTORY_MANAGER: "inventory_manager",
+  CHEF: "chef",
+  CASHIER: "cashier",
+  EMPLOYEE: "employee",
+  SUPPLIER: "supplier",
+  DELIVERY: "delivery_personnel",
+  CUSTOMER: "customer",
+  HR: "hr"
+};
+
+const ENTERPRISE_ROLES = [
+  ROLES.OWNER,
+  ROLES.ADMIN
+];
+
+const INVENTORY_READ_ROLES = [
+  ROLES.OWNER,
+  ROLES.ADMIN,
+  ROLES.INVENTORY_MANAGER,
+  ROLES.BRANCH_MANAGER,
+  ROLES.CHEF
+];
+
+const INVENTORY_WRITE_ROLES = [
+  ROLES.OWNER,
+  ROLES.ADMIN,
+  ROLES.INVENTORY_MANAGER,
+  ROLES.BRANCH_MANAGER
+];
+
+const PROCUREMENT_WRITE_ROLES = [
+  ROLES.OWNER,
+  ROLES.ADMIN,
+  ROLES.INVENTORY_MANAGER
+];
+
+const SENSITIVE_ADMIN_ROLES = [
+  ROLES.OWNER,
+  ROLES.ADMIN
+];
+
+const KITCHEN_CONSUME_ROLES = [
+  ROLES.OWNER,
+  ROLES.ADMIN,
+  ROLES.INVENTORY_MANAGER,
+  ROLES.BRANCH_MANAGER,
+  ROLES.CHEF,
+  ROLES.CASHIER,
+  ROLES.EMPLOYEE
+];
+
+module.exports = {
+  ROLES,
+  ENTERPRISE_ROLES,
+  INVENTORY_READ_ROLES,
+  INVENTORY_WRITE_ROLES,
+  PROCUREMENT_WRITE_ROLES,
+  SENSITIVE_ADMIN_ROLES,
+  KITCHEN_CONSUME_ROLES
+};
