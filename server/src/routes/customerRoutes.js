@@ -1,8 +1,7 @@
 // server/routes/customerRoutes.js  (Member 4, Module 1)
 const router = require('express').Router();
 const c = require('../controllers/customerController');
-// TODO(merge): switch to Member 1's middleware: require('../middleware/auth')
-const { protect, authorize } = require('../middleware/devAuth');
+const { protect, authorize } = require('../middleware/authMiddleware');
 
 // Role strings are not final (contract Section 11). Change them here only.
 const CUSTOMER = 'customer';

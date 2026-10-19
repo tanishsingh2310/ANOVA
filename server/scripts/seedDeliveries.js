@@ -3,7 +3,7 @@
 // before Member 3's orders exist. Run once; running again adds 3 more.
 require('dotenv').config();
 const mongoose = require('mongoose');
-const Delivery = require('../models/Delivery');
+const Delivery = require('../src/models/Delivery');
 
 const samples = [
   { name: 'Asha Mehta', phone: '9876500001', line1: '12 Garden Road', city: 'Ahmedabad', postalCode: '380015', items: 3 },
@@ -12,7 +12,7 @@ const samples = [
 ];
 
 (async () => {
-  await mongoose.connect(process.env.MONGO_URI);
+  await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
   for (const [i, s] of samples.entries()) {
     await Delivery.create({
       order: new mongoose.Types.ObjectId(),

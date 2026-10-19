@@ -4,12 +4,12 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const User = require('../src/models/User');
 
 const role = process.argv[2] || 'customer';
 
 (async () => {
-  await mongoose.connect(process.env.MONGO_URI);
+  await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
   const email = `test-${role}@example.com`;
   const user = await User.findOneAndUpdate(
     { email },

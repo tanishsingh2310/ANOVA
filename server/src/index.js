@@ -32,6 +32,15 @@ app.use("/api/leaves", leaveRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/inventory", inventoryRoutes);
+
+// Member 4: Customer, Deliveries, Coupons, Feedback, and Reports
+app.use("/api/coupons", require("./routes/couponRoutes"));
+app.use("/api/deliveries", require("./routes/deliveryRoutes"));
+app.use("/api/reviews", require("./routes/reviewRoutes"));
+app.use("/api/complaints", require("./routes/complaintRoutes"));
+app.use("/api/reports", require("./routes/reportRoutes"));
+app.use("/api/customers", require("./routes/customerRoutes"));
+
 app.use(errorMiddleware);
 
 app.use((req, res) => {
