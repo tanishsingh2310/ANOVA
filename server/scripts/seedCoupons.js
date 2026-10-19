@@ -2,7 +2,7 @@
 // Creates three sample coupons that work at every branch. Safe to run again.
 require('dotenv').config();
 const mongoose = require('mongoose');
-const Coupon = require('../models/Coupon');
+const Coupon = require('../src/models/Coupon');
 
 const samples = [
   { code: 'WELCOME10', title: 'Welcome offer', description: '10% off your order, up to 100.', discountType: 'percent', discountValue: 10, minOrderAmount: 200, maxDiscount: 100, perCustomerLimit: 1, isPublic: true },
@@ -11,7 +11,7 @@ const samples = [
 ];
 
 (async () => {
-  await mongoose.connect(process.env.MONGO_URI);
+  await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
   for (const s of samples) {
     await Coupon.updateOne({ code: s.code }, { $setOnInsert: s }, { upsert: true });
     console.log('ready:', s.code);

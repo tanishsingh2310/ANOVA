@@ -9,7 +9,7 @@ const mongoose = require('mongoose');
 (async () => {
   const userId = process.argv[2];
   if (!mongoose.isValidObjectId(userId)) throw new Error('Pass the customer user id printed by seedUser.js');
-  await mongoose.connect(process.env.MONGO_URI);
+  await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
   const r = await mongoose.connection.collection('orders').insertOne({
     customer: new mongoose.Types.ObjectId(userId),
     orderNumber: `T-${Math.floor(Math.random() * 900 + 100)}`,
