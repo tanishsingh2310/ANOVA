@@ -1,6 +1,7 @@
 
 import { useState } from 'react'
 import './dashboard.css'
+import InventoryModule from '../inventory/InventoryModule.jsx'
 
 const navigation = [
   { label: 'Overview', icon: '◫', roles: ['owner', 'admin', 'manager', 'hr', 'employee'] },
@@ -10,6 +11,11 @@ const navigation = [
   { label: 'Attendance', icon: '✓', roles: ['owner', 'admin', 'manager', 'hr', 'employee'] },
   { label: 'Leave requests', icon: '▤', roles: ['owner', 'admin', 'manager', 'hr', 'employee'] },
   { label: 'Payroll', icon: '₹', roles: ['owner', 'admin', 'hr'] },
+  {
+  label: 'Inventory & Supply Chain',
+  icon: 'I',
+  roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
+},
 ]
 
 const modules = [
@@ -49,6 +55,12 @@ const modules = [
     icon: '₹',
     tone: 'blue',
   },
+  {
+  title: 'Inventory & Supply Chain',
+  description: 'Track ingredients, suppliers, purchase orders, transfers and wastage.',
+  icon: 'I',
+  tone: 'green',
+},
 ]
 
 export default function Dashboard({ user, onLogout }) {
@@ -163,74 +175,76 @@ export default function Dashboard({ user, onLogout }) {
               <span className="live-dot" />
               Workspace active
             </div>
-          </div>
+          </div>        
+{activePage === 'Overview' ? (
+<>
+    <section className="welcome-banner">
+      <div className="banner-content">
+        <div className="banner-label">WELCOME TO ANOVA</div>
+        <h2>Good hospitality starts with a well-connected team.</h2>
+        <p>
+          Keep your people, schedules and restaurant operations
+          organised in one place.
+        </p>
+      </div>
+      <div className="banner-mark" aria-hidden="true">A</div>
+    </section>
 
-          {activePage === 'Overview' ? (
-            <>
-              <section className="welcome-banner">
-                <div className="banner-content">
-                  <div className="banner-label">WELCOME TO ANOVA</div>
-                  <h2>Good hospitality starts with a well-connected team.</h2>
-                  <p>
-                    Keep your people, schedules and restaurant operations
-                    organised in one place.
-                  </p>
-                </div>
-                <div className="banner-mark" aria-hidden="true">A</div>
-              </section>
+    <div className="section-heading">
+      <div>
+        <h2>Your workspace</h2>
+        <p>Choose an area to get started.</p>
+      </div>
+    </div>
 
-              <div className="section-heading">
-                <div>
-                  <h2>Your workspace</h2>
-                  <p>Choose an area to get started.</p>
-                </div>
-              </div>
+    <section className="module-grid">
+      {modules
+        .filter((module) =>
+          visibleNavigation.some((item) => item.label === module.title),
+        )
+        .map((module) => (
+          <button
+            className="module-card"
+            key={module.title}
+            onClick={() => selectPage(module.title)}
+          >
+            <div className={`module-icon module-tone-${module.tone}`}>
+              {module.icon}
+            </div>
+            <div className="module-title">{module.title}</div>
+            <p className="module-description">{module.description}</p>
+            <div className="module-arrow" aria-hidden="true">↗</div>
+          </button>
+        ))}
+    </section>
 
-              <section className="module-grid">
-                {modules
-                  .filter((module) =>
-                    visibleNavigation.some((item) => item.label === module.title),
-                  )
-                  .map((module) => (
-                    <button
-                      className="module-card"
-                      key={module.title}
-                      onClick={() => selectPage(module.title)}
-                    >
-                      <div className={`module-icon module-tone-${module.tone}`}>
-                        {module.icon}
-                      </div>
-                      <div className="module-title">{module.title}</div>
-                      <p className="module-description">{module.description}</p>
-                      <div className="module-arrow" aria-hidden="true">↗</div>
-                    </button>
-                  ))}
-              </section>
+    <div className="data-notice">
+      <span className="notice-icon">i</span>
+      <p>
+        Your workspace is ready. Operational data will appear here
+        when the corresponding modules are connected.
+      </p>
+    </div>
+  </>
+) : activePage === 'Inventory & Supply Chain' ? (
+  <InventoryModule selectedBranch="all" />
+) : (
+  <section className="module-placeholder">
+    <div className="placeholder-icon">✳</div>
+    <h2>{activePage}</h2>
+    <p>
+      This section is ready for its module interface. The next step
+      is to connect it to the existing backend API.
+    </p>
+    <button
+      className="secondary-button"
+      onClick={() => selectPage('Overview')}
+    >
+      Back to overview
+    </button>
+  </section>
+)}
 
-              <div className="data-notice">
-                <span className="notice-icon">i</span>
-                <p>
-                  Your workspace is ready. Operational data will appear here
-                  when the corresponding modules are connected.
-                </p>
-              </div>
-            </>
-          ) : (
-            <section className="module-placeholder">
-              <div className="placeholder-icon">✳</div>
-              <h2>{activePage}</h2>
-              <p>
-                This section is ready for its module interface. The next step
-                is to connect it to the existing backend API.
-              </p>
-              <button
-                className="secondary-button"
-                onClick={() => selectPage('Overview')}
-              >
-                Back to overview
-              </button>
-            </section>
-          )}
         </div>
       </main>
     </div>
