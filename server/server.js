@@ -2,12 +2,12 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const connectDB = require("./config/db");
-const menuRoutes = require("./modules/menu/menuRoutes");
-const tableRoutes = require("./modules/tables/tableRoutes");
-const reservationRoutes = require("./modules/reservations/reservationRoutes");
-const orderRoutes = require("./modules/orders/orderRoutes");
-const paymentRoutes = require("./modules/payments/paymentRoutes");
+const connectDB = require("./src/config/db");
+const menuRoutes = require("./src/routes/menuRoutes");
+const tableRoutes = require("./src/routes/tableRoutes");
+const reservationRoutes = require("./src/routes/reservationRoutes");
+const orderRoutes = require("./src/routes/orderRoutes");
+const paymentRoutes = require("./src/routes/paymentRoutes");
 
 const app = express();
 

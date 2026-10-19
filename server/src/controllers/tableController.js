@@ -1,47 +1,8 @@
-const express = require("express");
 const mongoose = require("mongoose");
-const RestaurantTable = require("./Table");
+const RestaurantTable = require("../models/Table");
 
-const router = express.Router();
-
-// Temporary development branch.
-// Authentication and branch authorization will be integrated
-// with Member 1's middleware later.
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
-
-// Verify that the requested branch exists and is active.
-const verifyBranch = async (req, res, next) => {
-  try {
-    const branchId = req.params.branchId || req.body.branchId || BRANCH_ID;
-
-    if (!mongoose.isValidObjectId(branchId)) {
-      return res.status(400).json({
-        message: "Invalid branch ID.",
-      });
-    }
-
-    const branch = await mongoose.connection
-      .collection("branches")
-      .findOne({
-        _id: new mongoose.Types.ObjectId(branchId),
-        isActive: true,
-      });
-
-    if (!branch) {
-      return res.status(404).json({
-        message: "Active branch not found.",
-      });
-    }
-
-    req.branchId = branch._id;
-    next();
-  } catch (error) {
-    next(error);
-  }
-};
-
-// GET — Retrieve tables belonging to a branch.
-router.get("/:branchId", verifyBranch, async (req, res, next) => {
+// GET: Retrieve tables belonging to a branch.
+const getTables = async (req, res, next) => {
   try {
     const tables = await RestaurantTable.find({
       branchId: req.branchId,
@@ -51,10 +12,10 @@ router.get("/:branchId", verifyBranch, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+};
 
-// POST — Add a new restaurant table.
-router.post("/", verifyBranch, async (req, res, next) => {
+// POST: Add a new restaurant table.
+const createTable = async (req, res, next) => {
   try {
     const { number, capacity, location, status } = req.body;
 
@@ -76,10 +37,10 @@ router.post("/", verifyBranch, async (req, res, next) => {
 
     next(error);
   }
-});
+};
 
-// PUT — Update a table belonging to the specified branch.
-router.put("/:branchId/:tableId", verifyBranch, async (req, res, next) => {
+// PUT: Update a table belonging to the specified branch.
+const updateTable = async (req, res, next) => {
   try {
     const { tableId } = req.params;
 
@@ -89,13 +50,7 @@ router.put("/:branchId/:tableId", verifyBranch, async (req, res, next) => {
       });
     }
 
-    const allowedFields = [
-      "number",
-      "capacity",
-      "location",
-      "status",
-    ];
-
+    const allowedFields = ["number", "capacity", "location", "status"];
     const updates = {};
 
     for (const field of allowedFields) {
@@ -138,10 +93,10 @@ router.put("/:branchId/:tableId", verifyBranch, async (req, res, next) => {
 
     next(error);
   }
-});
+};
 
-// DELETE — Remove a table belonging to the specified branch.
-router.delete("/:branchId/:tableId", verifyBranch, async (req, res, next) => {
+// DELETE: Remove a table belonging to the specified branch.
+const deleteTable = async (req, res, next) => {
   try {
     const { tableId } = req.params;
 
@@ -169,6 +124,11 @@ router.delete("/:branchId/:tableId", verifyBranch, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+};
 
-module.exports = router;
+module.exports = {
+  getTables,
+  createTable,
+  updateTable,
+  deleteTable,
+};

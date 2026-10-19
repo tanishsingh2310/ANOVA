@@ -1,21 +1,7 @@
-const express = require("express");
 const mongoose = require("mongoose");
 
-const Payment = require("./Payment");
-const Order = require("../orders/Order");
-
-const router = express.Router();
-
-const getBranchId = (req, res) => {
-  const { branchId } = req.params;
-
-  if (!mongoose.Types.ObjectId.isValid(branchId)) {
-    res.status(400).json({ message: "Invalid branch ID." });
-    return null;
-  }
-
-  return branchId;
-};
+const Payment = require("../models/Payment");
+const Order = require("../models/Order");
 
 const calculateStatus = (amountPaid, total) => {
   if (amountPaid >= total) return "Paid";
@@ -23,25 +9,33 @@ const calculateStatus = (amountPaid, total) => {
   return "Pending";
 };
 
-// Get all invoices for the selected branch.
-router.get("/:branchId", async (req, res) => {
+// GET: Fetch all invoices belonging to a branch.
+const getInvoices = async (req, res) => {
   try {
-    const branchId = getBranchId(req, res);
-    if (!branchId) return;
+    const { branchId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(branchId)) {
+      return res.status(400).json({
+        message: "Invalid branch ID.",
+      });
+    }
 
     const payments = await Payment.find({ branchId })
       .sort({ createdAt: -1 })
       .lean();
 
-    res.json(payments);
+    return res.json(payments);
   } catch (error) {
     console.error("Fetch invoices error:", error);
-    res.status(500).json({ message: "Failed to fetch invoices." });
-  }
-});
 
-// Create an invoice from an existing order.
-router.post("/", async (req, res) => {
+    return res.status(500).json({
+      message: "Failed to fetch invoices.",
+    });
+  }
+};
+
+// POST: Create an invoice from an existing order.
+const createInvoice = async (req, res) => {
   try {
     const {
       branchId,
@@ -51,11 +45,15 @@ router.post("/", async (req, res) => {
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(branchId)) {
-      return res.status(400).json({ message: "Invalid branch ID." });
+      return res.status(400).json({
+        message: "Invalid branch ID.",
+      });
     }
 
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({ message: "Invalid order ID." });
+      return res.status(400).json({
+        message: "Invalid order ID.",
+      });
     }
 
     if (
@@ -70,7 +68,10 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const order = await Order.findOne({ _id: orderId, branchId });
+    const order = await Order.findOne({
+      _id: orderId,
+      branchId,
+    });
 
     if (!order) {
       return res.status(404).json({
@@ -84,7 +85,10 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const existingPayment = await Payment.findOne({ branchId, orderId });
+    const existingPayment = await Payment.findOne({
+      branchId,
+      orderId,
+    });
 
     if (existingPayment) {
       return res.status(409).json({
@@ -93,12 +97,13 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const subtotal = Math.round(
-      order.items.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      ) * 100
-    ) / 100;
+    const subtotal =
+      Math.round(
+        order.items.reduce(
+          (sum, item) => sum + item.price * item.quantity,
+          0
+        ) * 100
+      ) / 100;
 
     if (discount > subtotal) {
       return res.status(400).json({
@@ -107,8 +112,12 @@ router.post("/", async (req, res) => {
     }
 
     const taxableAmount = subtotal - discount;
-    const taxAmount = Math.round(taxableAmount * (taxRate / 100) * 100) / 100;
-    const total = Math.round((taxableAmount + taxAmount) * 100) / 100;
+
+    const taxAmount =
+      Math.round(taxableAmount * (taxRate / 100) * 100) / 100;
+
+    const total =
+      Math.round((taxableAmount + taxAmount) * 100) / 100;
 
     if (total <= 0) {
       return res.status(400).json({
@@ -116,8 +125,13 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const invoiceCount = await Payment.countDocuments({ branchId });
-    const invoiceNumber = `INV-${String(1001 + invoiceCount).padStart(4, "0")}`;
+    const invoiceCount = await Payment.countDocuments({
+      branchId,
+    });
+
+    const invoiceNumber = `INV-${String(
+      1001 + invoiceCount
+    ).padStart(4, "0")}`;
 
     const invoice = await Payment.create({
       branchId,
@@ -153,19 +167,28 @@ router.post("/", async (req, res) => {
       message: "Failed to create invoice.",
     });
   }
-});
+};
 
-// Record a payment against an existing invoice.
-router.post("/:branchId/:invoiceId/payments", async (req, res) => {
+// POST: Record a payment against an existing invoice.
+const recordPayment = async (req, res) => {
   try {
-    const branchId = getBranchId(req, res);
-    if (!branchId) return;
+    const { branchId, invoiceId } = req.params;
+    const {
+      amount,
+      method,
+      reference = "",
+    } = req.body;
 
-    const { invoiceId } = req.params;
-    const { amount, method, reference = "" } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(branchId)) {
+      return res.status(400).json({
+        message: "Invalid branch ID.",
+      });
+    }
 
     if (!mongoose.Types.ObjectId.isValid(invoiceId)) {
-      return res.status(400).json({ message: "Invalid invoice ID." });
+      return res.status(400).json({
+        message: "Invalid invoice ID.",
+      });
     }
 
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -197,12 +220,15 @@ router.post("/:branchId/:invoiceId/payments", async (req, res) => {
     });
 
     if (!invoice) {
-      return res.status(404).json({ message: "Invoice not found." });
+      return res.status(404).json({
+        message: "Invoice not found.",
+      });
     }
 
-    const outstanding = Math.round(
-      (invoice.total - invoice.amountPaid) * 100
-    ) / 100;
+    const outstanding =
+      Math.round(
+        (invoice.total - invoice.amountPaid) * 100
+      ) / 100;
 
     if (outstanding <= 0) {
       return res.status(400).json({
@@ -222,22 +248,31 @@ router.post("/:branchId/:invoiceId/payments", async (req, res) => {
       reference: reference.trim(),
     });
 
-    invoice.amountPaid = Math.round(
-      (invoice.amountPaid + amount) * 100
-    ) / 100;
+    invoice.amountPaid =
+      Math.round(
+        (invoice.amountPaid + amount) * 100
+      ) / 100;
 
     invoice.paymentMethod = method;
-    invoice.status = calculateStatus(invoice.amountPaid, invoice.total);
+    invoice.status = calculateStatus(
+      invoice.amountPaid,
+      invoice.total
+    );
 
     await invoice.save();
 
     return res.json(invoice);
   } catch (error) {
     console.error("Record payment error:", error);
+
     return res.status(500).json({
       message: "Failed to record payment.",
     });
   }
-});
+};
 
-module.exports = router;
+module.exports = {
+  getInvoices,
+  createInvoice,
+  recordPayment,
+};

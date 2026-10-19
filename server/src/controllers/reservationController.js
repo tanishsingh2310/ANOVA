@@ -1,13 +1,5 @@
-const express = require("express");
 const mongoose = require("mongoose");
-const Reservation = require("./Reservation");
-
-const router = express.Router();
-
-// Temporary development branch.
-// Authentication and branch authorization will be integrated
-// with Member 1's middleware later.
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
+const Reservation = require("../models/Reservation");
 
 const VALID_STATUSES = [
   "Pending",
@@ -37,6 +29,7 @@ const ALLOWED_FIELDS = [
   "occasion",
 ];
 
+// Validate YYYY-MM-DD calendar dates.
 function isValidCalendarDate(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return false;
@@ -52,6 +45,7 @@ function isValidCalendarDate(value) {
   );
 }
 
+// Validate HH:mm time values.
 function isValidTime(value) {
   return (
     typeof value === "string" &&
@@ -59,15 +53,18 @@ function isValidTime(value) {
   );
 }
 
+// Normalize phone numbers for comparison.
 function normalizePhone(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
+// Normalize table numbers.
 function normalizeTableNumber(value) {
   const normalized = String(value || "").trim().toUpperCase();
   return normalized || "Unassigned";
 }
 
+// Extract permitted fields and normalize text values.
 function getReservationData(body, isCreate = false) {
   const data = {};
 
@@ -115,39 +112,7 @@ function getReservationData(body, isCreate = false) {
   return data;
 }
 
-// Verify that the requested branch exists and is active.
-const verifyBranch = async (req, res, next) => {
-  try {
-    const branchId =
-      req.params.branchId || req.body.branchId || BRANCH_ID;
-
-    if (!mongoose.isValidObjectId(branchId)) {
-      return res.status(400).json({
-        message: "Invalid branch ID.",
-      });
-    }
-
-    const branch = await mongoose.connection
-      .collection("branches")
-      .findOne({
-        _id: new mongoose.Types.ObjectId(branchId),
-        isActive: true,
-      });
-
-    if (!branch) {
-      return res.status(404).json({
-        message: "Active branch not found.",
-      });
-    }
-
-    req.branchId = branch._id;
-    next();
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Validate the reservation date, time and guest count.
+// Validate reservation dates, times, guest counts, statuses and occasions.
 function validateReservationData(data, res) {
   if (
     Object.prototype.hasOwnProperty.call(data, "date") &&
@@ -204,8 +169,7 @@ function validateReservationData(data, res) {
   return true;
 }
 
-// Prevent duplicate active bookings for the same guest and time,
-// and conflicting assignments for the same table and time.
+// Prevent conflicting active bookings for the same guest or table.
 async function validateBookingConflicts({
   branchId,
   data,
@@ -269,8 +233,8 @@ async function validateBookingConflicts({
   return null;
 }
 
-// GET — Retrieve reservations belonging to a branch.
-router.get("/:branchId", verifyBranch, async (req, res, next) => {
+// GET: Retrieve reservations belonging to a branch.
+const getReservations = async (req, res, next) => {
   try {
     const reservations = await Reservation.find({
       branchId: req.branchId,
@@ -280,10 +244,10 @@ router.get("/:branchId", verifyBranch, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+};
 
-// POST — Create a reservation.
-router.post("/", verifyBranch, async (req, res, next) => {
+// POST: Create a reservation.
+const createReservation = async (req, res, next) => {
   try {
     const data = getReservationData(req.body, true);
 
@@ -324,10 +288,10 @@ router.post("/", verifyBranch, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+};
 
-// PUT — Update a reservation belonging to a branch.
-router.put("/:branchId/:reservationId", verifyBranch, async (req, res, next) => {
+// PUT: Update a reservation belonging to a branch.
+const updateReservation = async (req, res, next) => {
   try {
     const { reservationId } = req.params;
 
@@ -407,41 +371,42 @@ router.put("/:branchId/:reservationId", verifyBranch, async (req, res, next) => 
   } catch (error) {
     next(error);
   }
-});
+};
 
-// DELETE — Delete a reservation belonging to a branch.
-router.delete(
-  "/:branchId/:reservationId",
-  verifyBranch,
-  async (req, res, next) => {
-    try {
-      const { reservationId } = req.params;
+// DELETE: Delete a reservation belonging to a branch.
+const deleteReservation = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
 
-      if (!mongoose.isValidObjectId(reservationId)) {
-        return res.status(400).json({
-          message: "Invalid reservation ID.",
-        });
-      }
-
-      const reservation = await Reservation.findOneAndDelete({
-        _id: reservationId,
-        branchId: req.branchId,
+    if (!mongoose.isValidObjectId(reservationId)) {
+      return res.status(400).json({
+        message: "Invalid reservation ID.",
       });
-
-      if (!reservation) {
-        return res.status(404).json({
-          message: "Reservation not found for this branch.",
-        });
-      }
-
-      res.json({
-        message: "Reservation deleted successfully.",
-        reservation,
-      });
-    } catch (error) {
-      next(error);
     }
-  }
-);
 
-module.exports = router;
+    const reservation = await Reservation.findOneAndDelete({
+      _id: reservationId,
+      branchId: req.branchId,
+    });
+
+    if (!reservation) {
+      return res.status(404).json({
+        message: "Reservation not found for this branch.",
+      });
+    }
+
+    res.json({
+      message: "Reservation deleted successfully.",
+      reservation,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  getReservations,
+  createReservation,
+  updateReservation,
+  deleteReservation,
+};

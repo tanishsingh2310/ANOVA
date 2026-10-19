@@ -4,8 +4,8 @@ const fs = require("fs");
 const path = require("path");
 const mongoose = require("mongoose");
 
-const connectDB = require("../config/db");
-const MenuItem = require("../modules/menu/MenuItem");
+const connectDB = require("../src/config/db");
+const MenuItem = require("../src/models/MenuItem");
 
 const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
