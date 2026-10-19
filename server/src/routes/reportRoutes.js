@@ -1,7 +1,7 @@
 // server/routes/reportRoutes.js (Member 4, Module 7: Reports & Analytics)
 const router = require('express').Router();
 const reportService = require('../services/reportService');
-const { protect, authorize } = require('../middleware/devAuth');
+const { protect, authorize } = require('../middleware/authMiddleware');
 
 const STAFF = ['owner', 'admin', 'manager'];
 
