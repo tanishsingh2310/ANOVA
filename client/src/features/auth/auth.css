@@ -1,7 +1,7 @@
 
 .login-page {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(400px, 0.95fr);
+  grid-template-columns: 50% 50%;
   min-height: 100vh;
   background: var(--paper, #fff);
   color: var(--ink, #20251f);
