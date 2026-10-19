@@ -12,6 +12,7 @@ app.use('/api/coupons', require('./routes/couponRoutes'));
 app.use('/api/deliveries', require('./routes/deliveryRoutes'));
 app.use('/api/reviews', require('./routes/reviewRoutes'));
 app.use('/api/complaints', require('./routes/complaintRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'API running' });

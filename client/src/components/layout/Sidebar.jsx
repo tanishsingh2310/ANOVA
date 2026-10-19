@@ -42,6 +42,7 @@ export default function Sidebar() {
           { name: "Deliveries", to: "/admin/deliveries" },
           { name: "Promotions", to: "/admin/coupons" },
           { name: "Admin Feedback", to: "/admin/feedback" },
+          { name: "Reports & Analytics", to: "/admin/reports" },
         ],
       },
       {

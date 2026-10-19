@@ -17,6 +17,7 @@ const PAGE_TITLES = {
   "/admin/deliveries": "Deliveries Management",
   "/admin/coupons": "Promotions & Coupons",
   "/admin/feedback": "Feedback Moderation",
+  "/admin/reports": "Business Intelligence & Reports",
   "/deliveries": "My Deliveries",
   "/dev-login": "Developer Sign-In",
 };

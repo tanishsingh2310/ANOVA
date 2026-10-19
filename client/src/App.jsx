@@ -23,6 +23,7 @@ import AdminDeliveries from "./modules/customer/pages/AdminDeliveries";
 import MyDeliveries from "./modules/customer/pages/MyDeliveries";
 import AdminCoupons from "./modules/customer/pages/AdminCoupons";
 import AdminFeedback from "./modules/customer/pages/AdminFeedback";
+import ReportsAnalytics from "./modules/customer/pages/ReportsAnalytics";
 import DevLogin from "./modules/customer/pages/DevLogin";
 import RequireRole from "./modules/customer/components/RequireRole";
 
@@ -75,6 +76,7 @@ function AppLayout() {
             <Route path="/deliveries" element={riderOnly(<MyDeliveries />)} />
             <Route path="/admin/coupons" element={staffOnly(<AdminCoupons />)} />
             <Route path="/admin/feedback" element={staffOnly(<AdminFeedback />)} />
+            <Route path="/admin/reports" element={staffOnly(<ReportsAnalytics />)} />
             <Route path="/dev-login" element={<DevLogin />} />
 
             <Route path="*" element={<Navigate to="/" replace />} />
