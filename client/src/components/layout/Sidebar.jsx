@@ -4,6 +4,7 @@ import { useCart } from "../../modules/customer/context/CartContext";
 import { getRole } from "../../modules/customer/utils/session";
 
 const STAFF = ["owner", "admin", "manager"];
+const DELIVERY_ROLES = ["delivery", "delivery_personnel"];
 
 export default function Sidebar() {
   useLocation(); // ensures re-render on navigation or role change
@@ -11,7 +12,7 @@ export default function Sidebar() {
   const cart = useCart();
   const role = getRole();
 
-  const isDelivery = role === "delivery";
+  const isDelivery = DELIVERY_ROLES.includes(role);
   const isStaff = STAFF.includes(role);
 
   let navigation = [];

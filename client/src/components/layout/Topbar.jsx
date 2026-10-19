@@ -27,10 +27,12 @@ const ROLE_LABELS = {
   admin: "Administrator",
   manager: "Branch Manager",
   delivery: "Delivery Partner",
+  delivery_personnel: "Delivery Partner",
   customer: "Guest",
 };
 
 const STAFF = ["owner", "admin", "manager"];
+const DELIVERY_ROLES = ["delivery", "delivery_personnel"];
 
 function Topbar() {
   const location = useLocation();
@@ -38,7 +40,7 @@ function Topbar() {
   const cart = useCart();
   const role = getRole();
 
-  const isDelivery = role === "delivery";
+  const isDelivery = DELIVERY_ROLES.includes(role);
   const isStaff = STAFF.includes(role);
 
   const title = PAGE_TITLES[location.pathname] || "Customer Management";

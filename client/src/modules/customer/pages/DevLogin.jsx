@@ -7,10 +7,26 @@ export default function DevLogin() {
   const [value, setValue] = useState('');
   const navigate = useNavigate();
 
+  const getRoleFromTokenString = (token) => {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return payload.role || null;
+    } catch {
+      return null;
+    }
+  };
+
   const submit = (e) => {
     e.preventDefault();
     setToken(value);
-    navigate('/');
+    const role = getRoleFromTokenString(value);
+    if (role === 'delivery' || role === 'delivery_personnel') {
+      navigate('/deliveries');
+    } else if (['owner', 'admin', 'manager'].includes(role)) {
+      navigate('/admin');
+    } else {
+      navigate('/');
+    }
   };
 
   const setTestRole = (role) => {
@@ -23,7 +39,13 @@ export default function DevLogin() {
     }));
     const fakeToken = `${header}.${payload}.sig`;
     setToken(fakeToken);
-    navigate('/');
+    if (role === 'delivery' || role === 'delivery_personnel') {
+      navigate('/deliveries');
+    } else if (['owner', 'admin', 'manager'].includes(role)) {
+      navigate('/admin');
+    } else {
+      navigate('/');
+    }
   };
 
   return (

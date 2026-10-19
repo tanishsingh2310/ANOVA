@@ -32,13 +32,14 @@ import { getRole } from "./modules/customer/utils/session";
 import { USE_MOCK } from "./modules/customer/config";
 
 const STAFF = ["owner", "admin", "manager"];
+const DELIVERY_ROLES = ["delivery", "delivery_personnel"];
 
 const staffOnly = (el) => <RequireRole roles={STAFF}>{el}</RequireRole>;
-const riderOnly = (el) => <RequireRole roles={["delivery", ...STAFF]}>{el}</RequireRole>;
+const riderOnly = (el) => <RequireRole roles={[...DELIVERY_ROLES, ...STAFF]}>{el}</RequireRole>;
 
 function HomeRoute() {
   const role = getRole();
-  if (role === "delivery") return <Navigate to="/deliveries" replace />;
+  if (DELIVERY_ROLES.includes(role)) return <Navigate to="/deliveries" replace />;
   if (STAFF.includes(role)) return <Navigate to="/admin" replace />;
   return <Home />;
 }

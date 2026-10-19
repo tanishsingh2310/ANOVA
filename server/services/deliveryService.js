@@ -30,7 +30,7 @@ async function createDelivery({ orderId, orderNumber, branchId, pickup, dropoff,
 // The only place that knows who the assignable delivery staff are. Swap this body
 // if the team decides they are Employee records instead of Users.
 async function listDeliveryStaff(User) {
-  return User.find({ role: 'delivery' }).select('name email').sort({ name: 1 }).lean();
+  return User.find({ role: { $in: ['delivery', 'delivery_personnel'] } }).select('name email').sort({ name: 1 }).lean();
 }
 
 module.exports = { ACTIVE, RIDER_NEXT, createDelivery, listDeliveryStaff };

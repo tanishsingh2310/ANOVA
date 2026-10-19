@@ -79,7 +79,10 @@ exports.assign = async (req, res, next) => {
     const staffId = req.body?.staffId;
     if (!validId(id) || !validId(staffId)) return fail(res, 400, 'Invalid id');
 
-    const staff = await mongoose.model('User').findOne({ _id: staffId, role: 'delivery' }).select('name');
+    const staff = await mongoose.model('User').findOne({
+      _id: staffId,
+      role: { $in: ['delivery', 'delivery_personnel'] },
+    }).select('name');
     if (!staff) return fail(res, 400, 'Choose a valid delivery staff member');
 
     // Atomic: only a waiting or just-assigned delivery can be (re)assigned.
@@ -124,7 +127,7 @@ exports.updateStatus = async (req, res, next) => {
     const requested = req.body?.status;
     if (!validId(id)) return fail(res, 400, 'Invalid id');
 
-    const isRider = req.user.role === 'delivery';
+    const isRider = req.user.role === 'delivery' || req.user.role === 'delivery_personnel';
     const scope = isRider ? { _id: id, deliveryStaff: req.user.id } : { _id: id };
     const current = await Delivery.findOne(scope).select('status');
     if (!current) return fail(res, 404, 'Delivery not found'); // also hides other riders' deliveries
