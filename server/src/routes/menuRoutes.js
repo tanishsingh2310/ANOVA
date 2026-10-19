@@ -7,15 +7,26 @@ const {
   updateMenuItem,
   deleteMenuItem,
 } = require("../controllers/menuController");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
 const router = express.Router();
-
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 // Verify that the supplied branch exists and is active.
 const verifyBranch = async (req, res, next) => {
   try {
-    const branchId = req.params.branchId || req.body.branchId || BRANCH_ID;
+    const branchId =
+      req.params.branchId ||
+      req.body.branchId ||
+      req.body.branch ||
+      req.query.branchId ||
+      req.query.branch ||
+      (req.user && req.user.branch);
+
+    if (!branchId) {
+      return res.status(400).json({
+        message: "Branch ID is required.",
+      });
+    }
 
     if (!mongoose.isValidObjectId(branchId)) {
       return res.status(400).json({
@@ -45,16 +56,34 @@ const verifyBranch = async (req, res, next) => {
   }
 };
 
-// GET: Retrieve menu items for a branch.
+// GET: Retrieve menu items for a branch (publicly accessible for customers and staff).
 router.get("/:branchId", verifyBranch, getMenuItems);
 
-// POST: Add a menu item to a branch.
-router.post("/", verifyBranch, createMenuItem);
+// POST: Add a menu item to a branch (staff only).
+router.post(
+  "/",
+  protect,
+  authorize("owner", "admin", "manager", "chef"),
+  verifyBranch,
+  createMenuItem
+);
 
-// PUT: Update a menu item belonging to the specified branch.
-router.put("/:branchId/:itemId", verifyBranch, updateMenuItem);
+// PUT: Update a menu item belonging to the specified branch (staff only).
+router.put(
+  "/:branchId/:itemId",
+  protect,
+  authorize("owner", "admin", "manager", "chef"),
+  verifyBranch,
+  updateMenuItem
+);
 
-// DELETE: Remove a menu item belonging to the specified branch.
-router.delete("/:branchId/:itemId", verifyBranch, deleteMenuItem);
+// DELETE: Remove a menu item belonging to the specified branch (admin/manager/owner).
+router.delete(
+  "/:branchId/:itemId",
+  protect,
+  authorize("owner", "admin", "manager"),
+  verifyBranch,
+  deleteMenuItem
+);
 
 module.exports = router;

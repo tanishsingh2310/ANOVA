@@ -10,6 +10,8 @@ const ORDER_STATUSES = [
   "Pending",
   "Preparing",
   "Ready",
+  "Out for Delivery",
+  "Delivered",
   "Completed",
   "Cancelled",
 ];
@@ -171,11 +173,28 @@ const handleOrderError = (error, res, next) => {
   return next(error);
 };
 
+// GET: Retrieve authenticated customer's own order history.
+const getMyOrders = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Authentication required." });
+    }
+
+    const orders = await Order.find({ customer: req.user._id })
+      .populate("branch", "name code address phone")
+      .sort({ createdAt: -1 });
+
+    res.json(orders);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // GET: Retrieve orders belonging to a branch.
 const getOrders = async (req, res, next) => {
   try {
     const orders = await Order.find({
-      branchId: req.branchId,
+      $or: [{ branch: req.branchId }, { branchId: req.branchId }],
     }).sort({ createdAt: -1 });
 
     res.json(orders);
@@ -194,15 +213,32 @@ const createOrder = async (req, res, next) => {
       items,
       status,
       notes,
+      discount: rawDiscount,
+      couponCode: rawCouponCode,
     } = req.body;
 
-    if (
-      typeof customer !== "string" ||
-      !customer.trim() ||
-      customer.trim().length > 100
-    ) {
-      return res.status(400).json({
-        message: "Enter a customer name of up to 100 characters.",
+    // Resolve customer ObjectId and customer display name
+    let customerUserId;
+    let customerNameStr = "";
+
+    if (req.user && req.user.role === "customer") {
+      customerUserId = req.user._id;
+      customerNameStr = req.user.name;
+    } else if (req.user) {
+      // Staff-created order (cashier, manager, etc.)
+      if (customer && mongoose.isValidObjectId(customer)) {
+        customerUserId = new mongoose.Types.ObjectId(customer);
+        customerNameStr = req.body.customerName || "Customer";
+      } else if (typeof customer === "string" && customer.trim()) {
+        customerUserId = req.user._id;
+        customerNameStr = customer.trim();
+      } else {
+        customerUserId = req.user._id;
+        customerNameStr = req.user.name;
+      }
+    } else {
+      return res.status(401).json({
+        message: "Authentication required to place an order.",
       });
     }
 
@@ -240,14 +276,25 @@ const createOrder = async (req, res, next) => {
 
     const orderNumber = await generateOrderNumber(req.branchId);
 
+    const discount = Math.max(0, Number(rawDiscount) || 0);
+    const couponCode =
+      typeof rawCouponCode === "string" ? rawCouponCode.trim() : "";
+    const subtotal = calculateTotal(preparedItems);
+    const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
+
     const order = await Order.create({
+      branch: req.branchId,
       branchId: req.branchId,
       orderNumber,
-      customer: customer.trim(),
+      customer: customerUserId,
+      customerName: customerNameStr,
       orderType,
       ...preparedTable,
       items: preparedItems,
-      totalAmount: calculateTotal(preparedItems),
+      total,
+      totalAmount: total,
+      discount,
+      couponCode,
       status: status || "Pending",
       notes: notes?.trim() || "",
     });
@@ -271,7 +318,7 @@ const updateOrder = async (req, res, next) => {
 
     const existingOrder = await Order.findOne({
       _id: orderId,
-      branchId: req.branchId,
+      $or: [{ branch: req.branchId }, { branchId: req.branchId }],
     });
 
     if (!existingOrder) {
@@ -287,22 +334,22 @@ const updateOrder = async (req, res, next) => {
       items,
       status,
       notes,
+      discount: rawDiscount,
+      couponCode: rawCouponCode,
     } = req.body;
 
     const updates = {};
 
     if (customer !== undefined) {
-      if (
-        typeof customer !== "string" ||
-        !customer.trim() ||
-        customer.trim().length > 100
-      ) {
-        return res.status(400).json({
-          message: "Enter a valid customer name of up to 100 characters.",
-        });
+      if (mongoose.isValidObjectId(customer)) {
+        updates.customer = new mongoose.Types.ObjectId(customer);
+      } else if (typeof customer === "string" && customer.trim()) {
+        updates.customerName = customer.trim();
       }
+    }
 
-      updates.customer = customer.trim();
+    if (rawCouponCode !== undefined) {
+      updates.couponCode = typeof rawCouponCode === "string" ? rawCouponCode.trim() : "";
     }
 
     if (orderType !== undefined) {
@@ -375,14 +422,21 @@ const updateOrder = async (req, res, next) => {
       updates.table = preparedTable.table;
     }
 
-    if (items !== undefined) {
-      const preparedItems = await prepareOrderItems(
-        items,
-        req.branchId
-      );
+    if (items !== undefined || rawDiscount !== undefined) {
+      const preparedItems = items !== undefined
+        ? await prepareOrderItems(items, req.branchId)
+        : existingOrder.items;
+      const currentDiscount = rawDiscount !== undefined
+        ? Math.max(0, Number(rawDiscount) || 0)
+        : (existingOrder.discount || 0);
 
-      updates.items = preparedItems;
-      updates.totalAmount = calculateTotal(preparedItems);
+      const subtotal = calculateTotal(preparedItems);
+      const newTotal = Math.max(0, Number((subtotal - currentDiscount).toFixed(2)));
+
+      if (items !== undefined) updates.items = preparedItems;
+      updates.discount = currentDiscount;
+      updates.total = newTotal;
+      updates.totalAmount = newTotal;
     }
 
     if (finalOrderType !== "Dine-in") {
@@ -399,7 +453,7 @@ const updateOrder = async (req, res, next) => {
     const updatedOrder = await Order.findOneAndUpdate(
       {
         _id: orderId,
-        branchId: req.branchId,
+        $or: [{ branch: req.branchId }, { branchId: req.branchId }],
       },
       updates,
       {
@@ -427,7 +481,7 @@ const deleteOrder = async (req, res, next) => {
 
     const order = await Order.findOneAndDelete({
       _id: orderId,
-      branchId: req.branchId,
+      $or: [{ branch: req.branchId }, { branchId: req.branchId }],
     });
 
     if (!order) {
@@ -446,6 +500,7 @@ const deleteOrder = async (req, res, next) => {
 };
 
 module.exports = {
+  getMyOrders,
   getOrders,
   createOrder,
   updateOrder,

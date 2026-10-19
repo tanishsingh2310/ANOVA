@@ -7,18 +7,26 @@ const {
   updateTable,
   deleteTable,
 } = require("../controllers/tableController");
+const { protect, authorize } = require("../middleware/authMiddleware");
 
 const router = express.Router();
-
-// Temporary development branch.
-// Authentication and branch authorization will be integrated
-// with Member 1's middleware later.
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 // Verify that the requested branch exists and is active.
 const verifyBranch = async (req, res, next) => {
   try {
-    const branchId = req.params.branchId || req.body.branchId || BRANCH_ID;
+    const branchId =
+      req.params.branchId ||
+      req.body.branchId ||
+      req.body.branch ||
+      req.query.branchId ||
+      req.query.branch ||
+      (req.user && req.user.branch);
+
+    if (!branchId) {
+      return res.status(400).json({
+        message: "Branch ID is required.",
+      });
+    }
 
     if (!mongoose.isValidObjectId(branchId)) {
       return res.status(400).json({
@@ -39,6 +47,7 @@ const verifyBranch = async (req, res, next) => {
       });
     }
 
+    req.branch = branch;
     req.branchId = branch._id;
     next();
   } catch (error) {
@@ -46,16 +55,34 @@ const verifyBranch = async (req, res, next) => {
   }
 };
 
-// GET: Retrieve tables belonging to a branch.
-router.get("/:branchId", verifyBranch, getTables);
+// GET: Retrieve tables belonging to a branch (authenticated users).
+router.get("/:branchId", protect, verifyBranch, getTables);
 
-// POST: Add a new restaurant table.
-router.post("/", verifyBranch, createTable);
+// POST: Add a new restaurant table (manager, admin, owner).
+router.post(
+  "/",
+  protect,
+  authorize("owner", "admin", "manager"),
+  verifyBranch,
+  createTable
+);
 
-// PUT: Update a table belonging to the specified branch.
-router.put("/:branchId/:tableId", verifyBranch, updateTable);
+// PUT: Update a table belonging to the specified branch (manager, admin, owner).
+router.put(
+  "/:branchId/:tableId",
+  protect,
+  authorize("owner", "admin", "manager"),
+  verifyBranch,
+  updateTable
+);
 
-// DELETE: Remove a table belonging to the specified branch.
-router.delete("/:branchId/:tableId", verifyBranch, deleteTable);
+// DELETE: Remove a table belonging to the specified branch (manager, admin, owner).
+router.delete(
+  "/:branchId/:tableId",
+  protect,
+  authorize("owner", "admin", "manager"),
+  verifyBranch,
+  deleteTable
+);
 
 module.exports = router;

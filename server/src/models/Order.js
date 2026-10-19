@@ -34,10 +34,16 @@ const orderItemSchema = new mongoose.Schema(
 
 const orderSchema = new mongoose.Schema(
   {
-    branchId: {
+    branch: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Branch",
       required: true,
+      index: true,
+    },
+
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
       index: true,
     },
 
@@ -48,9 +54,16 @@ const orderSchema = new mongoose.Schema(
     },
 
     customer: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
       required: true,
+      index: true,
+    },
+
+    customerName: {
+      type: String,
       trim: true,
+      default: "",
       maxlength: 100,
     },
 
@@ -83,10 +96,27 @@ const orderSchema = new mongoose.Schema(
       },
     },
 
-    totalAmount: {
+    total: {
       type: Number,
       required: true,
-      min: 0.01,
+      min: 0,
+    },
+
+    totalAmount: {
+      type: Number,
+      min: 0,
+    },
+
+    discount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    couponCode: {
+      type: String,
+      trim: true,
+      default: "",
     },
 
     status: {
@@ -96,6 +126,8 @@ const orderSchema = new mongoose.Schema(
         "Pending",
         "Preparing",
         "Ready",
+        "Out for Delivery",
+        "Delivered",
         "Completed",
         "Cancelled",
       ],
@@ -115,13 +147,33 @@ const orderSchema = new mongoose.Schema(
   }
 );
 
+// Synchronize branch <-> branchId and total <-> totalAmount before saving
+orderSchema.pre("validate", function () {
+  if (!this.branch && this.branchId) {
+    this.branch = this.branchId;
+  }
+  if (!this.branchId && this.branch) {
+    this.branchId = this.branch;
+  }
+  if (this.total === undefined && this.totalAmount !== undefined) {
+    this.total = this.totalAmount;
+  }
+  if (this.totalAmount === undefined && this.total !== undefined) {
+    this.totalAmount = this.total;
+  }
+});
+
 // An order number must be unique within its branch.
 orderSchema.index(
-  { branchId: 1, orderNumber: 1 },
+  { branch: 1, orderNumber: 1 },
   { unique: true }
 );
 
-// Make it easier to retrieve recent orders for a branch.
+// Fast retrieval of order history for a customer
+orderSchema.index({ customer: 1, createdAt: -1 });
+
+// Fast retrieval of recent orders for a branch.
+orderSchema.index({ branch: 1, createdAt: -1 });
 orderSchema.index({ branchId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Order", orderSchema);

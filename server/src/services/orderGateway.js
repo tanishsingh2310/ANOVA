@@ -18,12 +18,21 @@ async function findCustomerOrder(orderId, userId) {
   const profile = await Customer.findOne({ user: userId }).select('_id').lean();
   if (profile) ids.push(profile._id);
 
-  return mongoose.connection.collection('orders').findOne(
+  const order = await mongoose.connection.collection('orders').findOne(
     { _id: new mongoose.Types.ObjectId(orderId), customer: { $in: ids } },
-    { projection: { status: 1, branch: 1, orderType: 1, orderNumber: 1 } }
+    { projection: { status: 1, branch: 1, branchId: 1, orderType: 1, orderNumber: 1 } }
   );
+
+  if (!order) return null;
+  if (!order.branch && order.branchId) {
+    order.branch = order.branchId;
+  }
+  return order;
 }
 
-const isCompleted = (order) => !!order && COMPLETED.includes(order.status);
+const isCompleted = (order) =>
+  !!order &&
+  typeof order.status === 'string' &&
+  COMPLETED.includes(order.status.toLowerCase());
 
 module.exports = { COMPLETED, findCustomerOrder, isCompleted };

@@ -37,7 +37,9 @@ exports.createReview = async (req, res, next) => {
     const order = await gateway.findCustomerOrder(b.order, req.user.id);
     if (!order) return fail(res, 404, 'Order not found');
     if (!gateway.isCompleted(order)) return fail(res, 409, 'You can review an order after it is delivered or collected');
-    if (hasDelivery && order.orderType !== 'delivery') return fail(res, 400, 'Delivery ratings only apply to delivery orders');
+    if (hasDelivery && String(order.orderType).toLowerCase() !== 'delivery') {
+      return fail(res, 400, 'Delivery ratings only apply to delivery orders');
+    }
 
     const review = await Review.create({
       customer: req.user.id, order: order._id, orderNumber: order.orderNumber, branch: order.branch,

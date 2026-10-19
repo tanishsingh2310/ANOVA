@@ -90,11 +90,11 @@ async function getOverviewReport({ branchId, timeframe = '30d' }) {
   ]);
 
   const reviewStats = reviewsAgg[0] || {
-    avgRating: 4.8,
-    totalReviews: 24,
-    star5: 18,
-    star4: 4,
-    star3: 2,
+    avgRating: 0,
+    totalReviews: 0,
+    star5: 0,
+    star4: 0,
+    star3: 0,
     star2: 0,
     star1: 0,
   };
@@ -127,21 +127,30 @@ async function getOverviewReport({ branchId, timeframe = '30d' }) {
   const totalRedemptions = await CouponRedemption.countDocuments(branchFilter);
 
   // 5. Branch-wise Revenue & Orders Breakdown
-  // If actual orders exist in DB, group them; otherwise generate standard branch breakdown based on registered branches
+  // Match real order fields across modules (branchId/branch and totalAmount/total)
+  const orderBranchFilter = branchId && mongoose.isValidObjectId(branchId)
+    ? {
+        $or: [
+          { branchId: new mongoose.Types.ObjectId(branchId) },
+          { branch: new mongoose.Types.ObjectId(branchId) },
+        ],
+      }
+    : {};
+
   let branchPerformance = [];
   try {
     const ordersAgg = await db.collection('orders').aggregate([
-      { $match: branchFilter },
+      { $match: orderBranchFilter },
       {
         $group: {
-          _id: '$branch',
-          totalSales: { $sum: '$total' },
+          _id: { $ifNull: ['$branchId', '$branch'] },
+          totalSales: { $sum: { $ifNull: ['$totalAmount', { $ifNull: ['$total', 0] }] } },
           orderCount: { $sum: 1 },
         },
       },
     ]).toArray();
 
-    if (ordersAgg.length > 0 && branches.length > 0) {
+    if (branches.length > 0) {
       branchPerformance = branches.map((b) => {
         const match = ordersAgg.find((o) => o._id && o._id.toString() === b._id.toString());
         return {
@@ -154,23 +163,12 @@ async function getOverviewReport({ branchId, timeframe = '30d' }) {
       });
     }
   } catch (err) {
-    // fallback
-  }
-
-  // Realistic fallback metrics aligned with the ANOVA multi-branch setup
-  if (branchPerformance.length === 0) {
-    const defaultBranchNames = [
-      { name: 'ANOVA Pune Central', city: 'Pune', sales: 184500, orders: 420 },
-      { name: 'ANOVA Ahmedabad - Satellite', city: 'Ahmedabad', sales: 142300, orders: 310 },
-      { name: 'ANOVA Surat - Vesu', city: 'Surat', sales: 98400, orders: 215 },
-    ];
-
-    branchPerformance = defaultBranchNames.map((item, idx) => ({
-      branchId: branches[idx]?._id || `branch_${idx + 1}`,
-      name: branches[idx]?.name || item.name,
-      city: branches[idx]?.city || branches[idx]?.address?.city || item.city,
-      sales: item.sales,
-      orders: item.orders,
+    branchPerformance = branches.map((b) => ({
+      branchId: b._id,
+      name: b.name || 'Branch',
+      city: b.city || b.address?.city || 'City',
+      sales: 0,
+      orders: 0,
     }));
   }
 
@@ -184,7 +182,7 @@ async function getOverviewReport({ branchId, timeframe = '30d' }) {
       totalRevenue,
       totalOrders,
       avgDeliveryMinutes,
-      satisfactionRating: Number((reviewStats.avgRating || 4.8).toFixed(1)),
+      satisfactionRating: Number((reviewStats.avgRating || 0).toFixed(1)),
       resolutionRate,
       activeDeliveries: deliveryCounts.assigned + deliveryCounts.picked_up + deliveryCounts.on_the_way,
       deliveredOrders: deliveryCounts.delivered,
@@ -193,7 +191,7 @@ async function getOverviewReport({ branchId, timeframe = '30d' }) {
     deliveryBreakdown: deliveryCounts,
     customerFeedback: {
       totalReviews: reviewStats.totalReviews,
-      avgRating: Number((reviewStats.avgRating || 4.8).toFixed(1)),
+      avgRating: Number((reviewStats.avgRating || 0).toFixed(1)),
       starDistribution: {
         5: reviewStats.star5 || 0,
         4: reviewStats.star4 || 0,
