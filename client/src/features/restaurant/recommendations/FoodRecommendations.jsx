@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiRequest } from "../../api";
-import "../../styles/food-recommendations.css";
+import { apiRequest } from "../../../services/api";
+import "../../../styles/food-recommendations.css";
 
 function DishPhoto({ dish, containerClass, photoClass }) {
   const [imageFailed, setImageFailed] = useState(false);

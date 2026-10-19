@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import "../../styles/menu-management.css";
-import { apiRequest } from "../../api";
+import "../../../styles/menu-management.css";
+import { apiRequest } from "../../../services/api";
 
 const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 

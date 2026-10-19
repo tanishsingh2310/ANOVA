@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest } from "../../api";
-import "../../styles/reservations.css";
+import { apiRequest } from "../../../services/api";
+import "../../../styles/reservations.css";
 
 const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
