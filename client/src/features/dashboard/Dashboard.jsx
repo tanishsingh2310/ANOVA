@@ -14,7 +14,7 @@ import Logo1 from '../../assets/Logo1.png'
 import banner from '../../assets/banner.png'
 import DashboardStatistics from './DashboardStatistics.jsx'
 import './statistics.css'
-
+import Employees from '../employees/Employees.jsx'
 
 const navigation = [
   {
@@ -456,6 +456,8 @@ export default function Dashboard({ user, onLogout }) {
   <FoodRecommendations />
 ) : activePage === 'Branches' ? (
   <Branches user={user} />
+) : activePage === 'Employees' ? (
+  <Employees user={user} />
 ) : (
   <section className="module-placeholder">
     <div className="placeholder-icon">✳</div>

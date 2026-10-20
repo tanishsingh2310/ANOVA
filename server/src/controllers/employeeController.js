@@ -12,15 +12,18 @@ const EMPLOYEE_ROLES = [
   "chef",
   "cashier",
   "employee",
+  "delivery_personnel"
 ];
 
 const ASSIGNABLE_ROLES = [
+  "admin",
   "manager",
   "hr",
   "inventory_manager",
   "chef",
   "cashier",
   "employee",
+  "delivery_personnel"
 ];
 
 const SAFE_FIELDS =
