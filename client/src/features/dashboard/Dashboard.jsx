@@ -2,6 +2,13 @@
 import { useState } from 'react'
 import './dashboard.css'
 import InventoryModule from '../inventory/InventoryModule.jsx'
+import MenuManagement from '../restaurant/menu/MenuManagement.jsx'
+import TableManagement from '../restaurant/tables/TableManagement.jsx'
+import Reservations from '../restaurant/reservations/Reservations.jsx'
+import Orders from '../restaurant/orders/Orders.jsx'
+import KitchenWorkflow from '../restaurant/kitchen/KitchenWorkflow.jsx'
+import BillingPayments from '../restaurant/billing/BillingPayments.jsx'
+import FoodRecommendations from '../restaurant/recommendations/FoodRecommendations.jsx'
 
 const navigation = [
   { label: 'Overview', icon: '◫', roles: ['owner', 'admin', 'manager', 'hr', 'employee'] },
@@ -16,6 +23,13 @@ const navigation = [
   icon: 'I',
   roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
 },
+{ label: 'Menu Management', icon: 'M', roles: ['owner', 'admin', 'manager', 'chef'] },
+{ label: 'Table Management', icon: 'T', roles: ['owner', 'admin', 'manager', 'cashier'] },
+{ label: 'Reservations', icon: 'R', roles: ['owner', 'admin', 'manager', 'cashier'] },
+{ label: 'Orders', icon: 'O', roles: ['owner', 'admin', 'manager', 'chef', 'cashier'] },
+{ label: 'Kitchen Workflow', icon: 'K', roles: ['owner', 'admin', 'manager', 'chef'] },
+{ label: 'Billing & Payments', icon: 'B', roles: ['owner', 'admin', 'manager', 'cashier'] },
+{ label: 'Food Recommendations', icon: 'F', roles: ['owner', 'admin', 'manager', 'chef'] },
 ]
 
 const modules = [
@@ -176,8 +190,9 @@ export default function Dashboard({ user, onLogout }) {
               Workspace active
             </div>
           </div>        
+
 {activePage === 'Overview' ? (
-<>
+  <>
     <section className="welcome-banner">
       <div className="banner-content">
         <div className="banner-label">WELCOME TO ANOVA</div>
@@ -228,6 +243,20 @@ export default function Dashboard({ user, onLogout }) {
   </>
 ) : activePage === 'Inventory & Supply Chain' ? (
   <InventoryModule selectedBranch="all" />
+) : activePage === 'Menu Management' ? (
+  <MenuManagement />
+) : activePage === 'Table Management' ? (
+  <TableManagement />
+) : activePage === 'Reservations' ? (
+  <Reservations />
+) : activePage === 'Orders' ? (
+  <Orders />
+) : activePage === 'Kitchen Workflow' ? (
+  <KitchenWorkflow />
+) : activePage === 'Billing & Payments' ? (
+  <BillingPayments />
+) : activePage === 'Food Recommendations' ? (
+  <FoodRecommendations />
 ) : (
   <section className="module-placeholder">
     <div className="placeholder-icon">✳</div>
