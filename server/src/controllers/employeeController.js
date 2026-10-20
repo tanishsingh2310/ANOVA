@@ -483,3 +483,43 @@ exports.updateEmployeeStatus = async (req, res) => {
     });
   }
 };
+exports.deleteEmployee = async (req, res) => {
+  try {
+    if (!canManageEmployees(req.user)) {
+      return res.status(403).json({
+        message: "Insufficient permissions.",
+      });
+    }
+
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({
+        message: "Invalid employee ID.",
+      });
+    }
+
+    const employee = await User.findOne({
+      _id: req.params.id,
+      ...employeeScope(req.user),
+    });
+
+    // Never allow this endpoint to delete an owner account.
+    if (!employee || employee.role === "owner") {
+      return res.status(404).json({
+        message: "Employee not found.",
+      });
+    }
+
+    await User.deleteOne({ _id: employee._id });
+
+    return res.json({
+      message: "Employee deleted successfully.",
+      employeeId: employee._id,
+    });
+  } catch (error) {
+    console.error("Delete employee failed:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to delete employee.",
+    });
+  }
+};

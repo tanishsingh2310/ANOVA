@@ -7,6 +7,7 @@ const {
   createEmployee,
   updateEmployee,
   updateEmployeeStatus,
+  deleteEmployee,
 } = require("../controllers/employeeController");
 
 const {
@@ -46,6 +47,11 @@ router.patch(
   "/:id/status",
   authorize("owner", "admin", "hr"),
   updateEmployeeStatus
+);
+router.delete(
+  "/:id",
+  authorize("owner", "admin", "hr"),
+  deleteEmployee
 );
 
 module.exports = router;

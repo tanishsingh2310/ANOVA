@@ -14,6 +14,7 @@ import banner from '../../assets/banner.png'
 import DashboardStatistics from './DashboardStatistics.jsx'
 import './statistics.css'
 import Employees from '../employees/Employees.jsx'
+import Shifts from '../shifts/Shifts.jsx'
 
 const navigation = [
   {
@@ -538,6 +539,10 @@ useEffect(() => {
   <Branches user={user} />
 ) : activePage === 'Employees' ? (
   <Employees user={user} />
+) : activePage === 'Employees' ? (
+  <Employees user={user} />
+) : activePage === 'Shifts' ? (
+  <Shifts user={user} />
 ) : (
   <section className="module-placeholder">
     <div className="placeholder-icon">✳</div>

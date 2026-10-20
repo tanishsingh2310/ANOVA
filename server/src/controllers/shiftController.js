@@ -69,13 +69,14 @@ async function validateEmployee(employeeId, branchId) {
         "chef",
         "cashier",
         "employee",
+        "delivery_personnel",
       ],
     },
   }).select("_id name role branch");
 
   if (!employee) {
     return {
-      error: "Active employee not found in the selected branch.",
+      error: "This employee is not allowed to be assigned to a shift.",
     };
   }
 
@@ -708,6 +709,49 @@ exports.completeShift = async (req, res) => {
     console.error("Complete shift failed:", error.message);
     return res.status(500).json({
       message: "Failed to complete shift.",
+    });
+  }
+};
+exports.deleteShift = async (req, res) => {
+  try {
+    if (!canManageShifts(req.user)) {
+      return res.status(403).json({
+        message: "You cannot delete shifts.",
+      });
+    }
+
+    if (!validId(req.params.id)) {
+      return res.status(400).json({
+        message: "Invalid shift ID.",
+      });
+    }
+
+    const shift = await Shift.findOne({
+      _id: req.params.id,
+      ...branchFilter(req.user),
+    });
+
+    if (!shift) {
+      return res.status(404).json({
+        message: "Shift not found.",
+      });
+    }
+
+    if (shift.status !== "completed") {
+      return res.status(400).json({
+        message: "Only completed shifts can be deleted.",
+      });
+    }
+
+    await Shift.deleteOne({ _id: shift._id });
+
+    return res.json({
+      message: "Completed shift deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete shift failed:", error.message);
+    return res.status(500).json({
+      message: "Failed to delete shift.",
     });
   }
 };
