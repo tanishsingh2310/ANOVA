@@ -24,7 +24,7 @@ function DishPhoto({ dish, containerClass, photoClass }) {
   );
 }
 
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
+
 
 
 const currency = (amount) =>
@@ -34,7 +34,7 @@ const currency = (amount) =>
     maximumFractionDigits: 0,
   }).format(amount);
 
-function FoodRecommendations() {
+function FoodRecommendations({ branchId }) {
   const [dishes, setDishes] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,17 +51,27 @@ function FoodRecommendations() {
   const [recommendationMode, setRecommendationMode] = useState(false);
 
 
-    useEffect(() => {
+      useEffect(() => {
     let isMounted = true;
 
     async function loadRecommendationData() {
+      if (!branchId) {
+        setDishes([]);
+        setOrders([]);
+        setLoading(false);
+        setError("");
+        return;
+      }
+
       setLoading(true);
       setError("");
+      setDishes([]);
+      setOrders([]);
 
       try {
         const [menuData, orderData] = await Promise.all([
-          apiRequest(`/api/menu/${BRANCH_ID}`),
-          apiRequest(`/api/orders/${BRANCH_ID}`),
+          apiRequest(`/api/menu/${branchId}`),
+          apiRequest(`/api/orders/${branchId}`),
         ]);
 
         if (!Array.isArray(menuData) || !Array.isArray(orderData)) {
@@ -90,7 +100,7 @@ function FoodRecommendations() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [branchId]);
 
     const salesByMenuItemId = useMemo(() => {
     const totals = {};

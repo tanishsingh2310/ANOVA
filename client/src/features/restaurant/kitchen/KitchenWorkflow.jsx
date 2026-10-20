@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../../services/api";
 import "../../../styles/kitchen-workflow.css";
 
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 const workflowStages = [
   {
@@ -68,7 +67,7 @@ function formatElapsedTime(minutes) {
     : `${hours} hr`;
 }
 
-function KitchenWorkflow() {
+function KitchenWorkflow({ branchId }) { 
   const [orders, setOrders] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [orderTypeFilter, setOrderTypeFilter] = useState("All");
@@ -80,13 +79,21 @@ function KitchenWorkflow() {
   const [actionError, setActionError] = useState("");
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const loadOrders = useCallback(async (showLoader = false) => {
+    const loadOrders = useCallback(async (showLoader = false) => {
+    if (!branchId) {
+      setOrders([]);
+      setIsLoading(false);
+      setError("");
+      setLastUpdated(null);
+      return;
+    }
+
     if (showLoader) {
       setIsLoading(true);
     }
 
     try {
-      const data = await apiRequest(`/api/orders/${BRANCH_ID}`);
+      const data = await apiRequest(`/api/orders/${branchId}`);
 
       if (!Array.isArray(data)) {
         throw new Error("The server returned an unexpected orders response.");
@@ -105,7 +112,7 @@ function KitchenWorkflow() {
         setIsLoading(false);
       }
     }
-  }, []);
+  }, [branchId]);
 
   useEffect(() => {
     loadOrders(true);
@@ -159,7 +166,7 @@ function KitchenWorkflow() {
 
     try {
       const updatedOrder = await apiRequest(
-        `/api/orders/${BRANCH_ID}/${orderId}`,
+        `/api/orders/${branchId}/${orderId}`,
         {
           method: "PUT",
           body: JSON.stringify({ status: nextStatus }),
@@ -220,32 +227,7 @@ function KitchenWorkflow() {
         </div>
       </div>
 
-      <div className="kitchen-summary-grid">
-        <SummaryCard
-          label="Pending Orders"
-          value={summary.pending}
-          className="pending"
-          icon="◷"
-        />
-        <SummaryCard
-          label="Preparing"
-          value={summary.preparing}
-          className="preparing"
-          icon="♨"
-        />
-        <SummaryCard
-          label="Ready to Serve"
-          value={summary.ready}
-          className="ready"
-          icon="✓"
-        />
-        <SummaryCard
-          label="Completed"
-          value={summary.completed}
-          className="completed"
-          icon="▤"
-        />
-      </div>
+      
 
       <div className="kitchen-toolbar">
         <div className="kitchen-search">

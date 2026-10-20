@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../../services/api";
 import "../../../styles/billing-payments.css";
 
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 const currency = (amount) =>
   new Intl.NumberFormat("en-IN", {
@@ -42,7 +41,7 @@ const mapInvoice = (invoice) => ({
   status: invoice.status || "Pending",
 });
 
-function BillingPayments() {
+function BillingPayments({ branchId }) { 
   const [bills, setBills] = useState([]);
   const [orders, setOrders] = useState([]);
 
@@ -66,14 +65,24 @@ function BillingPayments() {
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  const loadBillingData = useCallback(async () => {
+   const loadBillingData = useCallback(async () => {
+    if (!branchId) {
+      setBills([]);
+      setOrders([]);
+      setLoading(false);
+      setError("");
+      return;
+    }
+
     setLoading(true);
     setError("");
+    setBills([]);
+    setOrders([]);
 
     try {
       const [invoiceData, orderData] = await Promise.all([
-        apiRequest(`/api/payments/${BRANCH_ID}`),
-        apiRequest(`/api/orders/${BRANCH_ID}`),
+        apiRequest(`/api/payments/${branchId}`),
+        apiRequest(`/api/orders/${branchId}`),
       ]);
 
       if (!Array.isArray(invoiceData) || !Array.isArray(orderData)) {
@@ -90,7 +99,7 @@ function BillingPayments() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [branchId]);
 
   useEffect(() => {
     loadBillingData();
@@ -189,7 +198,7 @@ function BillingPayments() {
       const invoice = await apiRequest("/api/payments", {
         method: "POST",
         body: JSON.stringify({
-          branchId: BRANCH_ID,
+          branchId: branchId,
           orderId: selectedOrderId,
           discount: numericDiscount,
           taxRate: numericTaxRate,
@@ -246,7 +255,7 @@ function BillingPayments() {
 
     try {
       const updatedInvoice = await apiRequest(
-        `/api/payments/${BRANCH_ID}/${paymentBill._id}/payments`,
+        `/api/payments/${branchId}/${paymentBill._id}/payments`,
         {
           method: "POST",
           body: JSON.stringify({
@@ -364,49 +373,7 @@ function BillingPayments() {
         </div>
       )}
 
-      <section className="billing-summary-grid">
-        <article className="billing-summary-card">
-          <div className="billing-summary-top">
-            <span className="billing-summary-label">
-              Collected Revenue
-            </span>
-            <span className="billing-summary-icon">₹</span>
-          </div>
-          <h2>{currency(summary.revenue)}</h2>
-          <p>Payments recorded across all invoices</p>
-        </article>
-
-        <article className="billing-summary-card">
-          <div className="billing-summary-top">
-            <span className="billing-summary-label">Paid Bills</span>
-            <span className="billing-summary-icon">✓</span>
-          </div>
-          <h2>{summary.paid}</h2>
-          <p>Invoices fully settled</p>
-        </article>
-
-        <article className="billing-summary-card">
-          <div className="billing-summary-top">
-            <span className="billing-summary-label">
-              Unsettled Bills
-            </span>
-            <span className="billing-summary-icon">◷</span>
-          </div>
-          <h2>{summary.pending}</h2>
-          <p>Pending or partially paid invoices</p>
-        </article>
-
-        <article className="billing-summary-card billing-outstanding-card">
-          <div className="billing-summary-top">
-            <span className="billing-summary-label">
-              Outstanding Balance
-            </span>
-            <span className="billing-summary-icon">↗</span>
-          </div>
-          <h2>{currency(summary.outstanding)}</h2>
-          <p>Amount remaining to be collected</p>
-        </article>
-      </section>
+      
 
       <section className="billing-table-section">
         <div className="billing-section-heading">

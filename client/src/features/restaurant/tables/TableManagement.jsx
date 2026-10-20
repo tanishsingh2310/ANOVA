@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import "../../../styles/table-management.css";
 import { apiRequest } from "../../../services/api";
 
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 const emptyForm = {
   number: "",
@@ -14,7 +13,7 @@ const emptyForm = {
 const statuses = ["Available", "Occupied", "Reserved"];
 const locations = ["Indoor", "Outdoor", "Private Dining"];
 
-function TableManagement() {
+function TableManagement({ branchId }) {
   const [tables, setTables] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Statuses");
@@ -32,15 +31,23 @@ function TableManagement() {
     };
   }
 
-  // Load tables from MongoDB when the page opens.
+    // Load tables whenever the selected branch changes.
   useEffect(() => {
     let isMounted = true;
 
     async function loadTables() {
-      try {
-        setLoadError("");
+      if (!branchId) {
+        setTables([]);
+        setLoading(false);
+        return;
+      }
 
-        const data = await apiRequest(`/api/tables/${BRANCH_ID}`);
+      setLoading(true);
+      setLoadError("");
+      setTables([]);
+
+      try {
+        const data = await apiRequest(`/api/tables/${branchId}`);
 
         if (isMounted) {
           setTables(data.map(normalizeTable));
@@ -61,7 +68,8 @@ function TableManagement() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [branchId]);
+
 
   const filteredTables = useMemo(() => {
     return tables.filter((table) => {
@@ -158,7 +166,7 @@ function TableManagement() {
       if (editingId !== null) {
         // Update the existing table in MongoDB.
         const updatedTable = await apiRequest(
-          `/api/tables/${BRANCH_ID}/${editingId}`,
+          `/api/tables/${branchId}/${editingId}`,
           {
             method: "PUT",
             body: JSON.stringify(tableData),
@@ -177,7 +185,7 @@ function TableManagement() {
         const createdTable = await apiRequest("/api/tables", {
           method: "POST",
           body: JSON.stringify({
-            branchId: BRANCH_ID,
+            branchId: branchId,
             ...tableData,
           }),
         });
@@ -208,7 +216,7 @@ function TableManagement() {
 
     try {
       const updatedTable = await apiRequest(
-        `/api/tables/${BRANCH_ID}/${id}`,
+        `/api/tables/${branchId}/${id}`,
         {
           method: "PUT",
           body: JSON.stringify({ status }),
@@ -235,7 +243,7 @@ function TableManagement() {
     }
 
     try {
-      await apiRequest(`/api/tables/${BRANCH_ID}/${table.id}`, {
+      await apiRequest(`/api/tables/${branchId}/${table.id}`, {
         method: "DELETE",
       });
 
@@ -253,8 +261,7 @@ function TableManagement() {
     <section className="table-management">
       <div className="table-page-heading">
         <div>
-          <span className="table-eyebrow">RESTAURANT OPERATIONS</span>
-          <h1>Table Management</h1>
+          
           <p>
             Organise restaurant seating, monitor availability, and manage table
             assignments.
@@ -270,31 +277,7 @@ function TableManagement() {
         </button>
       </div>
 
-      <div className="table-summary-grid">
-        <article className="table-summary-card">
-          <span>Total Tables</span>
-          <strong>{tables.length}</strong>
-          <small>Registered restaurant tables</small>
-        </article>
-
-        <article className="table-summary-card">
-          <span>Available</span>
-          <strong>{availableCount}</strong>
-          <small>Ready for seating</small>
-        </article>
-
-        <article className="table-summary-card">
-          <span>Occupied</span>
-          <strong>{occupiedCount}</strong>
-          <small>Currently in use</small>
-        </article>
-
-        <article className="table-summary-card">
-          <span>Reserved</span>
-          <strong>{reservedCount}</strong>
-          <small>Allocated for bookings</small>
-        </article>
-      </div>
+      
 
       <div className="table-toolbar">
         <div className="table-search">
