@@ -164,7 +164,25 @@ exports.getBranches = async (req, res) => {
   }
 };
 
+exports.getPublicBranches = async (req, res) => {
+  try {
+    const branches = await Branch.find({ isActive: true })
+      .select("name address phone")
+      .sort({ name: 1 })
+      .lean();
 
+    return res.status(200).json({
+      count: branches.length,
+      branches,
+    });
+  } catch (error) {
+    return handleDatabaseError(
+      error,
+      res,
+      "Public branch listing error"
+    );
+  }
+};
 
 
 exports.getBranchById = async (req, res) => {

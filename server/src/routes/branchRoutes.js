@@ -2,6 +2,7 @@
 const {
   createBranch,
   getBranches,
+  getPublicBranches,
   getBranchById,
   updateBranch,
   updateBranchStatus,
@@ -9,7 +10,7 @@ const {
 const { protect, authorize } = require("../middleware/authMiddleware");
 
 const router = express.Router();
-
+router.get("/public", getPublicBranches);
 router.use(protect);
 
 router.post(
