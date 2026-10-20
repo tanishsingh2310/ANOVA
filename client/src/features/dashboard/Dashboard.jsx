@@ -1,5 +1,4 @@
-
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import './dashboard.css'
 import InventoryModule from '../inventory/InventoryModule.jsx'
 import MenuManagement from '../restaurant/menu/MenuManagement.jsx'
@@ -170,6 +169,81 @@ const modules = [
 export default function Dashboard({ user, onLogout }) {
   const [activePage, setActivePage] = useState('Overview')
   const [mobileMenu, setMobileMenu] = useState(false)
+
+  const [branches, setBranches] = useState([])
+const [selectedBranchId, setSelectedBranchId] = useState('')
+const [branchLoading, setBranchLoading] = useState(true)
+const [branchError, setBranchError] = useState('')
+
+useEffect(() => {
+  const controller = new AbortController()
+
+  async function loadBranches() {
+    setBranchLoading(true)
+    setBranchError('')
+
+    try {
+      const token = sessionStorage.getItem('mbrems_token')
+      const apiBase = (
+        import.meta.env.VITE_API_URL || 'http://localhost:5000'
+      ).replace(/\/+$/, '')
+
+      const response = await fetch(`${apiBase}/api/branches`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        signal: controller.signal,
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Unable to load branches.')
+      }
+
+      const availableBranches = Array.isArray(data.branches)
+        ? data.branches
+        : []
+
+      setBranches(availableBranches)
+
+      setSelectedBranchId((currentId) => {
+        if (
+          currentId &&
+          availableBranches.some((branch) => branch._id === currentId)
+        ) {
+          return currentId
+        }
+
+        return (
+  availableBranches.find(
+    (branch) => branch.name?.trim().toLowerCase() === 'pune central',
+  )?._id ||
+  availableBranches[0]?._id ||
+  ''
+)
+      })
+
+      if (availableBranches.length === 0) {
+        setBranchError('No active branches are available to your account.')
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setBranchError(error.message || 'Unable to load branches.')
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setBranchLoading(false)
+      }
+    }
+  }
+
+  loadBranches()
+
+  return () => controller.abort()
+}, [])
+
+
   const [expandedGroups, setExpandedGroups] = useState({
   'People & HR': false,
 })
@@ -352,7 +426,7 @@ export default function Dashboard({ user, onLogout }) {
 
 
 
-          
+
 <div className="topbar-user">
   <div className="user-avatar">
     {user?.profileImage || user?.avatarUrl ? (
@@ -443,19 +517,25 @@ export default function Dashboard({ user, onLogout }) {
 ) : activePage === 'Inventory & Supply Chain' ? (
   <InventoryModule selectedBranch="all" />
 ) : activePage === 'Menu Management' ? (
-  <MenuManagement />
+  <MenuManagement
+  branchId={selectedBranchId}
+  branches={branches}
+  onBranchChange={setSelectedBranchId}
+  branchLoading={branchLoading}
+  branchError={branchError}
+/>
 ) : activePage === 'Table Management' ? (
-  <TableManagement />
+  <TableManagement branchId={selectedBranchId} />
 ) : activePage === 'Reservations' ? (
-  <Reservations />
+  <Reservations branchId={selectedBranchId} />
 ) : activePage === 'Orders' ? (
-  <Orders />
+  <Orders branchId={selectedBranchId} />
 ) : activePage === 'Kitchen Workflow' ? (
-  <KitchenWorkflow />
+  <KitchenWorkflow branchId={selectedBranchId} />
 ) : activePage === 'Billing & Payments' ? (
-  <BillingPayments />
+  <BillingPayments branchId={selectedBranchId} />
 ) : activePage === 'Food Recommendations' ? (
-  <FoodRecommendations />
+  <FoodRecommendations branchId={selectedBranchId} />
 ) : activePage === 'Branches' ? (
   <Branches user={user} />
 ) : activePage === 'Employees' ? (

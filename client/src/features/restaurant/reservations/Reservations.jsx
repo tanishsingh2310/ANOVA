@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../../services/api";
 import "../../../styles/reservations.css";
 
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
 
 const emptyForm = {
   customerName: "",
@@ -71,7 +70,7 @@ function normalizeReservation(reservation) {
   };
 }
 
-function Reservations() {
+function Reservations({ branchId }) {
   const [reservations, setReservations] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -86,17 +85,24 @@ function Reservations() {
 
   const today = getToday();
 
-  const loadReservations = useCallback(async () => {
+    const loadReservations = useCallback(async () => {
+    if (!branchId) {
+      setReservations([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setPageError("");
+    setReservations([]);
 
     try {
-      const data = await apiRequest(
-        `/api/reservations/${BRANCH_ID}`
-      );
+      const data = await apiRequest(`/api/reservations/${branchId}`);
 
       if (!Array.isArray(data)) {
-        throw new Error("The server returned an unexpected reservations response.");
+        throw new Error(
+          "The server returned an unexpected reservations response."
+        );
       }
 
       setReservations(data.map(normalizeReservation));
@@ -107,26 +113,12 @@ function Reservations() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [branchId]);
 
   useEffect(() => {
     loadReservations();
   }, [loadReservations]);
 
-  const summary = useMemo(() => {
-    return {
-      total: reservations.length,
-      pending: reservations.filter(
-        (reservation) => reservation.status === "Pending"
-      ).length,
-      confirmed: reservations.filter(
-        (reservation) => reservation.status === "Confirmed"
-      ).length,
-      cancelled: reservations.filter(
-        (reservation) => reservation.status === "Cancelled"
-      ).length,
-    };
-  }, [reservations]);
 
   const filteredReservations = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -350,7 +342,7 @@ if (!validEmail) {
     try {
       if (editingId !== null) {
         const updatedReservation = await apiRequest(
-          `/api/reservations/${BRANCH_ID}/${editingId}`,
+          `/api/reservations/${branchId}/${editingId}`,
           {
             method: "PUT",
             body: JSON.stringify(reservationData),
@@ -373,7 +365,7 @@ if (!validEmail) {
             method: "POST",
             body: JSON.stringify({
               ...reservationData,
-              branchId: BRANCH_ID,
+              branchId: branchId,
             }),
           }
         );
@@ -406,7 +398,7 @@ if (!validEmail) {
 
     try {
       const updatedReservation = await apiRequest(
-        `/api/reservations/${BRANCH_ID}/${id}`,
+        `/api/reservations/${branchId}/${id}`,
         {
           method: "PUT",
           body: JSON.stringify({ status: newStatus }),
@@ -436,7 +428,7 @@ if (!validEmail) {
 
     try {
       await apiRequest(
-        `/api/reservations/${BRANCH_ID}/${reservation.id}`,
+        `/api/reservations/${branchId}/${reservation.id}`,
         {
           method: "DELETE",
         }
@@ -458,10 +450,7 @@ if (!validEmail) {
     <section className="reservations-page">
       <div className="reservations-page-header">
         <div className="reservations-page-heading">
-          <span className="reservations-eyebrow">
-            RESTAURANT OPERATIONS
-          </span>
-          <h2>Reservations Management</h2>
+          
           <p>
             Manage guest bookings, coordinate tables, and keep every
             dining experience organized.
@@ -478,32 +467,7 @@ if (!validEmail) {
         </button>
       </div>
 
-      <div className="reservations-summary-grid">
-        <SummaryCard
-          icon="▤"
-          label="Total Reservations"
-          value={summary.total}
-          type="total"
-        />
-        <SummaryCard
-          icon="◷"
-          label="Pending Requests"
-          value={summary.pending}
-          type="pending"
-        />
-        <SummaryCard
-          icon="✓"
-          label="Confirmed Bookings"
-          value={summary.confirmed}
-          type="confirmed"
-        />
-        <SummaryCard
-          icon="×"
-          label="Cancelled Bookings"
-          value={summary.cancelled}
-          type="cancelled"
-        />
-      </div>
+      
 
       <div className="reservations-content-panel">
         <div className="reservations-content-header">

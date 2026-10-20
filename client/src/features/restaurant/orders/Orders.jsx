@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../../../services/api";
 import "../../../styles/orders.css";
 
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
+
 
 const orderStatuses = [
   "Pending",
@@ -57,7 +57,7 @@ function getOrderId(order) {
   return order.orderNumber || order.id || order._id;
 }
 
-function Orders() {
+function Orders({ branchId }) {
   const [orders, setOrders] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [tables, setTables] = useState([]);
@@ -75,15 +75,26 @@ function Orders() {
   const [pageError, setPageError] = useState("");
   const [formError, setFormError] = useState("");
 
-  const loadData = useCallback(async () => {
+    const loadData = useCallback(async () => {
+    if (!branchId) {
+      setOrders([]);
+      setMenuItems([]);
+      setTables([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setPageError("");
+    setOrders([]);
+    setMenuItems([]);
+    setTables([]);
 
     try {
       const [ordersData, menuData, tablesData] = await Promise.all([
-        apiRequest(`/api/orders/${BRANCH_ID}`),
-        apiRequest(`/api/menu/${BRANCH_ID}`),
-        apiRequest(`/api/tables/${BRANCH_ID}`),
+        apiRequest(`/api/orders/${branchId}`),
+        apiRequest(`/api/menu/${branchId}`),
+        apiRequest(`/api/tables/${branchId}`),
       ]);
 
       if (
@@ -131,27 +142,12 @@ function Orders() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [branchId]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const summary = useMemo(
-    () => ({
-      total: orders.length,
-      inProgress: orders.filter((order) =>
-        ["Pending", "Preparing", "Ready"].includes(order.status)
-      ).length,
-      completed: orders.filter(
-        (order) => order.status === "Completed"
-      ).length,
-      cancelled: orders.filter(
-        (order) => order.status === "Cancelled"
-      ).length,
-    }),
-    [orders]
-  );
 
   const filteredOrders = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -361,7 +357,7 @@ function Orders() {
     }
 
     const payload = {
-      branchId: BRANCH_ID,
+      branchId: branchId,
       customer: formData.customer.trim(),
       orderType: formData.orderType,
       tableId:
@@ -379,7 +375,7 @@ function Orders() {
     try {
       if (editingId) {
         await apiRequest(
-          `/api/orders/${BRANCH_ID}/${editingId}`,
+          `/api/orders/${branchId}/${editingId}`,
           {
             method: "PUT",
             body: JSON.stringify(payload),
@@ -418,7 +414,7 @@ function Orders() {
     );
 
     try {
-      await apiRequest(`/api/orders/${BRANCH_ID}/${id}`, {
+      await apiRequest(`/api/orders/${branchId}/${id}`, {
         method: "PUT",
         body: JSON.stringify({ status: newStatus }),
       });
@@ -445,7 +441,7 @@ function Orders() {
 
     try {
       await apiRequest(
-        `/api/orders/${BRANCH_ID}/${order._id}`,
+        `/api/orders/${branchId}/${order._id}`,
         { method: "DELETE" }
       );
 
@@ -469,8 +465,7 @@ function Orders() {
     <section className="orders-page">
       <div className="orders-page-header">
         <div>
-          <span className="orders-eyebrow">RESTAURANT OPERATIONS</span>
-          <h2>Orders Management</h2>
+          
           <p>
             Track incoming orders, coordinate preparation, and keep
             service running smoothly.
@@ -501,32 +496,7 @@ function Orders() {
         </div>
       )}
 
-      <div className="orders-summary-grid">
-        <SummaryCard
-          icon="▤"
-          label="Total Orders"
-          value={summary.total}
-          type="total"
-        />
-        <SummaryCard
-          icon="◷"
-          label="In Progress"
-          value={summary.inProgress}
-          type="progress"
-        />
-        <SummaryCard
-          icon="✓"
-          label="Completed"
-          value={summary.completed}
-          type="completed"
-        />
-        <SummaryCard
-          icon="×"
-          label="Cancelled"
-          value={summary.cancelled}
-          type="cancelled"
-        />
-      </div>
+      
 
       <div className="orders-content-panel">
         <div className="orders-content-header">

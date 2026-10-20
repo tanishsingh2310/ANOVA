@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "../../../styles/menu-management.css";
 import { apiRequest } from "../../../services/api";
 
-const BRANCH_ID = "6ad0e90a53cc462cbaaec9fa";
+
 
 const emptyForm = {
   name: "",
@@ -22,7 +22,13 @@ const categories = [
   "Beverages",
 ];
 
-function MenuManagement() {
+function MenuManagement({
+  branchId,
+  branches,
+  onBranchChange,
+  branchLoading,
+  branchError,
+}) {
   const [menu, setMenu] = useState([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All Categories");
@@ -41,33 +47,43 @@ function MenuManagement() {
   }
 
   // Load menu items from the backend when the page opens.
-  useEffect(() => {
-    let isMounted = true;
+  // Load menu items whenever the selected branch changes.
+useEffect(() => {
+  let isMounted = true;
 
-    async function loadMenu() {
-      try {
-        const data = await apiRequest(`/api/menu/${BRANCH_ID}`);
-
-        if (isMounted) {
-          setMenu(data.map(normalizeMenuItem));
-        }
-      } catch (error) {
-        if (isMounted) {
-          window.alert(`Unable to load menu items: ${error.message}`);
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
+  async function loadMenu() {
+    if (!branchId) {
+      setMenu([]);
+      setLoading(false);
+      return;
     }
 
-    loadMenu();
+    setLoading(true);
+    setMenu([]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    try {
+      const data = await apiRequest(`/api/menu/${branchId}`);
+
+      if (isMounted) {
+        setMenu(data.map(normalizeMenuItem));
+      }
+    } catch (error) {
+      if (isMounted) {
+        window.alert(`Unable to load menu items: ${error.message}`);
+      }
+    } finally {
+      if (isMounted) {
+        setLoading(false);
+      }
+    }
+  }
+
+  loadMenu();
+
+  return () => {
+    isMounted = false;
+  };
+}, [branchId]);
 
   const filteredMenu = useMemo(() => {
     return menu.filter((item) => {
@@ -171,7 +187,7 @@ function MenuManagement() {
       if (editingId !== null) {
         // Update the existing item in MongoDB.
         const updatedItem = await apiRequest(
-          `/api/menu/${BRANCH_ID}/${editingId}`,
+          `/api/menu/${branchId}/${editingId}`,
           {
             method: "PUT",
             body: JSON.stringify(menuItemData),
@@ -192,7 +208,7 @@ function MenuManagement() {
         const createdItem = await apiRequest("/api/menu", {
           method: "POST",
           body: JSON.stringify({
-            branchId: BRANCH_ID,
+            branchId: branchId,
             ...menuItemData,
             available: true,
           }),
@@ -223,7 +239,7 @@ function MenuManagement() {
 
     try {
       const updatedItem = await apiRequest(
-        `/api/menu/${BRANCH_ID}/${id}`,
+        `/api/menu/${branchId}/${id}`,
         {
           method: "PUT",
           body: JSON.stringify({
@@ -262,7 +278,7 @@ function MenuManagement() {
     }
 
     try {
-      await apiRequest(`/api/menu/${BRANCH_ID}/${id}`, {
+      await apiRequest(`/api/menu/${branchId}/${id}`, {
         method: "DELETE",
       });
 
@@ -305,6 +321,37 @@ function MenuManagement() {
           />
         </div>
 
+<div className="branch-selector-wrapper">
+  <label htmlFor="menu-branch-selector" className="branch-filter-label">
+    Branch
+  </label>
+
+  <select
+    id="menu-branch-selector"
+    className="branch-selector"
+    value={branchId || ""}
+    onChange={(event) => onBranchChange(event.target.value)}
+    disabled={branchLoading || !branches?.length}
+  >
+    {branchLoading ? (
+      <option value="">Loading branches...</option>
+    ) : !branches?.length ? (
+      <option value="">No branches available</option>
+    ) : (
+      branches.map((branch) => (
+        <option key={branch._id} value={branch._id}>
+          {branch.name}
+        </option>
+      ))
+    )}
+  </select>
+
+  {branchError && (
+    <span className="branch-selector-error" role="alert">
+      {branchError}
+    </span>
+  )}
+</div>
         <select
           value={categoryFilter}
           onChange={(event) => setCategoryFilter(event.target.value)}
@@ -481,6 +528,24 @@ function MenuManagement() {
                 />
               </label>
 
+<label>
+  Select Branch
+
+  <select
+    name="branchId"
+    value={form.branchId}
+    onChange={handleFormChange}
+    required
+  >
+    <option value="">Select a branch</option>
+
+    {branches.map((branch) => (
+      <option key={branch._id} value={branch._id}>
+        {branch.name}
+      </option>
+    ))}
+  </select>
+</label>
               <label>
                 Category
 
