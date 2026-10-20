@@ -7,6 +7,7 @@ import {
   Plus,
   X,
   Pencil,
+  Trash2,
 } from 'lucide-react'
 import { apiClient } from '../../api/client.js'
 import './employees.css'
@@ -79,10 +80,13 @@ export default function Employees({ user }) {
   const [branchesError, setBranchesError] = useState('')
   const [formError, setFormError] = useState('')
   const [notice, setNotice] = useState('')
+  const [employeeToDelete, setEmployeeToDelete] = useState(null)
+const [deleting, setDeleting] = useState(false)
 
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('active')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [branchFilter, setBranchFilter] = useState('all')
 
   const [formOpen, setFormOpen] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState(null)
@@ -177,10 +181,15 @@ export default function Employees({ user }) {
         statusFilter === 'all' ||
         (statusFilter === 'active' && employee.isActive) ||
         (statusFilter === 'inactive' && !employee.isActive)
+      const employeeBranchId = getBranchId(employee.branch)
 
-      return matchesSearch && matchesRole && matchesStatus
+const matchesBranch =
+  branchFilter === 'all' ||
+  String(employeeBranchId) === String(branchFilter)  
+
+      return matchesSearch && matchesRole && matchesStatus && matchesBranch
     })
-  }, [employees, search, roleFilter, statusFilter, branches])
+  }, [employees, search, roleFilter, statusFilter, branches, branchFilter])
 
   function openCreateForm() {
     setEditingEmployee(null)
@@ -294,6 +303,37 @@ export default function Employees({ user }) {
       setFormError(err.message || 'Unable to save employee.')
     } finally {
       setSaving(false)
+    }
+  }
+  
+  function deleteEmployee(employee) {
+    if (!canManage || statusUpdatingId || saving || deleting) return
+
+    setError('')
+    setNotice('')
+    setEmployeeToDelete(employee)
+  }
+
+  async function confirmDeleteEmployee() {
+    if (!employeeToDelete || deleting) return
+
+    setDeleting(true)
+    setError('')
+    setNotice('')
+
+    try {
+      await apiClient(`/api/employees/${employeeToDelete._id}`, {
+        method: 'DELETE',
+      })
+
+      setNotice('Employee deleted successfully.')
+      setEmployeeToDelete(null)
+
+      await loadEmployees({ refresh: true })
+    } catch (err) {
+      setError(err.message || 'Unable to delete employee.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -582,6 +622,25 @@ export default function Employees({ user }) {
             ))}
           </select>
         </label>
+            
+  <label className="employees-filter">
+    <span>Branch</span>
+    <select
+      value={branchFilter}
+      onChange={(event) => setBranchFilter(event.target.value)}
+    >
+      <option value="all">All branches</option>
+      {branches.map((branch) => {
+        const branchId = branch._id || branch.id
+
+        return (
+          <option key={branchId} value={String(branchId)}>
+            {branch.name}
+          </option>
+        )
+      })}
+    </select>
+  </label>
 
         <label className="employees-filter">
           <span>Status</span>
@@ -718,6 +777,17 @@ export default function Employees({ user }) {
                                   ? 'Deactivate'
                                   : 'Activate'}
                             </button>
+                            <button
+                                type="button"
+                                className="employees-button employees-button-danger"
+                                onClick={() => deleteEmployee(employee)}
+                                disabled={Boolean(statusUpdatingId) || saving || deleting}
+                                title={`Delete ${employee.name || 'employee'}`}
+                                aria-label={`Delete ${employee.name || 'employee'}`}
+                              >
+                                <Trash2 size={15} />
+                                Delete
+                              </button>
                           </div>
                         )}
                       </td>
@@ -730,7 +800,57 @@ export default function Employees({ user }) {
         </div>
       )}
 
-     
+     {employeeToDelete && (
+  <div
+    className="employees-delete-backdrop"
+    onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !deleting) {
+        setEmployeeToDelete(null)
+      }
+    }}
+  >
+    <div
+      className="employees-delete-modal"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="delete-employee-title"
+      aria-describedby="delete-employee-description"
+    >
+      <div className="employees-delete-icon">
+        <Trash2 size={24} />
+      </div>
+
+      <h3 id="delete-employee-title">Delete employee?</h3>
+
+      <p id="delete-employee-description">
+        Are you sure you want to permanently delete{' '}
+        <strong>{employeeToDelete.name || 'this employee'}</strong>?
+        This action cannot be undone.
+      </p>
+
+      <div className="employees-delete-actions">
+        <button
+          type="button"
+          className="employees-button employees-button-secondary"
+          onClick={() => setEmployeeToDelete(null)}
+          disabled={deleting}
+        >
+          Cancel
+        </button>
+
+        <button
+          type="button"
+          className="employees-button employees-button-danger"
+          onClick={confirmDeleteEmployee}
+          disabled={deleting}
+        >
+          <Trash2 size={16} />
+          {deleting ? 'Deleting…' : 'Delete employee'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </section>
   )
 }
