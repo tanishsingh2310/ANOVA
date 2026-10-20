@@ -8,6 +8,7 @@ const {
   updateShift,
   cancelShift,
   completeShift,
+  deleteShift,
 } = require("../controllers/shiftController");
 
 const {
@@ -48,5 +49,9 @@ router.patch(
   authorize(...shiftManagers),
   completeShift
 );
-
+router.delete(
+  "/:id",
+  authorize(...shiftManagers),
+  deleteShift
+);
 module.exports = router;
