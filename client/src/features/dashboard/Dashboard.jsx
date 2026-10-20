@@ -16,6 +16,7 @@ import DashboardStatistics from './DashboardStatistics.jsx'
 import './statistics.css'
 import Employees from '../employees/Employees.jsx'
 import Shifts from '../shifts/Shifts.jsx'
+import Attendance from '../attendance/Attendance.jsx'
 
 const navigation = [
   {
@@ -459,10 +460,10 @@ export default function Dashboard({ user, onLogout }) {
   <Branches user={user} />
 ) : activePage === 'Employees' ? (
   <Employees user={user} />
-) : activePage === 'Employees' ? (
-  <Employees user={user} />
 ) : activePage === 'Shifts' ? (
   <Shifts user={user} />
+) : activePage === 'Attendance' ? (
+  <Attendance user={user} />
 ) : (
   <section className="module-placeholder">
     <div className="placeholder-icon">✳</div>

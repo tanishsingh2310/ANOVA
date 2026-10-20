@@ -1,22 +1,17 @@
-
 /* =========================================
    Employees — page layout
 ========================================= */
 
 .employees-page {
-  --emp-primary: #20483e;
-  --emp-primary-hover: #17392f;
-  --emp-text: #263d34;
-  --emp-muted: #68786f;
-  --emp-border: #e1e9e1;
+  --emp-primary: #183c34;
+  --emp-primary-hover: #17352d;
+  --emp-text: #26342f;
+  --emp-muted: #748078;
+  --emp-border: #e3e9e3;
   --emp-surface: #ffffff;
   --emp-surface-soft: #f6f8f5;
-  --emp-gold: #c49a55;
+  --emp-gold: #c5a46d;
 
-  width: 100%;
-  min-width: 0;
-  color: var(--emp-text);
-  font-family: inherit;
 }
 
 .employees-page *,
@@ -25,11 +20,7 @@
   box-sizing: border-box;
 }
 
-.employees-page button,
-.employees-page input,
-.employees-page select {
-  font: inherit;
-}
+
 
 .employees-heading {
   display: flex;
@@ -62,73 +53,68 @@
    Buttons
 ========================================= */
 
-.employees-button,
-.branches-button {
+.employees-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 9px 15px;
+  gap: 7px;
+  min-height: 39px;
+  padding: 9px 13px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 8px;
   font-size: 12px;
-  font-weight: 700;
-  line-height: 1.3;
-  text-decoration: none;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease,
-    box-shadow 160ms ease,
-    transform 160ms ease;
+  font-weight: 650;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.employees-button svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
 
 .employees-button:focus-visible,
-.branches-button:focus-visible,
-.branches-close:focus-visible,
-.branches-modal button:focus-visible {
+.employees-modal button:focus-visible,
+.employees-modal-close:focus-visible {
   outline: 3px solid rgb(71 123 105 / 24%);
   outline-offset: 2px;
 }
 
-.employees-button:active:not(:disabled),
-.branches-button:active:not(:disabled) {
+.employees-button:active:not(:disabled) {
   transform: translateY(1px);
 }
 
-.employees-button:disabled,
-.branches-button:disabled {
+.employees-button:disabled {
   opacity: 0.58;
   cursor: not-allowed;
 }
 
-.employees-button-primary,
-.branches-button-primary {
+.employees-button-primary {
   background: var(--emp-primary);
   border-color: var(--emp-primary);
   color: #fff;
 }
 
-.employees-button-primary:hover:not(:disabled),
-.branches-button-primary:hover:not(:disabled) {
-  background: var(--emp-primary-hover);
-  border-color: var(--emp-primary-hover);
-}
 
-.employees-button-secondary,
-.branches-button-secondary {
+
+.employees-button-secondary {
   background: #fff;
-  border-color: var(--emp-border);
+  border-color: #000000;
   color: #345548;
 }
 
-.employees-button-secondary:hover:not(:disabled),
-.branches-button-secondary:hover:not(:disabled) {
-  background: var(--emp-surface-soft);
-  border-color: #cbd9cd;
+
+
+.employees-button-danger {
+  background: #fff;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.employees-button-danger:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
 }
 
 /* Refresh icon animation */
@@ -207,7 +193,7 @@
 .employees-toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
+  align-items: flex-end;
   gap: 12px;
   margin-bottom: 20px;
   padding: 16px;
@@ -217,11 +203,11 @@
   box-shadow: 0 2px 8px rgb(31 58 43 / 3%);
 }
 
-
 .employees-search {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 1 1 240px;
   min-width: 0;
   height: 42px;
   padding: 0 12px;
@@ -240,12 +226,15 @@
 }
 
 .employees-search svg {
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
 }
 
 .employees-search input {
   width: 100%;
   min-width: 0;
+  height: 100%;
   padding: 0;
   border: 0;
   outline: 0;
@@ -264,9 +253,10 @@
 
 .employees-filter {
   display: flex;
+  flex: 0 1 170px;
   flex-direction: column;
   gap: 7px;
-  min-width: 0;
+  min-width: 130px;
 }
 
 .employees-filter > span {
@@ -276,8 +266,8 @@
 }
 
 .employees-filter select,
-.branches-modal select,
-.branches-modal input {
+.employees-modal select,
+.employees-modal input {
   width: 100%;
   min-width: 0;
   height: 42px;
@@ -294,20 +284,20 @@
 }
 
 .employees-filter select,
-.branches-modal select {
+.employees-modal select {
   cursor: pointer;
 }
 
 .employees-filter select:focus,
-.branches-modal select:focus,
-.branches-modal input:focus {
+.employees-modal select:focus,
+.employees-modal input:focus {
   border-color: #729886;
   box-shadow: 0 0 0 3px rgb(71 123 105 / 11%);
 }
 
 .employees-filter select:disabled,
-.branches-modal select:disabled,
-.branches-modal input:disabled {
+.employees-modal select:disabled,
+.employees-modal input:disabled {
   background: #f4f6f3;
   color: #849087;
   cursor: not-allowed;
@@ -513,6 +503,7 @@
 
 .employees-row-actions .employees-button {
   min-height: 33px;
+  height: 33px;
   padding: 7px 10px;
   border-radius: 8px;
   font-size: 11px;
@@ -535,12 +526,10 @@
 }
 
 /* =========================================
-   Employee modal
-   Uses the existing branches-modal
-   class names in Employees.jsx
+   Employee form modal
 ========================================= */
 
-.branches-modal-backdrop {
+.employees-modal-backdrop {
   position: fixed;
   z-index: 1000;
   inset: 0;
@@ -552,10 +541,10 @@
   background: rgb(19 34 27 / 48%);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  animation: employee-backdrop-in 160ms ease-out;
+  animation: employees-backdrop-in 160ms ease-out;
 }
 
-.branches-modal {
+.employees-modal {
   position: relative;
   width: min(100%, 650px);
   max-height: calc(100dvh - 48px);
@@ -565,10 +554,10 @@
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 24px 80px rgb(16 35 25 / 22%);
-  animation: employee-modal-in 180ms ease-out;
+  animation: employees-modal-in 180ms ease-out;
 }
 
-.branches-modal-heading {
+.employees-modal-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -576,11 +565,11 @@
   margin-bottom: 24px;
 }
 
-.branches-modal-heading > div {
+.employees-modal-heading > div {
   min-width: 0;
 }
 
-.branches-eyebrow {
+.employees-eyebrow {
   margin: 0 0 8px;
   color: var(--emp-gold);
   font-size: 10px;
@@ -588,7 +577,7 @@
   letter-spacing: 1.6px;
 }
 
-.branches-modal-heading h3 {
+.employees-modal-heading h3 {
   margin: 0;
   color: var(--emp-primary);
   font-size: 22px;
@@ -597,7 +586,7 @@
   letter-spacing: -0.6px;
 }
 
-.branches-close {
+.employees-modal-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -615,25 +604,25 @@
     color 160ms ease;
 }
 
-.branches-close:hover:not(:disabled) {
+.employees-modal-close:hover:not(:disabled) {
   background: #e8eee7;
   color: var(--emp-primary);
 }
 
-.branches-close:disabled {
+.employees-modal-close:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-/* Form grid */
+/* Employee form grid */
 
-.branches-form-grid {
+.employees-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 19px 16px;
 }
 
-.branches-form-grid > label {
+.employees-form-grid > label {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -645,12 +634,12 @@
   line-height: 1.4;
 }
 
-.branches-form-grid > .branches-field-full {
+.employees-form-grid > .employees-field-full {
   grid-column: 1 / -1;
 }
 
-.branches-modal input,
-.branches-modal select {
+.employees-modal input,
+.employees-modal select {
   display: block;
   height: 43px;
   padding: 0 12px;
@@ -661,16 +650,16 @@
   font-weight: 400;
 }
 
-.branches-modal input:hover:not(:disabled),
-.branches-modal select:hover:not(:disabled) {
+.employees-modal input:hover:not(:disabled),
+.employees-modal select:hover:not(:disabled) {
   border-color: #c6d5c8;
 }
 
-.branches-modal input::placeholder {
+.employees-modal input::placeholder {
   color: #a1aaa2;
 }
 
-.branches-modal select {
+.employees-modal select {
   padding-right: 34px;
 }
 
@@ -683,7 +672,7 @@
   line-height: 1.5;
 }
 
-.branches-form-actions {
+.employees-form-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -698,7 +687,7 @@
    Modal motion
 ========================================= */
 
-@keyframes employee-backdrop-in {
+@keyframes employees-backdrop-in {
   from {
     opacity: 0;
   }
@@ -708,7 +697,7 @@
   }
 }
 
-@keyframes employee-modal-in {
+@keyframes employees-modal-in {
   from {
     opacity: 0;
     transform: translateY(8px) scale(0.99);
@@ -721,137 +710,30 @@
 }
 
 /* =========================================
-   Responsive layout
+   Delete confirmation modal
 ========================================= */
 
-@media (max-width: 900px) {
-  .employees-toolbar {
-    grid-template-columns: minmax(0, 1fr) minmax(140px, 180px);
-  }
-
-  .employees-search {
-    grid-column: 1 / -1;
-  }
-
-  .employees-table {
-    min-width: 760px;
-  }
-}
-
-@media (max-width: 600px) {
-  .employees-heading {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .employees-heading-actions {
-    justify-content: flex-start;
-  }
-
-  .employees-heading-actions .employees-button {
-    flex: 1;
-  }
-
-  
-
-  .employees-search {
-    grid-column: auto;
-  }
-
-  .employees-table-heading {
-    padding: 16px;
-  }
-
-  .branches-modal-backdrop {
-    align-items: flex-end;
-    padding: 0;
-  }
-
-  .branches-modal {
-    width: 100%;
-    max-height: 92dvh;
-    padding: 21px 18px max(20px, env(safe-area-inset-bottom));
-    border-radius: 18px 18px 0 0;
-  }
-
-  .branches-modal-heading {
-    margin-bottom: 21px;
-  }
-
-  .branches-modal-heading h3 {
-    font-size: 20px;
-  }
-
-  .branches-form-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-
-  .branches-form-grid > .branches-field-full {
-    grid-column: auto;
-  }
-
-  .branches-form-actions {
-    flex-direction: column-reverse;
-    align-items: stretch;
-    margin-top: 20px;
-  }
-
-  .branches-form-actions .branches-button {
-    width: 100%;
-    min-height: 43px;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .employees-page *,
-  .employees-page *::before,
-  .employees-page *::after,
-  .branches-modal-backdrop,
-  .branches-modal {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-.employees-button-danger {
-  color: #b91c1c;
-  background: #fff;
-  border: 1px solid #fecaca;
-}
-
-.employees-button-danger:hover {
-  color: #991b1b;
-  background: #fef2f2;
-  border-color: #fca5a5;
-}
-
-.employees-button-danger:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
 .employees-delete-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 1001;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(15, 23, 42, 0.55);
+  background: rgb(19 34 27 / 48%);
   backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 
 .employees-delete-modal {
   width: 100%;
   max-width: 420px;
   padding: 28px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--emp-border);
   border-radius: 16px;
-  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.25);
+  background: #fff;
+  box-shadow: 0 24px 70px rgb(16 35 25 / 22%);
   animation: employees-delete-enter 160ms ease-out;
 }
 
@@ -862,27 +744,27 @@
   width: 52px;
   height: 52px;
   margin-bottom: 18px;
-  color: #dc2626;
-  background: #fef2f2;
   border-radius: 14px;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .employees-delete-modal h3 {
   margin: 0 0 10px;
-  color: #111827;
+  color: #26342f;
   font-size: 21px;
 }
 
 .employees-delete-modal p {
   margin: 0;
-  color: #6b7280;
+  color: #748078;
   font-size: 14px;
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
 
 .employees-delete-modal p strong {
-  color: #374151;
+  color: #37483f;
 }
 
 .employees-delete-actions {
@@ -912,7 +794,95 @@
   }
 }
 
-@media (max-width: 480px) {
+/* =========================================
+   Responsive layout
+========================================= */
+
+@media (max-width: 900px) {
+  .employees-table {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 600px) {
+  .employees-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .employees-heading-actions {
+    justify-content: flex-start;
+  }
+
+  .employees-heading-actions .employees-button {
+    flex: 1 1 auto;
+  }
+
+  .employees-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 13px;
+    padding: 13px;
+  }
+
+  .employees-search {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .employees-filter {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .employees-table-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .employees-modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .employees-modal {
+    width: 100%;
+    max-height: 92dvh;
+    padding: 21px 18px max(20px, env(safe-area-inset-bottom));
+    border-radius: 18px 18px 0 0;
+  }
+
+  .employees-modal-heading {
+    margin-bottom: 21px;
+  }
+
+  .employees-modal-heading h3 {
+    font-size: 20px;
+  }
+
+  .employees-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .employees-form-grid > .employees-field-full {
+    grid-column: auto;
+  }
+
+  .employees-form-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    margin-top: 20px;
+  }
+
+  .employees-form-actions .employees-button {
+    width: 100%;
+    min-height: 43px;
+    height: 43px;
+  }
+
   .employees-delete-modal {
     padding: 22px;
   }
@@ -923,5 +893,21 @@
 
   .employees-delete-actions .employees-button {
     width: 100%;
+    min-height: 43px;
+    height: 43px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .employees-page *,
+  .employees-page *::before,
+  .employees-page *::after,
+  .employees-modal-backdrop,
+  .employees-modal,
+  .employees-delete-modal {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

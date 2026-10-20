@@ -70,23 +70,18 @@
 
 .branches-button-primary {
   color: #fff;
-  background: var(--anova-forest, #183c34);
-  border-color: var(--anova-forest, #183c34);
+      background: #183c34;
+    border-color: #183c34;
 }
 
-.branches-button-primary:hover:not(:disabled) {
-  background: var(--anova-forest-dark, #102e28);
-}
+
 
 .branches-button-secondary {
   color: var(--anova-forest, #183c34);
   background: #fff;
-  border-color: var(--anova-border, #e3e9e3);
+  border-color: #000000;
 }
 
-.branches-button-secondary:hover:not(:disabled) {
-  background: #f2f5f0;
-}
 
 .branches-notice,
 .branches-error {

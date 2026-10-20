@@ -31,16 +31,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 9px 14px;
+  gap: 7px;
+  min-height: 39px;
+  padding: 9px 13px;
   border: 1px solid transparent;
-  border-radius: 9px;
-  font: inherit;
-  font-size: 13px;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 650;
-  cursor: pointer;
-  transition: background 0.18s ease, border-color 0.18s ease;
+  transition: background 150ms ease, border-color 150ms ease;
 }
 
 .shifts-button:disabled {
@@ -50,24 +48,18 @@
 
 .shifts-button-primary {
   color: #fff;
-  background: #166534;
-  border-color: #166534;
+  background: #183c34;
+  border-color: #183c34;
 }
 
-.shifts-button-primary:hover:not(:disabled) {
-  background: #14532d;
-}
+
 
 .shifts-button-secondary {
   color: #334155;
   background: #fff;
-  border-color: #dbe2ea;
+  border-color: #000000;
 }
 
-.shifts-button-secondary:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-}
 
 .shifts-button-danger {
   color: #fff;

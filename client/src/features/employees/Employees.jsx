@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Search,
@@ -13,6 +12,7 @@ import { apiClient } from '../../api/client.js'
 import './employees.css'
 
 const ROLE_LABELS = {
+  owner: 'Owner',
   admin: 'Admin',
   manager: 'Manager',
   hr: 'Human Resources',
@@ -75,17 +75,17 @@ export default function Employees({ user }) {
   const [refreshing, setRefreshing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [statusUpdatingId, setStatusUpdatingId] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   const [error, setError] = useState('')
   const [branchesError, setBranchesError] = useState('')
   const [formError, setFormError] = useState('')
   const [notice, setNotice] = useState('')
   const [employeeToDelete, setEmployeeToDelete] = useState(null)
-const [deleting, setDeleting] = useState(false)
 
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('active')
   const [branchFilter, setBranchFilter] = useState('all')
 
   const [formOpen, setFormOpen] = useState(false)
@@ -156,12 +156,10 @@ const [deleting, setDeleting] = useState(false)
   }, [])
 
   useEffect(() => {
-     // eslint-disable-next-line react-hooks/set-state-in-effect
-     loadBranches()
+    loadBranches()
   }, [loadBranches])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadEmployees()
   }, [loadEmployees])
 
@@ -183,15 +181,28 @@ const [deleting, setDeleting] = useState(false)
         statusFilter === 'all' ||
         (statusFilter === 'active' && employee.isActive) ||
         (statusFilter === 'inactive' && !employee.isActive)
+
       const employeeBranchId = getBranchId(employee.branch)
 
-const matchesBranch =
-  branchFilter === 'all' ||
-  String(employeeBranchId) === String(branchFilter)  
+      const matchesBranch =
+        branchFilter === 'all' ||
+        String(employeeBranchId) === String(branchFilter)
 
-      return matchesSearch && matchesRole && matchesStatus && matchesBranch
+      return (
+        matchesSearch &&
+        matchesRole &&
+        matchesStatus &&
+        matchesBranch
+      )
     })
-  }, [employees, search, roleFilter, statusFilter, branches, branchFilter])
+  }, [
+    employees,
+    search,
+    roleFilter,
+    statusFilter,
+    branches,
+    branchFilter,
+  ])
 
   function openCreateForm() {
     setEditingEmployee(null)
@@ -307,7 +318,7 @@ const matchesBranch =
       setSaving(false)
     }
   }
-  
+
   function deleteEmployee(employee) {
     if (!canManage || statusUpdatingId || saving || deleting) return
 
@@ -410,7 +421,7 @@ const matchesBranch =
 
       {formOpen && (
         <div
-          className="branches-modal-backdrop"
+          className="employees-modal-backdrop"
           onMouseDown={(event) => {
             if (
               event.target === event.currentTarget &&
@@ -421,14 +432,14 @@ const matchesBranch =
           }}
         >
           <section
-            className="branches-modal"
+            className="employees-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="employee-form-title"
           >
-            <div className="branches-modal-heading">
+            <div className="employees-modal-heading">
               <div>
-                <p className="branches-eyebrow">EMPLOYEE DETAILS</p>
+                <p className="employees-eyebrow">EMPLOYEE DETAILS</p>
                 <h3 id="employee-form-title">
                   {editingEmployee
                     ? 'Edit Employee'
@@ -438,7 +449,7 @@ const matchesBranch =
 
               <button
                 type="button"
-                className="branches-close"
+                className="employees-modal-close"
                 onClick={closeForm}
                 disabled={saving}
                 aria-label="Close form"
@@ -455,7 +466,7 @@ const matchesBranch =
             )}
 
             <form onSubmit={handleSaveEmployee}>
-              <div className="branches-form-grid">
+              <div className="employees-form-grid">
                 <label>
                   Full name *
                   <input
@@ -479,7 +490,7 @@ const matchesBranch =
                   />
                 </label>
 
-                <label className="branches-field-full">
+                <label className="employees-field-full">
                   {editingEmployee
                     ? 'New password (not supported yet)'
                     : 'Temporary password *'}
@@ -572,10 +583,10 @@ const matchesBranch =
                 )}
               </div>
 
-              <div className="branches-form-actions">
+              <div className="employees-form-actions">
                 <button
                   type="button"
-                  className="branches-button branches-button-secondary"
+                  className="employees-button employees-button-secondary"
                   onClick={closeForm}
                   disabled={saving}
                 >
@@ -584,7 +595,7 @@ const matchesBranch =
 
                 <button
                   type="submit"
-                  className="branches-button branches-button-primary"
+                  className="employees-button employees-button-primary"
                   disabled={saving || branches.length === 0}
                 >
                   {saving
@@ -617,6 +628,7 @@ const matchesBranch =
             onChange={(event) => setRoleFilter(event.target.value)}
           >
             <option value="all">All roles</option>
+
             {Object.entries(ROLE_LABELS).map(([value, label]) => (
               <option value={value} key={value}>
                 {label}
@@ -624,25 +636,26 @@ const matchesBranch =
             ))}
           </select>
         </label>
-            
-  <label className="employees-filter">
-    <span>Branch</span>
-    <select
-      value={branchFilter}
-      onChange={(event) => setBranchFilter(event.target.value)}
-    >
-      <option value="all">All branches</option>
-      {branches.map((branch) => {
-        const branchId = branch._id || branch.id
 
-        return (
-          <option key={branchId} value={String(branchId)}>
-            {branch.name}
-          </option>
-        )
-      })}
-    </select>
-  </label>
+        <label className="employees-filter">
+          <span>Branch</span>
+          <select
+            value={branchFilter}
+            onChange={(event) => setBranchFilter(event.target.value)}
+          >
+            <option value="all">All branches</option>
+
+            {branches.map((branch) => {
+              const branchId = branch._id || branch.id
+
+              return (
+                <option key={branchId} value={String(branchId)}>
+                  {branch.name}
+                </option>
+              )
+            })}
+          </select>
+        </label>
 
         <label className="employees-filter">
           <span>Status</span>
@@ -651,6 +664,7 @@ const matchesBranch =
             onChange={(event) => setStatusFilter(event.target.value)}
           >
             <option value="active">Active</option>
+
             {canViewInactive && (
               <>
                 <option value="inactive">Inactive</option>
@@ -681,178 +695,193 @@ const matchesBranch =
         <div className="employees-state">
           Loading employee directory…
         </div>
-      ) : !error && (
-        <div className="employees-table-card">
-          <div className="employees-table-heading">
-            <div>
-              <h3>Team members</h3>
-              <p>
-                {filteredEmployees.length} result
-                {filteredEmployees.length === 1 ? '' : 's'}
-              </p>
+      ) : (
+        !error && (
+          <div className="employees-table-card">
+            <div className="employees-table-heading">
+              <div>
+                <h3>Team members</h3>
+                <p>
+                  {filteredEmployees.length} result
+                  {filteredEmployees.length === 1 ? '' : 's'}
+                </p>
+              </div>
             </div>
-          </div>
 
-          {filteredEmployees.length === 0 ? (
-            <div className="employees-state">
-              {employees.length === 0
-                ? 'No employee records were returned by the API.'
-                : 'No employees match these search and filter settings.'}
-            </div>
-          ) : (
-            <div className="employees-table-scroll">
-              <table className="employees-table">
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Role</th>
-                    <th>Branch</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
+            {filteredEmployees.length === 0 ? (
+              <div className="employees-state">
+                {employees.length === 0
+                  ? 'No employee records were returned by the API.'
+                  : 'No employees match these search and filter settings.'}
+              </div>
+            ) : (
+              <div className="employees-table-scroll">
+                <table className="employees-table">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      <th>Role</th>
+                      <th>Branch</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
 
-                <tbody>
-                  {filteredEmployees.map((employee) => (
-                    <tr key={employee._id}>
-                      <td>
-                        <div className="employees-person">
-                          <span className="employees-avatar">
-                            {(employee.name || '?')
-                              .trim()
-                              .charAt(0)
-                              .toUpperCase()}
+                  <tbody>
+                    {filteredEmployees.map((employee) => (
+                      <tr key={employee._id}>
+                        <td>
+                          <div className="employees-person">
+                            <span className="employees-avatar">
+                              {(employee.name || '?')
+                                .trim()
+                                .charAt(0)
+                                .toUpperCase()}
+                            </span>
+
+                            <span className="employees-person-details">
+                              <strong>
+                                {employee.name || 'Unnamed employee'}
+                              </strong>
+                              <span>{employee.email}</span>
+                            </span>
+                          </div>
+                        </td>
+
+                        <td>
+                          <span className="employees-role">
+                            {formatRole(employee.role)}
                           </span>
+                        </td>
 
-                          <span className="employees-person-details">
-                            <strong>
-                              {employee.name || 'Unnamed employee'}
-                            </strong>
-                            <span>{employee.email}</span>
+                        <td>
+                          {getBranchName(employee.branch, branches)}
+                        </td>
+
+                        <td>
+                          <span
+                            className={`employees-status ${
+                              employee.isActive
+                                ? 'is-active'
+                                : 'is-inactive'
+                            }`}
+                          >
+                            {employee.isActive ? 'Active' : 'Inactive'}
                           </span>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td>
-                        <span className="employees-role">
-                          {formatRole(employee.role)}
-                        </span>
-                      </td>
+                        <td>
+                          {canManage && (
+                            <div className="employees-row-actions">
+                              <button
+                                type="button"
+                                className="employees-button employees-button-secondary"
+                                onClick={() => openEditForm(employee)}
+                              >
+                                <Pencil size={15} />
+                                Edit
+                              </button>
 
-                      <td>
-                        {getBranchName(employee.branch, branches)}
-                      </td>
+                              <button
+                                type="button"
+                                className="employees-button employees-button-secondary"
+                                onClick={() => toggleEmployeeStatus(employee)}
+                                disabled={
+                                  statusUpdatingId === employee._id ||
+                                  deleting
+                                }
+                              >
+                                {statusUpdatingId === employee._id
+                                  ? 'Updating…'
+                                  : employee.isActive
+                                    ? 'Deactivate'
+                                    : 'Activate'}
+                              </button>
 
-                      <td>
-                        <span
-                          className={`employees-status ${
-                            employee.isActive
-                              ? 'is-active'
-                              : 'is-inactive'
-                          }`}
-                        >
-                          {employee.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-
-                      <td>
-                        {canManage && (
-                          <div className="employees-row-actions">
-                            <button
-                              type="button"
-                              className="employees-button employees-button-secondary"
-                              onClick={() => openEditForm(employee)}
-                            >
-                              <Pencil size={15} />
-                              Edit
-                            </button>
-
-                            <button
-                              type="button"
-                              className="employees-button employees-button-secondary"
-                              onClick={() => toggleEmployeeStatus(employee)}
-                              disabled={statusUpdatingId === employee._id}
-                            >
-                              {statusUpdatingId === employee._id
-                                ? 'Updating…'
-                                : employee.isActive
-                                  ? 'Deactivate'
-                                  : 'Activate'}
-                            </button>
-                            <button
+                              <button
                                 type="button"
                                 className="employees-button employees-button-danger"
                                 onClick={() => deleteEmployee(employee)}
-                                disabled={Boolean(statusUpdatingId) || saving || deleting}
+                                disabled={
+                                  Boolean(statusUpdatingId) ||
+                                  saving ||
+                                  deleting
+                                }
                                 title={`Delete ${employee.name || 'employee'}`}
                                 aria-label={`Delete ${employee.name || 'employee'}`}
                               >
                                 <Trash2 size={15} />
                                 Delete
                               </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )
       )}
 
-     {employeeToDelete && (
-  <div
-    className="employees-delete-backdrop"
-    onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !deleting) {
-        setEmployeeToDelete(null)
-      }
-    }}
-  >
-    <div
-      className="employees-delete-modal"
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="delete-employee-title"
-      aria-describedby="delete-employee-description"
-    >
-      <div className="employees-delete-icon">
-        <Trash2 size={24} />
-      </div>
-
-      <h3 id="delete-employee-title">Delete employee?</h3>
-
-      <p id="delete-employee-description">
-        Are you sure you want to permanently delete{' '}
-        <strong>{employeeToDelete.name || 'this employee'}</strong>?
-        This action cannot be undone.
-      </p>
-
-      <div className="employees-delete-actions">
-        <button
-          type="button"
-          className="employees-button employees-button-secondary"
-          onClick={() => setEmployeeToDelete(null)}
-          disabled={deleting}
+      {employeeToDelete && (
+        <div
+          className="employees-delete-backdrop"
+          onMouseDown={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              !deleting
+            ) {
+              setEmployeeToDelete(null)
+            }
+          }}
         >
-          Cancel
-        </button>
+          <div
+            className="employees-delete-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-employee-title"
+            aria-describedby="delete-employee-description"
+          >
+            <div className="employees-delete-icon">
+              <Trash2 size={24} />
+            </div>
 
-        <button
-          type="button"
-          className="employees-button employees-button-danger"
-          onClick={confirmDeleteEmployee}
-          disabled={deleting}
-        >
-          <Trash2 size={16} />
-          {deleting ? 'Deleting…' : 'Delete employee'}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+            <h3 id="delete-employee-title">Delete employee?</h3>
+
+            <p id="delete-employee-description">
+              Are you sure you want to permanently delete{' '}
+              <strong>
+                {employeeToDelete.name || 'this employee'}
+              </strong>
+              ? This action cannot be undone.
+            </p>
+
+            <div className="employees-delete-actions">
+              <button
+                type="button"
+                className="employees-button employees-button-secondary"
+                onClick={() => setEmployeeToDelete(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="employees-button employees-button-danger"
+                onClick={confirmDeleteEmployee}
+                disabled={deleting}
+              >
+                <Trash2 size={16} />
+                {deleting ? 'Deleting…' : 'Delete employee'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
