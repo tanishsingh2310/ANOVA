@@ -156,10 +156,12 @@ const [deleting, setDeleting] = useState(false)
   }, [])
 
   useEffect(() => {
-    loadBranches()
+     // eslint-disable-next-line react-hooks/set-state-in-effect
+     loadBranches()
   }, [loadBranches])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadEmployees()
   }, [loadEmployees])
 
