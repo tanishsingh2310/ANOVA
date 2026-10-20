@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import './auth.css'
 import Logo from '../../assets/Logo1.png'
-import banner from '../../assets/banner.jpeg'
+import login_banner from '../../assets/login_banner.jpeg'
 
 const API_URL = 'http://localhost:5000/api'
 
@@ -107,7 +107,7 @@ export default function Login({ onLogin }) {
     <main className="login-page">
       <div
         className="login-visual"
-        style={{ backgroundImage: `url(${banner})` }}
+        style={{ backgroundImage: `url(${login_banner})` }}
         aria-hidden="true"
       />
 

@@ -9,28 +9,116 @@ import Orders from '../restaurant/orders/Orders.jsx'
 import KitchenWorkflow from '../restaurant/kitchen/KitchenWorkflow.jsx'
 import BillingPayments from '../restaurant/billing/BillingPayments.jsx'
 import FoodRecommendations from '../restaurant/recommendations/FoodRecommendations.jsx'
+import Branches from '../branches/Branches.jsx'
+import Logo1 from '../../assets/Logo1.png'
+import banner from '../../assets/banner.png'
+import DashboardStatistics from './DashboardStatistics.jsx'
+import './statistics.css'
+
 
 const navigation = [
-  { label: 'Overview', icon: '◫', roles: ['owner', 'admin', 'manager', 'hr', 'employee'] },
-  { label: 'Branches', icon: '⌂', roles: ['owner', 'admin', 'manager', 'hr', 'inventory_manager', 'chef', 'cashier', 'employee'] },
-  { label: 'Employees', icon: '♙', roles: ['owner', 'admin', 'manager', 'hr'] },
-  { label: 'Shifts', icon: '◷', roles: ['owner', 'admin', 'manager', 'hr', 'employee'] },
-  { label: 'Attendance', icon: '✓', roles: ['owner', 'admin', 'manager', 'hr', 'employee'] },
-  { label: 'Leave requests', icon: '▤', roles: ['owner', 'admin', 'manager', 'hr', 'employee'] },
-  { label: 'Payroll', icon: '₹', roles: ['owner', 'admin', 'hr'] },
   {
-  label: 'Inventory & Supply Chain',
-  icon: 'I',
-  roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
-},
-{ label: 'Menu Management', icon: 'M', roles: ['owner', 'admin', 'manager', 'chef'] },
-{ label: 'Table Management', icon: 'T', roles: ['owner', 'admin', 'manager', 'cashier'] },
-{ label: 'Reservations', icon: 'R', roles: ['owner', 'admin', 'manager', 'cashier'] },
-{ label: 'Orders', icon: 'O', roles: ['owner', 'admin', 'manager', 'chef', 'cashier'] },
-{ label: 'Kitchen Workflow', icon: 'K', roles: ['owner', 'admin', 'manager', 'chef'] },
-{ label: 'Billing & Payments', icon: 'B', roles: ['owner', 'admin', 'manager', 'cashier'] },
-{ label: 'Food Recommendations', icon: 'F', roles: ['owner', 'admin', 'manager', 'chef'] },
+    label: 'Overview',
+    icon: '◫',
+    group: 'Main',
+    roles: ['owner', 'admin', 'manager', 'hr', 'employee'],
+  },
+  {
+    label: 'Branches',
+    icon: '⌂',
+    group: 'Main',
+    roles: ['owner', 'admin', 'manager', 'hr', 'inventory_manager', 'chef', 'cashier', 'employee'],
+  },
+
+  {
+    label: 'Employees',
+    icon: '♙',
+    group: 'People & HR',
+    roles: ['owner', 'admin', 'manager', 'hr'],
+  },
+  {
+    label: 'Shifts',
+    icon: '◷',
+    group: 'People & HR',
+    roles: ['owner', 'admin', 'manager', 'hr', 'employee'],
+  },
+  {
+    label: 'Attendance',
+    icon: '✓',
+    group: 'People & HR',
+    roles: ['owner', 'admin', 'manager', 'hr', 'employee'],
+  },
+  {
+    label: 'Leave requests',
+    icon: '▤',
+    group: 'People & HR',
+    roles: ['owner', 'admin', 'manager', 'hr', 'employee'],
+  },
+  {
+    label: 'Payroll',
+    icon: '₹',
+    group: 'People & HR',
+    roles: ['owner', 'admin', 'hr'],
+  },
+
+  {
+    label: 'Menu Management',
+    icon: 'M',
+    group: 'Restaurant Operations',
+    roles: ['owner', 'admin', 'manager', 'chef'],
+  },
+  {
+    label: 'Table Management',
+    icon: 'T',
+    group: 'Restaurant Operations',
+    roles: ['owner', 'admin', 'manager', 'cashier'],
+  },
+  {
+    label: 'Reservations',
+    icon: 'R',
+    group: 'Restaurant Operations',
+    roles: ['owner', 'admin', 'manager', 'cashier'],
+  },
+  {
+    label: 'Orders',
+    icon: 'O',
+    group: 'Restaurant Operations',
+    roles: ['owner', 'admin', 'manager', 'chef', 'cashier'],
+  },
+  {
+    label: 'Kitchen Workflow',
+    icon: 'K',
+    group: 'Restaurant Operations',
+    roles: ['owner', 'admin', 'manager', 'chef'],
+  },
+  {
+    label: 'Billing & Payments',
+    icon: 'B',
+    group: 'Restaurant Operations',
+    roles: ['owner', 'admin', 'manager', 'cashier'],
+  },
+
+  {
+    label: 'Inventory & Supply Chain',
+    icon: 'I',
+    group: 'Inventory',
+    roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
+  },
+  {
+    label: 'Food Recommendations',
+    icon: 'F',
+    group: 'Customer Experience',
+    roles: ['owner', 'admin', 'manager', 'chef'],
+  },
 ]
+
+const navigationGroups = [
+  { label: 'People & HR', icon: '♙' },
+  { label: 'Restaurant Operations', icon: '▦' },
+  { label: 'Inventory', icon: '▤' },
+  { label: 'Customer Experience', icon: '♡' },
+]
+
 
 const modules = [
   {
@@ -80,7 +168,9 @@ const modules = [
 export default function Dashboard({ user, onLogout }) {
   const [activePage, setActivePage] = useState('Overview')
   const [mobileMenu, setMobileMenu] = useState(false)
-
+  const [expandedGroups, setExpandedGroups] = useState({
+  'People & HR': false,
+})
   const visibleNavigation = navigation.filter((item) =>
     item.roles.includes(user?.role),
   )
@@ -109,108 +199,222 @@ export default function Dashboard({ user, onLogout }) {
         />
       )}
 
-      <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
-        <div className="sidebar-brand">
-          <div className="brand-mark">A</div>
-          <div>
-            <div className="brand">ANOVA</div>
-            <div className="workspace-label">RESTAURANT MANAGEMENT</div>
-          </div>
-        </div>
+      
+<aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
+  <div className="sidebar-brand">
+  <img className="brand-logo" src={Logo1} alt="Anova emblem" />
 
-        <div className="side-nav">
-          <div className="side-nav-label">WORKSPACE</div>
-          {visibleNavigation.map((item) => (
-            <button
-              key={item.label}
-              className={`nav-item ${activePage === item.label ? 'nav-active' : ''}`}
-              onClick={() => selectPage(item.label)}
-            >
-              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-              <span>{item.label}</span>
-              {activePage === item.label && <span className="nav-indicator" />}
-            </button>
-          ))}
-        </div>
+  <div className="brand-lockup">
+    <div className="brand-name">Anova</div>
+    <div className="brand-tagline">
+      The Art of Intelligent Hospitality
+    </div>
+  </div>
+</div>
 
-        <div className="sidebar-bottom">
-          <div className="sidebar-help">
-            <div className="help-symbol">✳</div>
-            <div>
-              <strong>Need assistance?</strong>
-              <p>Your workspace, thoughtfully managed.</p>
-            </div>
+  
+<nav className="side-nav" aria-label="Workspace navigation">
+
+  {/* Standalone pages */}
+  {visibleNavigation
+    .filter((item) => item.group === 'Main')
+    .map((item) => (
+      <button
+        key={item.label}
+        type="button"
+        className={`nav-item ${
+          activePage === item.label ? 'nav-active' : ''
+        }`}
+        aria-current={activePage === item.label ? 'page' : undefined}
+        onClick={() => selectPage(item.label)}
+      >
+        <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+        <span className="nav-item-label">{item.label}</span>
+      </button>
+    ))}
+
+  {/* Expandable groups */}
+  {navigationGroups.map((group) => {
+    const items = visibleNavigation.filter(
+      (item) => item.group === group.label,
+    )
+
+    if (!items.length) return null
+
+    const isExpanded = Boolean(expandedGroups[group.label])
+    const containsActivePage = items.some(
+      (item) => item.label === activePage,
+    )
+    const groupId = `menu-${group.label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')}`
+
+    return (
+      <div className="nav-group" key={group.label}>
+        <button
+          type="button"
+          className={`nav-group-toggle ${
+            containsActivePage ? 'group-has-active' : ''
+          }`}
+          aria-expanded={isExpanded}
+          aria-controls={groupId}
+          onClick={() =>
+            setExpandedGroups((previous) => ({
+              ...previous,
+              [group.label]: !previous[group.label],
+            }))
+          }
+        >
+          <span className="nav-icon" aria-hidden="true">
+            {group.icon}
+          </span>
+          <span className="nav-item-label">{group.label}</span>
+          <span className={`nav-chevron ${isExpanded ? 'is-open' : ''}`}>
+            ▾
+          </span>
+        </button>
+
+        {isExpanded && (
+          <div className="nav-submenu" id={groupId}>
+            {items.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className={`nav-subitem ${
+                  activePage === item.label ? 'nav-subitem-active' : ''
+                }`}
+                aria-current={
+                  activePage === item.label ? 'page' : undefined
+                }
+                onClick={() => selectPage(item.label)}
+              >
+                <span className="nav-subitem-dot" aria-hidden="true" />
+                <span>{item.label}</span>
+              </button>
+            ))}
           </div>
-          <div className="sidebar-version">ANOVA · MANAGEMENT SUITE</div>
-        </div>
-      </aside>
+        )}
+      </div>
+    )
+  })}
+</nav>
+
+
+  <div className="sidebar-bottom">
+
+
+    <button
+      className="sidebar-logout"
+      type="button"
+      onClick={onLogout}
+    >
+      <span aria-hidden="true">↪</span>
+      <span>Sign out</span>
+    </button>
+  </div>
+</aside>
 
       <main className="main-panel">
         <header className="topbar">
-          <button
-            className="menu-toggle"
-            aria-label="Toggle navigation menu"
-            aria-expanded={mobileMenu}
-            onClick={() => setMobileMenu((open) => !open)}
-          >
-            ☰
-          </button>
+          
 
-          <div className="breadcrumb">
-            <span>Workspace</span>
+
+
+          
+
+<div className="breadcrumb">
+  <span>Anova</span>
+  <span className="breadcrumb-divider">/</span>
+
+  {activePage === 'Overview' ? (
+    <strong>Overview</strong>
+  ) : (
+    <>
+      {(() => {
+        const group = visibleNavigation.find(
+          (item) => item.label === activePage,
+        )?.group
+
+        return group && group !== 'Main' ? (
+          <>
+            <span>{group}</span>
             <span className="breadcrumb-divider">/</span>
-            <strong>{activePage}</strong>
-          </div>
+          </>
+        ) : null
+      })()}
 
-          <div className="topbar-user">
-            <div className="user-avatar">{initials || 'U'}</div>
-            <div className="user-details">
-              <strong>{displayName}</strong>
-              <span>{user?.role || 'Team member'}</span>
-            </div>
-            <button className="logout-button" onClick={onLogout}>
-              Sign out
-            </button>
-          </div>
+      <strong>{activePage}</strong>
+    </>
+  )}
+</div>
+
+
+
+          
+<div className="topbar-user">
+  <div className="user-avatar">
+    {user?.profileImage || user?.avatarUrl ? (
+      <img
+        src={user.profileImage || user.avatarUrl}
+        alt={`${displayName} profile`}
+      />
+    ) : (
+      initials || 'U'
+    )}
+  </div>
+
+  <div className="user-details">
+    <strong>{displayName}</strong>
+    <span>{(user?.role || 'Team member').replaceAll('_', ' ')}</span>
+  </div>
+</div>
+
         </header>
 
         <div className="page-content">
           <div className="page-intro">
             <div>
-              <div className="eyebrow">YOUR RESTAURANT WORKSPACE</div>
-              <h1>{activePage === 'Overview' ? 'A clearer view of your business.' : activePage}</h1>
+
+              <h1>{activePage === 'Overview' ? '' : activePage}</h1>
               <p>
                 {activePage === 'Overview'
-                  ? 'Everything your team needs to keep hospitality running smoothly.'
-                  : `Manage ${activePage.toLowerCase()} from your ANOVA workspace.`}
+                  ? ''
+                  : ""}
               </p>
             </div>
             <div className="heading-period">
               <span className="live-dot" />
-              Workspace active
             </div>
           </div>        
 
 {activePage === 'Overview' ? (
   <>
-    <section className="welcome-banner">
-      <div className="banner-content">
-        <div className="banner-label">WELCOME TO ANOVA</div>
-        <h2>Good hospitality starts with a well-connected team.</h2>
-        <p>
-          Keep your people, schedules and restaurant operations
-          organised in one place.
-        </p>
-      </div>
-      <div className="banner-mark" aria-hidden="true">A</div>
-    </section>
+  
+<section
+  className="welcome-banner"
+  style={{ backgroundImage: `url(${banner})` }}
+>
+  <div className="banner-overlay" />
+  <div className="banner-content">
+    <div className="banner-label">
+      <span className="banner-label-line" />
+      ANOVA
+    </div>
+
+    <h2>Welcome, {displayName}</h2>
+    <p>Everything you need, all in one place.</p>
+  </div>
+</section>
+
+<DashboardStatistics />
 
     <div className="section-heading">
       <div>
-        <h2>Your workspace</h2>
-        <p>Choose an area to get started.</p>
+        <h2>Your Workspace</h2>
+        
       </div>
     </div>
+    
 
     <section className="module-grid">
       {modules
@@ -233,13 +437,6 @@ export default function Dashboard({ user, onLogout }) {
         ))}
     </section>
 
-    <div className="data-notice">
-      <span className="notice-icon">i</span>
-      <p>
-        Your workspace is ready. Operational data will appear here
-        when the corresponding modules are connected.
-      </p>
-    </div>
   </>
 ) : activePage === 'Inventory & Supply Chain' ? (
   <InventoryModule selectedBranch="all" />
@@ -257,6 +454,8 @@ export default function Dashboard({ user, onLogout }) {
   <BillingPayments />
 ) : activePage === 'Food Recommendations' ? (
   <FoodRecommendations />
+) : activePage === 'Branches' ? (
+  <Branches user={user} />
 ) : (
   <section className="module-placeholder">
     <div className="placeholder-icon">✳</div>

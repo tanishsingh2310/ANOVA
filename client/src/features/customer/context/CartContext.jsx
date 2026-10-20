@@ -2,7 +2,7 @@
 // The cart belongs to ONE branch (menus and orders are per branch). Choosing a
 // different branch empties the cart. Prices saved here are for DISPLAY only; the
 // server recalculates every price when the order is placed.
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useEffect, useMemo, useState } from 'react';
 
 const KEY = 'anova_cart_v2';
 const MAX_QTY = 20;
@@ -70,8 +70,4 @@ export function CartProvider({ children }) {
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
-export const useCart = () => {
-  const ctx = useContext(CartContext);
-  if (!ctx) throw new Error('useCart must be used inside <CartProvider>');
-  return ctx;
-};
+

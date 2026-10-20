@@ -88,8 +88,8 @@ function MenuManagement() {
     });
   }, [menu, search, categoryFilter, availabilityFilter]);
 
-  const availableCount = menu.filter((item) => item.available).length;
-  const unavailableCount = menu.length - availableCount;
+  
+  
 
   function openAddForm() {
     setEditingId(null);
@@ -280,8 +280,6 @@ function MenuManagement() {
     <section className="menu-management">
       <div className="menu-page-heading">
         <div>
-          <span className="menu-eyebrow">RESTAURANT OPERATIONS</span>
-          <h1>Menu Management</h1>
           <p>
             Manage your dishes, pricing, categories, and menu availability.
           </p>
@@ -292,29 +290,7 @@ function MenuManagement() {
         </button>
       </div>
 
-      <div className="menu-summary-grid">
-        <article className="menu-summary-card">
-          <span className="menu-summary-label">Total Menu Items</span>
-          <strong>{menu.length}</strong>
-          <span className="menu-summary-note">Across all categories</span>
-        </article>
-
-        <article className="menu-summary-card">
-          <span className="menu-summary-label">Available Items</span>
-          <strong>{availableCount}</strong>
-          <span className="menu-summary-note">
-            Currently on the menu
-          </span>
-        </article>
-
-        <article className="menu-summary-card">
-          <span className="menu-summary-label">Unavailable Items</span>
-          <strong>{unavailableCount}</strong>
-          <span className="menu-summary-note">
-            Temporarily not orderable
-          </span>
-        </article>
-      </div>
+      
 
       <div className="menu-toolbar">
         <div className="menu-search">
