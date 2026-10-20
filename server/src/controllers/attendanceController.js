@@ -7,6 +7,15 @@ const Shift = require("../models/Shift");
 
 const ATTENDANCE_MANAGERS = ["owner", "admin", "hr", "manager"];
 
+const ATTENDANCE_CLOCK_ROLES = [
+  ...ATTENDANCE_MANAGERS,
+  "inventory_manager",
+  "chef",
+  "cashier",
+  "employee",
+  "delivery_personnel",
+];
+
 function isValidId(id) {
   return mongoose.Types.ObjectId.isValid(id);
 }
@@ -23,17 +32,16 @@ function getBranchFilter(user) {
   return user.branch ? { branch: user.branch } : { branch: null };
 }
 
-
 function getTodayRange(dateValue) {
   const INDIA_OFFSET_MINUTES = 330;
   let localDate;
 
-  // Treat YYYY-MM-DD query values as India-local calendar dates.
   if (
     typeof dateValue === "string" &&
     /^\d{4}-\d{2}-\d{2}$/.test(dateValue)
   ) {
     const [year, month, day] = dateValue.split("-").map(Number);
+
     localDate = new Date(Date.UTC(year, month - 1, day));
 
     if (
@@ -50,7 +58,6 @@ function getTodayRange(dateValue) {
       return null;
     }
 
-    // Convert the instant to its India-local calendar date.
     localDate = new Date(
       date.getTime() + INDIA_OFFSET_MINUTES * 60 * 1000
     );
@@ -71,7 +78,6 @@ function getTodayRange(dateValue) {
   return { start, end };
 }
 
-
 function getAttendanceStatus(clockIn, expectedStartTime) {
   if (!expectedStartTime) {
     return "present";
@@ -90,11 +96,16 @@ function getAttendanceStatus(clockIn, expectedStartTime) {
 
 async function validateEmployee(employeeId, branchId) {
   if (!isValidId(employeeId) || !isValidId(branchId)) {
-    return { error: "A valid employee ID and branch ID are required.", status: 400 };
+    return {
+      error: "A valid employee ID and branch ID are required.",
+      status: 400,
+    };
   }
 
   const [employee, branch] = await Promise.all([
-    User.findById(employeeId).select("name email role branch isActive"),
+    User.findById(employeeId).select(
+      "name email role branch isActive"
+    ),
     Branch.findById(branchId).select("name isActive"),
   ]);
 
@@ -113,8 +124,21 @@ async function validateEmployee(employeeId, branchId) {
     };
   }
 
-  if (!["manager", "hr", "inventory_manager", "chef", "cashier", "employee"].includes(employee.role)) {
-    return { error: "This user cannot have employee attendance.", status: 400 };
+  if (
+    ![
+      "manager",
+      "hr",
+      "inventory_manager",
+      "chef",
+      "cashier",
+      "employee",
+      "delivery_personnel",
+    ].includes(employee.role)
+  ) {
+    return {
+      error: "This user cannot have employee attendance.",
+      status: 400,
+    };
   }
 
   return { employee, branch };
@@ -134,27 +158,25 @@ function canAccessEmployee(user, employeeId) {
 
 // Employees can clock themselves in.
 // HR and managers can record attendance for employees in their branch.
-
 exports.clockIn = async (req, res) => {
   try {
-    const allowedRoles = ["owner", "admin", "hr", "manager", "employee"];
-
-    if (!allowedRoles.includes(req.user.role)) {
+    if (!ATTENDANCE_CLOCK_ROLES.includes(req.user.role)) {
       return res.status(403).json({
         message: "You are not authorized to record attendance.",
       });
     }
 
-    // Employees can only clock themselves in.
-    const employeeId =
-      req.user.role === "employee"
-        ? String(req.user._id)
-        : req.body.employeeId;
+    const isOperationalStaff = !ATTENDANCE_MANAGERS.includes(
+      req.user.role
+    );
 
-    const branchId =
-      req.user.role === "employee"
-        ? String(req.user.branch || "")
-        : req.body.branchId;
+    const employeeId = isOperationalStaff
+      ? String(req.user._id)
+      : req.body.employeeId;
+
+    const branchId = isOperationalStaff
+      ? String(req.user.branch || "")
+      : req.body.branchId;
 
     if (!canAccessEmployee(req.user, employeeId)) {
       return res.status(403).json({
@@ -183,7 +205,6 @@ exports.clockIn = async (req, res) => {
     const matchingStart = new Date(now.getTime() - 2 * 60 * 60 * 1000);
     const matchingEnd = new Date(now.getTime() + 2 * 60 * 60 * 1000);
 
-    // Find at most two candidates: two are enough to identify ambiguity.
     const candidates = await Shift.find({
       employee: validation.employee._id,
       branch: validation.branch._id,
@@ -202,8 +223,6 @@ exports.clockIn = async (req, res) => {
     if (candidates.length === 1) {
       matchedShift = candidates[0];
 
-      // A matched shift can still need review if the clock-in is
-      // before its start or after its end.
       if (
         now < matchedShift.startTime ||
         now > matchedShift.endTime
@@ -215,13 +234,10 @@ exports.clockIn = async (req, res) => {
       requiresReview = true;
       reviewReason = "no_scheduled_shift";
     } else {
-      // Do not choose arbitrarily when multiple shifts are plausible.
       requiresReview = true;
       reviewReason = "ambiguous_shift";
     }
 
-    // Matched overnight shifts belong to the shift's start date.
-    // Unmatched/ambiguous clock-ins use the local clock-in date.
     const attendanceDateRange = getTodayRange(
       matchedShift ? matchedShift.startTime : now
     );
@@ -244,7 +260,6 @@ exports.clockIn = async (req, res) => {
       });
     }
 
-    // Never use req.body.expectedStartTime to determine lateness.
     const status = getAttendanceStatus(
       now,
       matchedShift ? matchedShift.startTime : null
@@ -298,65 +313,77 @@ exports.clockIn = async (req, res) => {
   }
 };
 
-
-// Employees can clock themselves out; managers can clock out employees in their branch.
+// Employees can clock themselves out.
+// Managers can clock out employees in their branch.
 exports.clockOut = async (req, res) => {
   try {
-    if (
-  ![
-    "owner",
-    "admin",
-    "hr",
-    "manager",
-    "employee",
-  ].includes(req.user.role)
-) {
-  return res.status(403).json({
-    message: "You are not authorized to clock out attendance.",
-  });
-}
+    if (!ATTENDANCE_CLOCK_ROLES.includes(req.user.role)) {
+      return res.status(403).json({
+        message: "You are not authorized to clock out attendance.",
+      });
+    }
+
     if (!isValidId(req.params.id)) {
-      return res.status(400).json({ message: "A valid attendance ID is required." });
+      return res.status(400).json({
+        message: "A valid attendance ID is required.",
+      });
     }
 
     const attendance = await Attendance.findById(req.params.id);
 
     if (!attendance) {
-      return res.status(404).json({ message: "Attendance record not found." });
+      return res.status(404).json({
+        message: "Attendance record not found.",
+      });
     }
 
     if (!canAccessEmployee(req.user, attendance.employee)) {
-      return res.status(403).json({ message: "You cannot update this attendance record." });
+      return res.status(403).json({
+        message: "You cannot update this attendance record.",
+      });
     }
 
     if (
       !canManageAllBranches(req.user) &&
       String(req.user.branch || "") !== String(attendance.branch)
     ) {
-      return res.status(403).json({ message: "You cannot update attendance for another branch." });
+      return res.status(403).json({
+        message: "You cannot update attendance for another branch.",
+      });
     }
 
     if (attendance.clockOut) {
-      return res.status(409).json({ message: "This attendance record is already clocked out." });
+      return res.status(409).json({
+        message: "This attendance record is already clocked out.",
+      });
     }
 
     const now = new Date();
 
     if (now <= attendance.clockIn) {
-      return res.status(400).json({ message: "Clock-out must be after clock-in." });
-    }
-
-    const breakMinutes = req.body.breakMinutes === undefined
-      ? attendance.breakMinutes
-      : Number(req.body.breakMinutes);
-
-    if (!Number.isInteger(breakMinutes) || breakMinutes < 0 || breakMinutes > 240) {
       return res.status(400).json({
-        message: "Break duration must be a whole number between 0 and 240 minutes.",
+        message: "Clock-out must be after clock-in.",
       });
     }
 
-    const durationMinutes = (now.getTime() - attendance.clockIn.getTime()) / 60000;
+    const breakMinutes =
+      req.body.breakMinutes === undefined
+        ? attendance.breakMinutes
+        : Number(req.body.breakMinutes);
+
+    if (
+      !Number.isInteger(breakMinutes) ||
+      breakMinutes < 0 ||
+      breakMinutes > 240
+    ) {
+      return res.status(400).json({
+        message:
+          "Break duration must be a whole number between 0 and 240 minutes.",
+      });
+    }
+
+    const durationMinutes =
+      (now.getTime() - attendance.clockIn.getTime()) / 60000;
 
     if (breakMinutes > durationMinutes) {
       return res.status(400).json({
@@ -385,29 +412,64 @@ exports.clockOut = async (req, res) => {
     }
 
     console.error("Clock-out error:", error.message);
-    return res.status(500).json({ message: "Unable to record clock-out." });
+
+    return res.status(500).json({
+      message: "Unable to record clock-out.",
+    });
   }
 };
 
 // HR and managers can view attendance in their permitted branch.
 // Employees can view only their own records.
+// Owner/admin can optionally filter by any branch using ?branch=BRANCH_ID.
 exports.getAttendance = async (req, res) => {
   try {
     const filter = { ...getBranchFilter(req.user) };
 
+    // Employees can only view their own attendance, regardless of query parameters.
     if (req.user.role === "employee") {
       filter.employee = req.user._id;
     } else if (req.query.employeeId) {
       if (!isValidId(req.query.employeeId)) {
-        return res.status(400).json({ message: "A valid employee ID is required." });
+        return res.status(400).json({
+          message: "A valid employee ID is required.",
+        });
       }
 
       filter.employee = req.query.employeeId;
     }
 
+    // Branch filter:
+    // Owners/admins may select any branch.
+    // Other roles may only select their assigned branch.
+    if (req.query.branch) {
+      if (!isValidId(req.query.branch)) {
+        return res.status(400).json({
+          message: "A valid branch ID is required.",
+        });
+      }
+
+      if (
+        !canManageAllBranches(req.user) &&
+        String(req.user.branch || "") !== String(req.query.branch)
+      ) {
+        return res.status(403).json({
+          message: "You cannot view attendance for another branch.",
+        });
+      }
+
+      filter.branch = req.query.branch;
+    }
+
     if (req.query.status) {
-      if (!["present", "late", "absent", "half-day"].includes(req.query.status)) {
-        return res.status(400).json({ message: "Invalid attendance status." });
+      if (
+        !["present", "late", "absent", "half-day"].includes(
+          req.query.status
+        )
+      ) {
+        return res.status(400).json({
+          message: "Invalid attendance status.",
+        });
       }
 
       filter.status = req.query.status;
@@ -417,24 +479,36 @@ exports.getAttendance = async (req, res) => {
     const to = req.query.to ? getTodayRange(req.query.to) : null;
 
     if (req.query.from && !from) {
-      return res.status(400).json({ message: "Invalid from date." });
+      return res.status(400).json({
+        message: "Invalid from date.",
+      });
     }
 
     if (req.query.to && !to) {
-      return res.status(400).json({ message: "Invalid to date." });
+      return res.status(400).json({
+        message: "Invalid to date.",
+      });
     }
 
     if (from || to) {
       filter.attendanceDate = {};
 
-      if (from) filter.attendanceDate.$gte = from.start;
-      if (to) filter.attendanceDate.$lt = to.end;
+      if (from) {
+        filter.attendanceDate.$gte = from.start;
+      }
+
+      if (to) {
+        filter.attendanceDate.$lt = to.end;
+      }
     }
 
-    const limit = req.query.limit === undefined ? 100 : Number(req.query.limit);
+    const limit =
+      req.query.limit === undefined ? 100 : Number(req.query.limit);
 
     if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-      return res.status(400).json({ message: "Limit must be between 1 and 500." });
+      return res.status(400).json({
+        message: "Limit must be between 1 and 500.",
+      });
     }
 
     const records = await Attendance.find(filter)
@@ -451,14 +525,19 @@ exports.getAttendance = async (req, res) => {
     });
   } catch (error) {
     console.error("Get attendance error:", error.message);
-    return res.status(500).json({ message: "Unable to retrieve attendance records." });
+
+    return res.status(500).json({
+      message: "Unable to retrieve attendance records.",
+    });
   }
 };
 
 exports.getAttendanceById = async (req, res) => {
   try {
     if (!isValidId(req.params.id)) {
-      return res.status(400).json({ message: "A valid attendance ID is required." });
+      return res.status(400).json({
+        message: "A valid attendance ID is required.",
+      });
     }
 
     const filter = {
@@ -477,17 +556,23 @@ exports.getAttendanceById = async (req, res) => {
       .populate("updatedBy", "name email");
 
     if (!attendance) {
-      return res.status(404).json({ message: "Attendance record not found." });
+      return res.status(404).json({
+        message: "Attendance record not found.",
+      });
     }
 
     return res.status(200).json({ attendance });
   } catch (error) {
     console.error("Get attendance detail error:", error.message);
-    return res.status(500).json({ message: "Unable to retrieve attendance record." });
+
+    return res.status(500).json({
+      message: "Unable to retrieve attendance record.",
+    });
   }
 };
 
-// HR can correct attendance details; employees cannot alter historical records.
+// HR and managers can correct attendance details.
+// Employees cannot alter historical records.
 exports.updateAttendance = async (req, res) => {
   try {
     if (!ATTENDANCE_MANAGERS.includes(req.user.role)) {
@@ -495,8 +580,11 @@ exports.updateAttendance = async (req, res) => {
         message: "You are not authorized to correct attendance records.",
       });
     }
+
     if (!isValidId(req.params.id)) {
-      return res.status(400).json({ message: "A valid attendance ID is required." });
+      return res.status(400).json({
+        message: "A valid attendance ID is required.",
+      });
     }
 
     const filter = {
@@ -507,27 +595,49 @@ exports.updateAttendance = async (req, res) => {
     const attendance = await Attendance.findOne(filter);
 
     if (!attendance) {
-      return res.status(404).json({ message: "Attendance record not found." });
+      return res.status(404).json({
+        message: "Attendance record not found.",
+      });
     }
 
-    const allowedFields = ["status", "notes", "breakMinutes", "clockIn", "clockOut"];
+    const allowedFields = [
+      "status",
+      "notes",
+      "breakMinutes",
+      "clockIn",
+      "clockOut",
+    ];
+
     const submittedFields = Object.keys(req.body);
 
     if (submittedFields.some((field) => !allowedFields.includes(field))) {
-      return res.status(400).json({ message: "One or more fields cannot be updated." });
+      return res.status(400).json({
+        message: "One or more fields cannot be updated.",
+      });
     }
 
     if (req.body.status !== undefined) {
-      if (!["present", "late", "absent", "half-day"].includes(req.body.status)) {
-        return res.status(400).json({ message: "Invalid attendance status." });
+      if (
+        !["present", "late", "absent", "half-day"].includes(
+          req.body.status
+        )
+      ) {
+        return res.status(400).json({
+          message: "Invalid attendance status.",
+        });
       }
 
       attendance.status = req.body.status;
     }
 
     if (req.body.notes !== undefined) {
-      if (typeof req.body.notes !== "string" || req.body.notes.length > 500) {
-        return res.status(400).json({ message: "Notes must be text up to 500 characters." });
+      if (
+        typeof req.body.notes !== "string" ||
+        req.body.notes.length > 500
+      ) {
+        return res.status(400).json({
+          message: "Notes must be text up to 500 characters.",
+        });
       }
 
       attendance.notes = req.body.notes.trim();
@@ -536,8 +646,14 @@ exports.updateAttendance = async (req, res) => {
     if (req.body.breakMinutes !== undefined) {
       const breakMinutes = Number(req.body.breakMinutes);
 
-      if (!Number.isInteger(breakMinutes) || breakMinutes < 0 || breakMinutes > 240) {
-        return res.status(400).json({ message: "Break duration must be between 0 and 240 minutes." });
+      if (
+        !Number.isInteger(breakMinutes) ||
+        breakMinutes < 0 ||
+        breakMinutes > 240
+      ) {
+        return res.status(400).json({
+          message: "Break duration must be between 0 and 240 minutes.",
+        });
       }
 
       attendance.breakMinutes = breakMinutes;
@@ -545,18 +661,24 @@ exports.updateAttendance = async (req, res) => {
 
     for (const field of ["clockIn", "clockOut"]) {
       if (req.body[field] !== undefined) {
+        if (req.body[field] === null && field === "clockOut") {
+          attendance.clockOut = null;
+          continue;
+        }
+
         const value = new Date(req.body[field]);
 
         if (Number.isNaN(value.getTime())) {
-          return res.status(400).json({ message: `Invalid ${field} timestamp.` });
+          return res.status(400).json({
+            message: `Invalid ${field} timestamp.`,
+          });
         }
 
         attendance[field] = value;
       }
     }
 
-
-    // Recalculate present/late when the clock-in time is corrected.
+    // Recalculate present/late if clock-in changes and a shift is linked.
     // Preserve explicit absent/half-day corrections.
     if (attendance.shift && req.body.clockIn !== undefined) {
       const linkedShift = await Shift.findById(attendance.shift)
@@ -586,16 +708,13 @@ exports.updateAttendance = async (req, res) => {
       if (outsideShift) {
         attendance.requiresReview = true;
         attendance.reviewReason = "outside_shift_window";
-      } else if (
-        attendance.reviewReason === "outside_shift_window"
-      ) {
-        // Clear only this specific review reason.
+      } else if (attendance.reviewReason === "outside_shift_window") {
         attendance.requiresReview = false;
         attendance.reviewReason = null;
       }
     }
 
-        if (
+    if (
       attendance.clockOut &&
       attendance.clockOut <= attendance.clockIn
     ) {
@@ -606,7 +725,8 @@ exports.updateAttendance = async (req, res) => {
 
     if (attendance.clockOut) {
       const durationMinutes =
-        (attendance.clockOut.getTime() - attendance.clockIn.getTime()) /
+        (attendance.clockOut.getTime() -
+          attendance.clockIn.getTime()) /
         60000;
 
       if (attendance.breakMinutes > durationMinutes) {
@@ -635,6 +755,9 @@ exports.updateAttendance = async (req, res) => {
     }
 
     console.error("Update attendance error:", error.message);
-    return res.status(500).json({ message: "Unable to update attendance record." });
+
+    return res.status(500).json({
+      message: "Unable to update attendance record.",
+    });
   }
 };

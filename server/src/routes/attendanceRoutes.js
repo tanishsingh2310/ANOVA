@@ -9,43 +9,61 @@ const {
   updateAttendance,
 } = require("../controllers/attendanceController");
 
-const { protect, authorize } = require("../middleware/authMiddleware");
+const {
+  protect,
+  authorize,
+} = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
 router.use(protect);
 
-// Employees can record their own attendance.
-// HR and management can record attendance for employees.
+const attendanceRoles = [
+  "owner",
+  "admin",
+  "hr",
+  "manager",
+  "inventory_manager",
+  "chef",
+  "cashier",
+  "employee",
+  "delivery_personnel",
+];
+
+const attendanceManagers = ["owner", "admin", "hr", "manager"];
+
+// Clock-in: operational staff can clock in for themselves.
+// The controller enforces self-only access for non-managers.
 router.post(
   "/clock-in",
-  authorize("owner", "admin", "hr", "manager", "employee"),
+  authorize(...attendanceRoles),
   clockIn
 );
 
+// Clock-out: the controller enforces self-only access for staff.
 router.patch(
   "/:id/clock-out",
-  authorize("owner", "admin", "hr", "manager", "employee"),
+  authorize(...attendanceRoles),
   clockOut
 );
 
-// Employees can view their own records; authorized managers can view branch records.
+// View attendance records.
 router.get(
   "/",
-  authorize("owner", "admin", "hr", "manager", "employee"),
+  authorize(...attendanceRoles),
   getAttendance
 );
 
 router.get(
   "/:id",
-  authorize("owner", "admin", "hr", "manager", "employee"),
+  authorize(...attendanceRoles),
   getAttendanceById
 );
 
-// Historical attendance corrections are management-only.
+// Correct historical attendance: managers only.
 router.patch(
   "/:id",
-  authorize("owner", "admin", "hr", "manager"),
+  authorize(...attendanceManagers),
   updateAttendance
 );
 
