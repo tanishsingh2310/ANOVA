@@ -575,7 +575,42 @@ async function cancelPayroll(req, res) {
     });
   }
 }
+// DELETE /api/payroll/:id
+async function deletePayroll(req, res) {
+  try {
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({
+        message: "Invalid payroll ID.",
+      });
+    }
 
+    const payroll = await Payroll.findOne({
+      _id: req.params.id,
+      ...getBranchFilter(req.user),
+    });
+
+    if (!payroll) {
+      return res.status(404).json({
+        message: "Payroll record not found.",
+      });
+    }
+
+    // Prevent deleting payroll that has already been paid.
+    
+
+    await Payroll.deleteOne({ _id: payroll._id });
+
+    return res.status(200).json({
+      message: "Payroll record deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete payroll error:", error.message);
+
+    return res.status(500).json({
+      message: "Failed to delete payroll record.",
+    });
+  }
+}
 module.exports = {
   createPayroll,
   getPayrollRecords,
@@ -584,4 +619,5 @@ module.exports = {
   approvePayroll,
   markPayrollPaid,
   cancelPayroll,
+  deletePayroll,
 };

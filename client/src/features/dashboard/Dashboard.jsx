@@ -17,6 +17,7 @@ import Employees from '../employees/Employees.jsx'
 import Shifts from '../shifts/Shifts.jsx'
 import Attendance from '../attendance/Attendance.jsx'
 import Leave from '../leaves/Leaves.jsx'
+import Payroll from "../payroll/Payroll.jsx";
 
 const navigation = [
   {
@@ -64,13 +65,13 @@ const navigation = [
   },
 
   {
-    label: 'Menu Management',
+    label: 'Menu',
     icon: 'M',
     group: 'Restaurant Operations',
     roles: ['owner', 'admin', 'manager', 'chef'],
   },
   {
-    label: 'Table Management',
+    label: 'Tables',
     icon: 'T',
     group: 'Restaurant Operations',
     roles: ['owner', 'admin', 'manager', 'cashier'],
@@ -101,9 +102,9 @@ const navigation = [
   },
 
   {
-    label: 'Inventory & Supply Chain',
+    label: 'Inventory',
     icon: 'I',
-    group: 'Inventory',
+    group: 'Inventory & Supply Chain',
     roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
   },
   {
@@ -117,7 +118,7 @@ const navigation = [
 const navigationGroups = [
   { label: 'People & HR', icon: '♙' },
   { label: 'Restaurant Operations', icon: '▦' },
-  { label: 'Inventory', icon: '▤' },
+  { label: 'Inventory & Supply Chain', icon: '▤' },
   { label: 'Customer Experience', icon: '♡' },
 ]
 
@@ -160,7 +161,7 @@ const modules = [
     tone: 'blue',
   },
   {
-  title: 'Inventory & Supply Chain',
+  title: 'Inventory',
   description: 'Track ingredients, suppliers, purchase orders, transfers and wastage.',
   icon: 'I',
   tone: 'green',
@@ -515,9 +516,9 @@ useEffect(() => {
     </section>
 
   </>
-) : activePage === 'Inventory & Supply Chain' ? (
+) : activePage === 'Inventory' ? (
   <InventoryModule selectedBranch="all" />
-) : activePage === 'Menu Management' ? (
+) : activePage === 'Menu' ? (
   <MenuManagement
   branchId={selectedBranchId}
   branches={branches}
@@ -525,7 +526,7 @@ useEffect(() => {
   branchLoading={branchLoading}
   branchError={branchError}
 />
-) : activePage === 'Table Management' ? (
+) : activePage === 'Tables' ? (
   <TableManagement branchId={selectedBranchId} />
 ) : activePage === 'Reservations' ? (
   <Reservations branchId={selectedBranchId} />
@@ -547,6 +548,8 @@ useEffect(() => {
   <Attendance user={user} />
 ) : activePage === 'Leave requests' ? (
   <Leave user={user} />
+) : activePage === "Payroll" ? (
+  <Payroll user={user} />
 ) : (
   <section className="module-placeholder">
     <div className="placeholder-icon">✳</div>
