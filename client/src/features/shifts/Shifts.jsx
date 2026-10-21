@@ -467,6 +467,17 @@ const [deleting, setDeleting] = useState(false)
         </div>
 
         <div className="shifts-heading-actions">
+          
+          {canManageShifts && (
+            <button
+              type="button"
+              className="shifts-button shifts-button-primary"
+              onClick={openCreateForm}
+            >
+              <Plus size={16} />
+              Create shift
+            </button>
+          )}
           <button
             type="button"
             className="shifts-button shifts-button-secondary"
@@ -480,16 +491,6 @@ const [deleting, setDeleting] = useState(false)
             Refresh
           </button>
 
-          {canManageShifts && (
-            <button
-              type="button"
-              className="shifts-button shifts-button-primary"
-              onClick={openCreateForm}
-            >
-              <Plus size={16} />
-              Create shift
-            </button>
-          )}
         </div>
       </div>
 

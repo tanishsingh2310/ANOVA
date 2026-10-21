@@ -85,7 +85,7 @@ export default function Employees({ user }) {
 
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('active')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [branchFilter, setBranchFilter] = useState('all')
 
   const [formOpen, setFormOpen] = useState(false)
@@ -156,10 +156,12 @@ export default function Employees({ user }) {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadBranches()
   }, [loadBranches])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadEmployees()
   }, [loadEmployees])
 
@@ -387,6 +389,16 @@ export default function Employees({ user }) {
         </div>
 
         <div className="employees-heading-actions">
+          {canManage && (
+            <button
+              type="button"
+              className="employees-button employees-button-primary"
+              onClick={openCreateForm}
+            >
+              <Plus size={16} />
+              Add Employee / Staff
+            </button>
+          )}
           <button
             type="button"
             className="employees-button employees-button-secondary"
@@ -400,16 +412,7 @@ export default function Employees({ user }) {
             Refresh
           </button>
 
-          {canManage && (
-            <button
-              type="button"
-              className="employees-button employees-button-primary"
-              onClick={openCreateForm}
-            >
-              <Plus size={16} />
-              Add Employee / Staff
-            </button>
-          )}
+          
         </div>
       </div>
 
@@ -811,7 +814,7 @@ export default function Employees({ user }) {
                                 aria-label={`Delete ${employee.name || 'employee'}`}
                               >
                                 <Trash2 size={15} />
-                                Delete
+                                
                               </button>
                             </div>
                           )}

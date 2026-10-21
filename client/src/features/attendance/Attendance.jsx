@@ -335,13 +335,7 @@ export default function Attendance({ user }) {
     }
   }
 
-  const resetFilters = () => {
-    setSearch('')
-    setStatusFilter('all')
-    setBranchFilter('all')
-    setDateFrom('')
-    setDateTo('')
-  }
+
 
   const employeeHasOpenRecord = records.some(
     (record) =>
@@ -412,8 +406,7 @@ export default function Attendance({ user }) {
         </div>
       )}
 
-
-      <div className="attendance-panel">
+      <div className="attendance-filter-card">
         <div className="attendance-toolbar">
           <label className="attendance-search">
             <Search size={17} />
@@ -434,7 +427,10 @@ export default function Attendance({ user }) {
             >
               <option value="all">All branches</option>
               {branches.map((branch) => (
-                <option key={branch._id} value={branch._id}>
+                <option
+                  key={branch._id || branch.id}
+                  value={branch._id || branch.id}
+                >
                   {branch.name}
                 </option>
               ))}
@@ -475,18 +471,16 @@ export default function Attendance({ user }) {
             />
           </label>
 
-          <button
-            type="button"
-            className="attendance-reset-button"
-            onClick={resetFilters}
-          >
-            Reset
-          </button>
         </div>
+      </div>
 
+      <div className="attendance-records-card">
         <div className="attendance-table-summary">
-          Showing {visibleRecords.length} record
-          {visibleRecords.length === 1 ? '' : 's'}
+          <h3>Attendance Records</h3>
+    <p>
+      Showing {visibleRecords.length} record
+      {visibleRecords.length === 1 ? '' : 's'}
+    </p>
         </div>
 
         {loading ? (
@@ -526,7 +520,10 @@ export default function Attendance({ user }) {
                     employee.email ||
                     'Unknown employee'
 
-                  const status = String(record.status || 'present').toLowerCase()
+                  const status = String(
+                    record.status || 'present'
+                  ).toLowerCase()
+
                   const isOwnRecord =
                     getId(record.employee) === getId(user)
 
@@ -563,16 +560,18 @@ export default function Attendance({ user }) {
                       {(isManager || isEmployee) && (
                         <td>
                           <div className="attendance-row-actions">
-                            {isEmployee && isOwnRecord && !record.clockOut && (
-                              <button
-                                type="button"
-                                className="attendance-small-button"
-                                onClick={() => handleClockOut(record)}
-                                disabled={saving}
-                              >
-                                Clock out
-                              </button>
-                            )}
+                            {isEmployee &&
+                              isOwnRecord &&
+                              !record.clockOut && (
+                                <button
+                                  type="button"
+                                  className="attendance-small-button"
+                                  onClick={() => handleClockOut(record)}
+                                  disabled={saving}
+                                >
+                                  Clock out
+                                </button>
+                              )}
 
                             {isManager && (
                               <button

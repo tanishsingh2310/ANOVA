@@ -16,6 +16,7 @@ import './statistics.css'
 import Employees from '../employees/Employees.jsx'
 import Shifts from '../shifts/Shifts.jsx'
 import Attendance from '../attendance/Attendance.jsx'
+import Leave from '../leaves/Leaves.jsx'
 
 const navigation = [
   {
@@ -544,6 +545,8 @@ useEffect(() => {
   <Shifts user={user} />
 ) : activePage === 'Attendance' ? (
   <Attendance user={user} />
+) : activePage === 'Leave requests' ? (
+  <Leave user={user} />
 ) : (
   <section className="module-placeholder">
     <div className="placeholder-icon">✳</div>

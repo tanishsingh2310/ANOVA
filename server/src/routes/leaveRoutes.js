@@ -11,6 +11,7 @@ const {
   getLeaveRequestById,
   reviewLeaveRequest,
   cancelLeaveRequest,
+  deleteLeaveRequest,
 } = require("../controllers/leaveController");
 
 const router = express.Router();
@@ -24,6 +25,7 @@ const LEAVE_USERS = [
   "chef",
   "cashier",
   "employee",
+  "delivery_personnel",
 ];
 
 router.use(protect);
@@ -43,5 +45,7 @@ router.patch("/:id/review", reviewLeaveRequest);
 
 // Cancel a pending request.
 router.patch("/:id/cancel", cancelLeaveRequest);
+// Permanently delete a leave request.
+router.delete("/:id", deleteLeaveRequest);
 
 module.exports = router;

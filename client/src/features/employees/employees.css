@@ -317,6 +317,11 @@
 }
 
 .employees-table-heading {
+  margin: 0;
+  color: #183c34;
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.25px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -327,7 +332,7 @@
 
 .employees-table-heading h3 {
   margin: 0;
-  color: var(--emp-primary);
+  color: #183c34;
   font-size: 16px;
   font-weight: 750;
   letter-spacing: -0.25px;
