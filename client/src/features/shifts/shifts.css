@@ -254,13 +254,21 @@
 }
 
 .shifts-table-heading {
+  margin: 0;
+  color: #183c34;
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.25px;
   padding: 18px 20px;
   border-bottom: 1px solid #e2e8f0;
 }
 
 .shifts-table-heading h3 {
-  margin: 0 0 4px;
+  margin: 0;
+  color: #183c34;
   font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.25px;
 }
 
 .shifts-table-heading p {

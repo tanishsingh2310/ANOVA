@@ -210,16 +210,6 @@ export default function Branches({ user }) {
         </div>
 
         <div className="branches-actions">
-          <button
-            type="button"
-            className="branches-button branches-button-secondary"
-            onClick={loadBranches}
-            disabled={loading}
-          >
-            <RefreshCw size={16} />
-            Refresh
-          </button>
-
           {isAdmin && (
             <button
               type="button"
@@ -230,6 +220,17 @@ export default function Branches({ user }) {
               Add branch
             </button>
           )}
+          <button
+            type="button"
+            className="branches-button branches-button-secondary"
+            onClick={loadBranches}
+            disabled={loading}
+          >
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+
+          
         </div>
       </div>
 

@@ -10,6 +10,7 @@ const {
   approvePayroll,
   markPayrollPaid,
   cancelPayroll,
+  deletePayroll,
 } = require("../controllers/payrollController");
 
 const router = express.Router();
@@ -26,5 +27,6 @@ router.patch("/:id", updatePayroll);
 router.patch("/:id/approve", approvePayroll);
 router.patch("/:id/pay", markPayrollPaid);
 router.patch("/:id/cancel", cancelPayroll);
+router.delete("/:id", deletePayroll);
 
 module.exports = router;

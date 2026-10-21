@@ -7,18 +7,21 @@ const Branch = require("../models/Branch");
 const LEAVE_REVIEWERS = ["owner", "admin", "hr", "manager"];
 
 const EMPLOYEE_ROLES = [
+  "admin",
   "manager",
   "hr",
   "inventory_manager",
   "chef",
   "cashier",
   "employee",
+  "delivery_personnel",
 ];
 const LEAVE_APPROVAL_HIERARCHY = {
   employee: ["manager", "hr", "admin", "owner"],
   inventory_manager: ["manager", "hr", "admin", "owner"],
   chef: ["manager", "hr", "admin", "owner"],
   cashier: ["manager", "hr", "admin", "owner"],
+  delivery_personnel: ["manager", "hr", "admin", "owner"],
   manager: ["hr", "admin", "owner"],
   hr: ["admin", "owner"],
   admin: ["owner"],
@@ -134,7 +137,13 @@ function populateLeave(query) {
 // Submit a leave request.
 exports.createLeaveRequest = async (req, res) => {
   try {
-    const canSubmitForOthers = canReviewLeaves(req.user);
+    
+const canSubmitForOthers = canReviewLeaves(req.user);
+
+const hasEmployeeEmail =
+  typeof req.body.employeeEmail === "string" &&
+  req.body.employeeEmail.trim() !== "";
+
 const hasEmployeeId =
   req.body.employeeId !== undefined &&
   req.body.employeeId !== null &&
@@ -142,15 +151,49 @@ const hasEmployeeId =
 
 const isSelfSubmission =
   EMPLOYEE_ROLES.includes(req.user.role) &&
-  (!canSubmitForOthers || !hasEmployeeId);
+  !hasEmployeeEmail &&
+  !hasEmployeeId;
 
-const employeeId = isSelfSubmission
-  ? req.user._id
-  : req.body.employeeId;
+if (!isSelfSubmission && !canSubmitForOthers) {
+  return res.status(403).json({
+    message: "You are not authorized to submit leave for other employees.",
+  });
+}
+
+let employeeId = isSelfSubmission ? req.user._id : null;
 
 const branchId = isSelfSubmission
   ? req.user.branch
   : req.body.branchId;
+
+if (!isSelfSubmission) {
+  if (hasEmployeeEmail) {
+    const employeeEmail = req.body.employeeEmail.trim().toLowerCase();
+
+    const employee = await User.findOne({
+      email: employeeEmail,
+      isActive: true,
+      role: { $in: EMPLOYEE_ROLES },
+    }).select("_id branch");
+
+    if (!employee) {
+      return res.status(404).json({
+        message:
+          "No active employee was found with this email. Check the email address and try again.",
+      });
+    }
+
+    employeeId = employee._id;
+  } else if (hasEmployeeId) {
+    // Keep support for existing API clients that send an employee ID.
+    employeeId = req.body.employeeId;
+  } else {
+    return res.status(400).json({
+      message: "Please provide the employee's registered email address.",
+    });
+  }
+}
+
 
 if (!isSelfSubmission && !canSubmitForOthers) {
   return res.status(403).json({
@@ -503,6 +546,49 @@ exports.cancelLeaveRequest = async (req, res) => {
     console.error("Cancel leave request error:", error);
     return res.status(500).json({
       message: "Unable to cancel leave request.",
+    });
+  }
+};
+
+ // Permanently delete a leave request.
+exports.deleteLeaveRequest = async (req, res) => {
+  try {
+    // Only authorized leave reviewers can permanently delete requests.
+    if (!canReviewLeaves(req.user)) {
+      return res.status(403).json({
+        message: "You are not authorized to delete leave requests.",
+      });
+    }
+
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({
+        message: "Invalid leave request ID.",
+      });
+    }
+
+    // Restrict deletion to requests within the user's permitted branches.
+    const leaveRequest = await LeaveRequest.findOne({
+      _id: req.params.id,
+      ...getBranchFilter(req.user),
+    });
+
+    if (!leaveRequest) {
+      return res.status(404).json({
+        message: "Leave request not found in your branch.",
+      });
+    }
+
+    await LeaveRequest.deleteOne({ _id: leaveRequest._id });
+
+    return res.status(200).json({
+      message: "Leave request deleted successfully.",
+      deletedId: leaveRequest._id,
+    });
+  } catch (error) {
+    console.error("Delete leave request error:", error);
+
+    return res.status(500).json({
+      message: "Unable to delete leave request.",
     });
   }
 };
