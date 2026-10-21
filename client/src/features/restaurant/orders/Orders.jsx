@@ -16,6 +16,7 @@ const orderTypes = ["Dine-in", "Takeaway", "Delivery"];
 
 const emptyForm = {
   customer: "",
+  branchId: "",
   orderType: "Dine-in",
   tableId: "",
   items: [{ menuItemId: "", quantity: 1 }],
@@ -57,7 +58,13 @@ function getOrderId(order) {
   return order.orderNumber || order.id || order._id;
 }
 
-function Orders({ branchId }) {
+function Orders({
+  branchId,
+  branches = [],
+  onBranchChange,
+  branchLoading = false,
+  branchError = "",
+}) {
   const [orders, setOrders] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [tables, setTables] = useState([]);
@@ -76,47 +83,166 @@ function Orders({ branchId }) {
   const [formError, setFormError] = useState("");
 
     const loadData = useCallback(async () => {
-    if (!branchId) {
-      setOrders([]);
-      setMenuItems([]);
-      setTables([]);
-      setIsLoading(false);
-      return;
-    }
+  setIsLoading(true);
+  setPageError("");
+  setOrders([]);
+  setMenuItems([]);
+  setTables([]);
 
-    setIsLoading(true);
-    setPageError("");
-    setOrders([]);
-    setMenuItems([]);
-    setTables([]);
+  try {
+    let ordersData = [];
+    let menuData = [];
+    let tablesData = [];
 
-    try {
-      const [ordersData, menuData, tablesData] = await Promise.all([
-        apiRequest(`/api/orders/${branchId}`),
-        apiRequest(`/api/menu/${branchId}`),
-        apiRequest(`/api/tables/${branchId}`),
-      ]);
+    if (branchId === "all") {
+      if (branches.length === 0) {
+        setOrders([]);
+        return;
+      }
+
+      const branchOrders = await Promise.all(
+        branches.map(async (branch) => {
+          const data = await apiRequest(`/api/orders/${branch._id}`);
+
+          if (!Array.isArray(data)) {
+            throw new Error(
+              `Invalid orders response for ${branch.name}.`
+            );
+          }
+
+          return data.map((order) => ({
+            ...order,
+            id: order._id,
+            branchId:
+              typeof order.branchId === "object"
+                ? order.branchId?._id || branch._id
+                : order.branchId || branch._id,
+            branchName:
+              typeof order.branchId === "object"
+                ? order.branchId?.name || branch.name
+                : branch.name,
+            items: (order.items || []).map((item) => ({
+              ...item,
+              menuItemId: String(
+                typeof item.menuItemId === "object"
+                  ? item.menuItemId?._id
+                  : item.menuItemId
+              ),
+              price: Number(item.price) || 0,
+              quantity: Number(item.quantity) || 1,
+            })),
+          }));
+        })
+      );
+
+      ordersData = branchOrders.flat();
+    } else if (branchId) {
+      const [branchOrders, branchMenu, branchTables] =
+        await Promise.all([
+          apiRequest(`/api/orders/${branchId}`),
+          apiRequest(`/api/menu/${branchId}`),
+          apiRequest(`/api/tables/${branchId}`),
+        ]);
 
       if (
-        !Array.isArray(ordersData) ||
-        !Array.isArray(menuData) ||
-        !Array.isArray(tablesData)
+        !Array.isArray(branchOrders) ||
+        !Array.isArray(branchMenu) ||
+        !Array.isArray(branchTables)
       ) {
         throw new Error("The server returned an unexpected response.");
       }
 
-      setOrders(
-        ordersData.map((order) => ({
-          ...order,
-          id: order._id,
-          items: (order.items || []).map((item) => ({
-            ...item,
-            menuItemId: String(item.menuItemId),
-            price: Number(item.price) || 0,
-            quantity: Number(item.quantity) || 1,
-          })),
-        }))
+      const selectedBranch = branches.find(
+        (branch) => String(branch._id) === String(branchId)
       );
+
+      ordersData = branchOrders.map((order) => ({
+        ...order,
+        id: order._id,
+        branchId:
+          typeof order.branchId === "object"
+            ? order.branchId?._id || branchId
+            : order.branchId || branchId,
+        branchName:
+          typeof order.branchId === "object"
+            ? order.branchId?.name || selectedBranch?.name || "—"
+            : selectedBranch?.name || "—",
+        items: (order.items || []).map((item) => ({
+          ...item,
+          menuItemId: String(
+            typeof item.menuItemId === "object"
+              ? item.menuItemId?._id
+              : item.menuItemId
+          ),
+          price: Number(item.price) || 0,
+          quantity: Number(item.quantity) || 1,
+        })),
+      }));
+
+      menuData = branchMenu;
+      tablesData = branchTables;
+    }
+
+    setOrders(ordersData);
+
+    setMenuItems(
+      menuData
+        .filter((item) => item.available)
+        .map((item) => ({
+          ...item,
+          id: String(item._id),
+          price: Number(item.price),
+        }))
+    );
+
+    setTables(
+      tablesData.map((table) => ({
+        ...table,
+        id: String(table._id),
+      }))
+    );
+  } catch (error) {
+    setPageError(
+      error.message ||
+        "Unable to load orders. Please check that the backend is running."
+    );
+  } finally {
+    setIsLoading(false);
+  }
+}, [branchId, branches]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+useEffect(() => {
+  if (!isModalOpen) return;
+
+  const selectedFormBranch = formData.branchId;
+
+  if (!selectedFormBranch) {
+    setMenuItems([]);
+    setTables([]);
+    return;
+  }
+
+  let cancelled = false;
+
+  async function loadBranchFormData() {
+    setFormError("");
+
+    try {
+      const [menuData, tablesData] = await Promise.all([
+        apiRequest(`/api/menu/${selectedFormBranch}`),
+        apiRequest(`/api/tables/${selectedFormBranch}`),
+      ]);
+
+      if (!Array.isArray(menuData) || !Array.isArray(tablesData)) {
+        throw new Error(
+          "Unable to load menu items and tables for this branch."
+        );
+      }
+
+      if (cancelled) return;
 
       setMenuItems(
         menuData
@@ -124,7 +250,7 @@ function Orders({ branchId }) {
           .map((item) => ({
             ...item,
             id: String(item._id),
-            price: Number(item.price),
+            price: Number(item.price) || 0,
           }))
       );
 
@@ -135,19 +261,24 @@ function Orders({ branchId }) {
         }))
       );
     } catch (error) {
-      setPageError(
+      if (cancelled) return;
+
+      setMenuItems([]);
+      setTables([]);
+
+      setFormError(
         error.message ||
-          "Unable to load orders. Please check that the backend is running."
+          "Unable to load menu items and tables for this branch."
       );
-    } finally {
-      setIsLoading(false);
     }
-  }, [branchId]);
+  }
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  loadBranchFormData();
 
+  return () => {
+    cancelled = true;
+  };
+}, [isModalOpen, formData.branchId]);
 
   const filteredOrders = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -186,22 +317,18 @@ function Orders({ branchId }) {
   );
 
   function openAddModal() {
-    setEditingId(null);
-    setFormError("");
+  setEditingId(null);
+  setFormError("");
 
-    setFormData({
-      ...emptyForm,
-      tableId: "",
-      items: [
-        {
-          menuItemId: menuItems[0]?.id || "",
-          quantity: 1,
-        },
-      ],
-    });
+  setFormData({
+    ...emptyForm,
+    branchId: branchId && branchId !== "all" ? branchId : "",
+    tableId: "",
+    items: [{ menuItemId: "", quantity: 1 }],
+  });
 
-    setIsModalOpen(true);
-  }
+  setIsModalOpen(true);
+}
 
  function openEditModal(order) {
   const orderStatus = String(order.status || "").toLowerCase();
@@ -219,6 +346,10 @@ function Orders({ branchId }) {
 
   setFormData({
     customer: order.customer || "",
+    branchId:
+  typeof order.branchId === "object"
+    ? order.branchId?._id || ""
+    : order.branchId || "",
     orderType: order.orderType,
     tableId: order.tableId ? String(order.tableId) : "",
     items: (order.items || []).map((item) => ({
@@ -522,7 +653,22 @@ function Orders({ branchId }) {
               aria-label="Search orders"
             />
           </div>
-
+          <div className="orders-branch-filter">
+  <label htmlFor="orders-branch-filter">BRANCH</label>
+  <select
+    id="orders-branch-filter"
+    value={branchId || "all"}
+    onChange={(event) => onBranchChange?.(event.target.value)}
+    disabled={branchLoading}
+  >
+    <option value="all">All Branches</option>
+    {branches.map((branch) => (
+      <option key={branch._id} value={branch._id}>
+        {branch.name}
+      </option>
+    ))}
+  </select>
+</div>
           <select
             className="orders-filter"
             value={statusFilter}
@@ -569,6 +715,7 @@ function Orders({ branchId }) {
             <thead>
               <tr>
                 <th>ORDER</th>
+                <th>Branch</th>
                 <th>CUSTOMER</th>
                 <th>TYPE / TABLE</th>
                 <th>ITEMS</th>
@@ -596,6 +743,21 @@ function Orders({ branchId }) {
                       <span>{formatOrderTime(order.createdAt)}</span>
                     </div>
                   </td>
+                  <td>
+  <span className="orders-branch-name">
+    {order.branchName ||
+      branches.find(
+        (branch) =>
+          String(branch._id) ===
+          String(
+            typeof order.branchId === "object"
+              ? order.branchId?._id
+              : order.branchId || ""
+          )
+      )?.name ||
+      "—"}
+  </span>
+</td>
 
                   <td>
   <div className="orders-customer-details">
@@ -750,6 +912,35 @@ function Orders({ branchId }) {
             </div>
 
             <form className="orders-modal-form" onSubmit={handleSubmit}>
+              <div className="orders-form-group orders-branch-form-group">
+  <label htmlFor="order-branch">Branch *</label>
+  <select
+    id="order-branch"
+    name="branchId"
+    value={formData.branchId || ""}
+    onChange={(event) => {
+      const nextBranchId = event.target.value;
+
+      setFormData((previous) => ({
+        ...previous,
+        branchId: nextBranchId,
+        tableId: "",
+        items: [{ menuItemId: "", quantity: 1 }],
+      }));
+
+      setFormError("");
+    }}
+    required
+    disabled={Boolean(editingId)}
+  >
+    <option value="">Select a branch</option>
+    {branches.map((branch) => (
+      <option key={branch._id} value={branch._id}>
+        {branch.name}
+      </option>
+    ))}
+  </select>
+</div>
               <div className="orders-form-group">
                 <label htmlFor="order-customer">Customer name *</label>
                 <input

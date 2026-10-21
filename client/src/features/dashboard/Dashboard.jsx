@@ -171,7 +171,7 @@ export default function Dashboard({ user, onLogout }) {
   const [mobileMenu, setMobileMenu] = useState(false)
 
   const [branches, setBranches] = useState([])
-const [selectedBranchId, setSelectedBranchId] = useState('')
+const [selectedBranchId, setSelectedBranchId] = useState('all')
 const [branchLoading, setBranchLoading] = useState(true)
 const [branchError, setBranchError] = useState('')
 
@@ -207,22 +207,19 @@ useEffect(() => {
 
       setBranches(availableBranches)
 
-      setSelectedBranchId((currentId) => {
-        if (
-          currentId &&
-          availableBranches.some((branch) => branch._id === currentId)
-        ) {
-          return currentId
-        }
+      
+setSelectedBranchId((currentId) => {
+  if (currentId === 'all') {
+    return 'all'
+  }
 
-        return (
-  availableBranches.find(
-    (branch) => branch.name?.trim().toLowerCase() === 'pune central',
-  )?._id ||
-  availableBranches[0]?._id ||
-  ''
-)
-      })
+  if (availableBranches.some((branch) => branch._id === currentId)) {
+    return currentId
+  }
+
+  return 'all'
+})
+
 
       if (availableBranches.length === 0) {
         setBranchError('No active branches are available to your account.')
@@ -524,12 +521,33 @@ useEffect(() => {
   branchLoading={branchLoading}
   branchError={branchError}
 />
+
 ) : activePage === 'Table Management' ? (
-  <TableManagement branchId={selectedBranchId} />
+  <TableManagement
+    branchId={selectedBranchId}
+    branches={branches}
+    onBranchChange={setSelectedBranchId}
+    branchLoading={branchLoading}
+    branchError={branchError}
+  />
+
 ) : activePage === 'Reservations' ? (
-  <Reservations branchId={selectedBranchId} />
+<Reservations
+  branchId={selectedBranchId}
+  branches={branches}
+  onBranchChange={setSelectedBranchId}
+  branchLoading={branchLoading}
+  branchError={branchError}
+/>
+
 ) : activePage === 'Orders' ? (
-  <Orders branchId={selectedBranchId} />
+  <Orders
+  branchId={selectedBranchId}
+  branches={branches}
+  onBranchChange={setSelectedBranchId}
+  branchLoading={branchLoading}
+  branchError={branchError}
+/>
 ) : activePage === 'Kitchen Workflow' ? (
   <KitchenWorkflow branchId={selectedBranchId} />
 ) : activePage === 'Billing & Payments' ? (

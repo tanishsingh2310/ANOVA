@@ -10,6 +10,7 @@ const emptyForm = {
   date: "",
   time: "",
   guests: 2,
+  branchId: "",
   tableNumber: "",
   status: "Pending",
   occasion: "Regular Dining",
@@ -58,10 +59,19 @@ function getToday() {
   return `${year}-${month}-${day}`;
 }
 
-function normalizeReservation(reservation) {
+
+function normalizeReservation(reservation, fallbackBranchId = "") {
+  const rawBranchId = reservation.branchId;
+
+  const normalizedBranchId =
+    rawBranchId && typeof rawBranchId === "object"
+      ? rawBranchId._id || rawBranchId.id || fallbackBranchId
+      : rawBranchId || fallbackBranchId;
+
   return {
     ...reservation,
     id: reservation._id || reservation.id,
+    branchId: normalizedBranchId,
     email: reservation.email || "",
     guests: Number(reservation.guests),
     tableNumber: reservation.tableNumber || "Unassigned",
@@ -70,7 +80,15 @@ function normalizeReservation(reservation) {
   };
 }
 
-function Reservations({ branchId }) {
+
+
+function Reservations({
+  branchId,
+  branches = [],
+  onBranchChange,
+  branchLoading = false,
+  branchError = "",
+}) {
   const [reservations, setReservations] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -85,19 +103,55 @@ function Reservations({ branchId }) {
 
   const today = getToday();
 
-    const loadReservations = useCallback(async () => {
-    if (!branchId) {
-      setReservations([]);
-      setIsLoading(false);
-      return;
-    }
-
+    
+const loadReservations = useCallback(async () => {
+  if (branchLoading) {
+    setReservations([]);
     setIsLoading(true);
     setPageError("");
-    setReservations([]);
+    return;
+  }
 
-    try {
-      const data = await apiRequest(`/api/reservations/${branchId}`);
+  if (branchError) {
+    setReservations([]);
+    setIsLoading(false);
+    setPageError(branchError);
+    return;
+  }
+
+  setIsLoading(true);
+  setPageError("");
+  setReservations([]);
+
+  try {
+    let loadedReservations = [];
+
+    if (branchId === "all") {
+      const results = await Promise.all(
+        branches.map(async (branch) => {
+          const data = await apiRequest(
+            `/api/reservations/${branch._id}`
+          );
+
+          if (!Array.isArray(data)) {
+            throw new Error(
+              `Invalid reservations response for ${
+                branch.name || branch.branchName || branch._id
+              }.`
+            );
+          }
+
+          return data.map((reservation) =>
+            normalizeReservation(reservation, branch._id)
+          );
+        })
+      );
+
+      loadedReservations = results.flat();
+    } else if (branchId) {
+      const data = await apiRequest(
+        `/api/reservations/${branchId}`
+      );
 
       if (!Array.isArray(data)) {
         throw new Error(
@@ -105,15 +159,21 @@ function Reservations({ branchId }) {
         );
       }
 
-      setReservations(data.map(normalizeReservation));
-    } catch (error) {
-      setPageError(
-        error.message || "Unable to load reservations. Please try again."
+      loadedReservations = data.map((reservation) =>
+        normalizeReservation(reservation, branchId)
       );
-    } finally {
-      setIsLoading(false);
     }
-  }, [branchId]);
+
+    setReservations(loadedReservations);
+  } catch (error) {
+    setPageError(
+      error.message || "Unable to load reservations. Please try again."
+    );
+  } finally {
+    setIsLoading(false);
+  }
+}, [branchId, branches, branchLoading, branchError]);
+
 
   useEffect(() => {
     loadReservations();
@@ -151,36 +211,43 @@ function Reservations({ branchId }) {
   }, [reservations, searchTerm, statusFilter, dateFilter]);
 
   function openAddModal() {
-    setEditingId(null);
-    setFormError("");
-    setFormData({
-      ...emptyForm,
-      date: today,
-    });
-    setIsModalOpen(true);
-  }
+  setEditingId(null);
+  setFormError("");
+
+  setFormData({
+    ...emptyForm,
+    date: today,
+    branchId:
+      branchId && branchId !== "all"
+        ? branchId
+        : "",
+  });
+
+  setIsModalOpen(true);
+}
 
   function openEditModal(reservation) {
-    setEditingId(reservation.id);
-    setFormError("");
+  setEditingId(reservation.id);
+  setFormError("");
 
-    setFormData({
-      customerName: reservation.customerName,
-      phone: reservation.phone,
-      email: reservation.email || "",
-      date: reservation.date,
-      time: reservation.time,
-      guests: reservation.guests,
-      tableNumber:
-        reservation.tableNumber === "Unassigned"
-          ? ""
-          : reservation.tableNumber,
-      status: reservation.status,
-      occasion: reservation.occasion,
-    });
+  setFormData({
+    customerName: reservation.customerName || "",
+    phone: reservation.phone || "",
+    email: reservation.email || "",
+    date: reservation.date || "",
+    time: reservation.time || "",
+    guests: reservation.guests || 2,
+    branchId: reservation.branchId || "",
+    tableNumber:
+      reservation.tableNumber === "Unassigned"
+        ? ""
+        : reservation.tableNumber || "",
+    status: reservation.status || "Pending",
+    occasion: reservation.occasion || "Regular Dining",
+  });
 
-    setIsModalOpen(true);
-  }
+  setIsModalOpen(true);
+}
 
   function closeModal() {
     if (isSaving) return;
@@ -207,7 +274,18 @@ function Reservations({ branchId }) {
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError("");
+const selectedBranch = branches.find(
+  (branch) => String(branch._id) === String(formData.branchId)
+);
 
+if (
+  !formData.branchId ||
+  formData.branchId === "all" ||
+  !selectedBranch
+) {
+  setFormError("Please select a valid branch.");
+  return;
+}
     if (!formData.customerName.trim() || !formData.phone.trim()) {
       setFormError("Please enter the guest's name and phone number.");
       return;
@@ -326,55 +404,76 @@ if (!validEmail) {
     }
 
     const reservationData = {
-      customerName: formData.customerName.trim(),
-      phone: formData.phone.trim(),
-      email: formData.email.trim(),
-      date: formData.date,
-      time: formData.time,
-      guests: formData.guests,
-      tableNumber: normalizedTable || "Unassigned",
-      status: formData.status,
-      occasion: formData.occasion,
-    };
+  customerName: formData.customerName.trim(),
+  phone: formData.phone.trim(),
+  email: formData.email.trim(),
+  date: formData.date,
+  time: formData.time,
+  guests: formData.guests,
+  branchId: formData.branchId,
+  tableNumber: normalizedTable || "Unassigned",
+  status: formData.status,
+  occasion: formData.occasion,
+};
 
     setIsSaving(true);
 
     try {
       if (editingId !== null) {
-        const updatedReservation = await apiRequest(
-          `/api/reservations/${branchId}/${editingId}`,
-          {
-            method: "PUT",
-            body: JSON.stringify(reservationData),
-          }
-        );
+  const existingReservation = reservations.find(
+    (reservation) =>
+      String(reservation.id) === String(editingId)
+  );
 
-        const normalizedUpdated = normalizeReservation(updatedReservation);
+  const targetBranchId =
+    existingReservation?.branchId || formData.branchId;
 
-        setReservations((previous) =>
-          previous.map((reservation) =>
-            String(reservation.id) === String(editingId)
-              ? normalizedUpdated
-              : reservation
-          )
-        );
-      } else {
-        const createdReservation = await apiRequest(
-          "/api/reservations",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              ...reservationData,
-              branchId: branchId,
-            }),
-          }
-        );
+  if (!targetBranchId || targetBranchId === "all") {
+    throw new Error(
+      "The reservation's branch could not be identified."
+    );
+  }
 
-        setReservations((previous) => [
-          ...previous,
-          normalizeReservation(createdReservation),
-        ]);
-      }
+  const updatedReservation = await apiRequest(
+    `/api/reservations/${targetBranchId}/${editingId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(reservationData),
+    }
+  );
+
+  const normalizedUpdated = normalizeReservation(
+    updatedReservation,
+    targetBranchId
+  );
+
+  setReservations((previous) =>
+    previous.map((reservation) =>
+      String(reservation.id) === String(editingId)
+        ? normalizedUpdated
+        : reservation
+    )
+  );
+} else {
+  // The backend receives the selected branch ID, not "all".
+  const createdReservation = await apiRequest(
+    "/api/reservations",
+    {
+      method: "POST",
+      body: JSON.stringify(reservationData),
+    }
+  );
+
+  const normalizedCreated = normalizeReservation(
+    createdReservation,
+    formData.branchId
+  );
+
+  setReservations((previous) => [
+    ...previous,
+    normalizedCreated,
+  ]);
+}
 
       setIsModalOpen(false);
       setEditingId(null);
@@ -398,14 +497,17 @@ if (!validEmail) {
 
     try {
       const updatedReservation = await apiRequest(
-        `/api/reservations/${branchId}/${id}`,
+        `/api/reservations/${reservation.branchId}/${id}`,
         {
           method: "PUT",
           body: JSON.stringify({ status: newStatus }),
         }
       );
 
-      const normalizedUpdated = normalizeReservation(updatedReservation);
+      const normalizedUpdated = normalizeReservation(
+  updatedReservation,
+  reservation.branchId
+);
 
       setReservations((previous) =>
         previous.map((item) =>
@@ -428,7 +530,7 @@ if (!validEmail) {
 
     try {
       await apiRequest(
-        `/api/reservations/${branchId}/${reservation.id}`,
+        `/api/reservations/${reservation.branchId}/${reservation.id}`,
         {
           method: "DELETE",
         }
@@ -525,7 +627,30 @@ if (!validEmail) {
               aria-label="Search reservations"
             />
           </div>
+           <div className="reservations-branch-filter">
+  <label htmlFor="reservations-branch-select">Branch</label>
 
+  <select
+    id="reservations-branch-select"
+    className="reservations-branch-select"
+    value={branchId || "all"}
+    onChange={(event) => {
+      if (onBranchChange) {
+        onBranchChange(event.target.value);
+      }
+    }}
+    disabled={branchLoading || Boolean(branchError)}
+    aria-label="Filter reservations by branch"
+  >
+    <option value="all">All Branches</option>
+
+    {branches.map((branch) => (
+      <option key={branch._id} value={branch._id}>
+        {branch.name || branch.branchName || branch._id}
+      </option>
+    ))}
+  </select>
+</div>
           <select
             className="reservations-filter"
             value={statusFilter}
@@ -568,6 +693,7 @@ if (!validEmail) {
             <thead>
               <tr>
                 <th>GUEST</th>
+                <th>Branch</th>
                 <th>DATE &amp; TIME</th>
                 <th>GUESTS</th>
                 <th>TABLE</th>
@@ -579,7 +705,7 @@ if (!validEmail) {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan="6">
+                  <td colSpan="7">
                     <div className="reservations-empty-state">
                       <h3>Loading reservations...</h3>
                       <p>Please wait while we retrieve your bookings.</p>
@@ -607,7 +733,20 @@ if (!validEmail) {
                       </div>
                     </div>
                   </td>
+                 <td>
+  {(() => {
+    const reservationBranchId =
+      typeof reservation.branchId === "object"
+        ? reservation.branchId?._id
+        : reservation.branchId;
 
+    const branch = branches.find(
+      (item) => item._id === reservationBranchId
+    );
+
+    return branch?.name || branch?.branchName || "Unknown Branch";
+  })()}
+</td>
                   <td>
                     <div className="reservation-date-details">
                       <strong>{formatDate(reservation.date)}</strong>
@@ -719,6 +858,32 @@ if (!validEmail) {
               className="reservations-modal-form"
               onSubmit={handleSubmit}
             >
+              <div className="reservations-form-group">
+  <label htmlFor="reservation-branch">Branch *</label>
+
+  <select
+    id="reservation-branch"
+    name="branchId"
+    value={formData.branchId}
+    onChange={(event) => {
+      setFormData((previous) => ({
+        ...previous,
+        branchId: event.target.value,
+        tableNumber: "",
+      }));
+    }}
+    required
+    disabled={Boolean(editingId)}
+  >
+    <option value="">Select Branch</option>
+
+    {branches.map((branch) => (
+      <option key={branch._id} value={branch._id}>
+        {branch.name || branch.branchName || branch._id}
+      </option>
+    ))}
+  </select>
+</div>
               <div className="reservations-form-group">
                 <label htmlFor="customerName">Guest name *</label>
                 <input
