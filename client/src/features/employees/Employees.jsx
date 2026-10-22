@@ -7,6 +7,7 @@ import {
   X,
   Pencil,
   Trash2,
+  CalendarDays,
 } from 'lucide-react'
 import { apiClient } from '../../api/client.js'
 import './employees.css'
@@ -695,15 +696,16 @@ export default function Employees({ user }) {
       )}
 
       {!error && loading ? (
-        <div className="employees-state">
-          Loading employee directory…
-        </div>
-      ) : (
+  <div className="employees-empty-state">
+    <RefreshCw size={22} className="employees-spin" />
+    <p>Loading employee records...</p>
+  </div>
+) : (
         !error && (
           <div className="employees-table-card">
             <div className="employees-table-heading">
               <div>
-                <h3>Team members</h3>
+                <h3>Team Members</h3>
                 <p>
                   {filteredEmployees.length} result
                   {filteredEmployees.length === 1 ? '' : 's'}
@@ -712,12 +714,14 @@ export default function Employees({ user }) {
             </div>
 
             {filteredEmployees.length === 0 ? (
-              <div className="employees-state">
-                {employees.length === 0
-                  ? 'No employee records were returned by the API.'
-                  : 'No employees match these search and filter settings.'}
-              </div>
-            ) : (
+  <div className="employees-empty-state">
+    <CalendarDays size={26} />
+    <h3>No employee records found</h3>
+    <p>
+      Try changing the filters or add an employee record.
+    </p>
+  </div>
+) : (
               <div className="employees-table-scroll">
                 <table className="employees-table">
                   <thead>

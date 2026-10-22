@@ -288,9 +288,8 @@
 .payroll-form-label input:focus,
 .payroll-form-label select:focus,
 .payroll-form-label textarea:focus {
-  outline: 2px solid rgb(197 164 109 / 35%);
-  outline-offset: 1px;
-  border-color: #c5a46d;
+  outline: 1px solid #e4eee8;
+  border-color: #15803d;
 }
 
 .payroll-reset-button {
@@ -310,11 +309,11 @@
 }
 
 .payroll-table-summary {
-  display: flex;
+ display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
-  padding: 17px 20px;
+  padding: 16px 20px;
   border-bottom: 1px solid #e3e9e3;
 }
 
@@ -323,13 +322,16 @@
   color: #183c34;
   font-size: 16px;
   font-weight: 750;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.25px;
+  margin-bottom: 4px;
 }
 
 .payroll-table-summary p {
   margin: 0;
   color: #748078;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 600;
+
 }
 
 /* Payroll table */

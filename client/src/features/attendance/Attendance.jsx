@@ -3,7 +3,7 @@ import {
   Search,
   RefreshCw,
   AlertCircle,
-  Clock,
+  CalendarDays,
   CheckCircle2,
   Pencil,
   X,
@@ -358,7 +358,7 @@ export default function Attendance({ user }) {
               onClick={handleClockIn}
               disabled={saving}
             >
-              <Clock size={16} />
+              <CalendarDays size={16} />
               {saving ? 'Please wait…' : 'Clock in'}
             </button>
           )}
@@ -490,7 +490,7 @@ export default function Attendance({ user }) {
           </div>
         ) : visibleRecords.length === 0 ? (
           <div className="attendance-empty-state">
-            <Clock size={24} />
+            <CalendarDays size={24} />
             <h3>No attendance records found</h3>
             <p>Try changing the branch, status, date range, or search.</p>
           </div>

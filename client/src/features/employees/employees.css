@@ -76,8 +76,8 @@
 .employees-button:focus-visible,
 .employees-modal button:focus-visible,
 .employees-modal-close:focus-visible {
-  outline: 3px solid rgb(71 123 105 / 24%);
-  outline-offset: 2px;
+  outline: 1px solid rgb(71 123 105 / 24%);
+  outline-offset: 1px;
 }
 
 .employees-button:active:not(:disabled) {
@@ -274,13 +274,11 @@
   padding: 0 12px;
   border: 1px solid #dfe7df;
   border-radius: 9px;
-  outline: none;
   background-color: #fff;
   color: #263d34;
   font-size: 12px;
-  transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease;
+  
+  
 }
 
 .employees-filter select,
@@ -291,8 +289,8 @@
 .employees-filter select:focus,
 .employees-modal select:focus,
 .employees-modal input:focus {
-  border-color: #729886;
-  box-shadow: 0 0 0 3px rgb(71 123 105 / 11%);
+  outline: 1px solid  #e4eee8;
+  border-color: #15803d;
 }
 
 .employees-filter select:disabled,
@@ -914,5 +912,41 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+.employees-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--text-muted, #64748b);
+}
+
+.employees-empty-state h3 {
+  margin: 0;
+  color: var(--text-primary, #1e293b);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.employees-empty-state p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.employees-empty-state > svg {
+  color: var(--text-muted, #64748b);
+}
+
+.employees-empty-state .employees-spin {
+  animation: employees-spin 1s linear infinite;
+}
+
+@keyframes employees-spin {
+  to {
+    transform: rotate(360deg);
   }
 }

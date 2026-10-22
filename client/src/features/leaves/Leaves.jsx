@@ -159,10 +159,12 @@ const [deleting, setDeleting] = useState(false)
   }, [statusFilter, dateFrom, dateTo])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadBranches()
   }, [loadBranches])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadLeaves()
   }, [loadLeaves])
 

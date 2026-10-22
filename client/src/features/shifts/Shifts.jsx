@@ -8,7 +8,8 @@ import {
   Pencil,
   CheckCircle2,
   Ban,
-    Trash2
+  Trash2,
+  CalendarDays,
 } from 'lucide-react'
 import { apiClient } from '../../api/client.js'
 import './shifts.css'
@@ -588,12 +589,15 @@ const [deleting, setDeleting] = useState(false)
       )}
 
       {!error && loading ? (
-        <div className="shifts-state">Loading shift schedule…</div>
-      ) : !error && (
+  <div className="shifts-empty-state">
+    <RefreshCw size={22} className="shifts-spin" />
+    <p>Loading shift records...</p>
+  </div>
+) : !error && (
         <div className="shifts-table-card">
           <div className="shifts-table-heading">
             <div>
-              <h3>Shift schedule</h3>
+              <h3>Shift Schedule</h3>
               <p>
                 {filteredShifts.length} result
                 {filteredShifts.length === 1 ? '' : 's'}
@@ -602,12 +606,12 @@ const [deleting, setDeleting] = useState(false)
           </div>
 
           {filteredShifts.length === 0 ? (
-            <div className="shifts-state">
-              {shifts.length === 0
-                ? 'No shifts were found for the selected filters.'
-                : 'No shifts match your search.'}
-            </div>
-          ) : (
+  <div className="shifts-empty-state">
+    <CalendarDays size={26} />
+    <h3>No shift records found</h3>
+    <p>Try changing the filters or create a shift record.</p>
+  </div>
+) : (
             <div className="shifts-table-scroll">
               <table className="shifts-table">
                 <thead>

@@ -523,10 +523,8 @@ setSelectedBranchId((currentId) => {
   branchLoading={branchLoading}
   branchError={branchError}
 />
-) : activePage === 'Tables' ? (
-  <TableManagement branchId={selectedBranchId} />
 
-) : activePage === 'Table Management' ? (
+) : activePage === 'Tables' ? (
   <TableManagement
     branchId={selectedBranchId}
     branches={branches}

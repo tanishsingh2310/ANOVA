@@ -242,9 +242,8 @@
 .attendance-form-grid input:focus,
 .attendance-form-grid select:focus,
 .attendance-form-grid textarea:focus {
-  outline: 2px solid var(--focus-color, #93c5fd);
-  outline-offset: 1px;
-  border-color: var(--primary-color, #2563eb);
+  outline: 1px solid  #e4eee8;
+  border-color:#15803d;
 }
 
 .attendance-reset-button {
@@ -581,7 +580,7 @@
 
 .attendance-filter-card {
   padding: 18px;
-  margin-bottom: 18px;
+  
 }
 
 .attendance-records-card {

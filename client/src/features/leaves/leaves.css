@@ -259,9 +259,8 @@
 .leave-form-grid select:focus,
 .leave-form-grid textarea:focus,
 .leave-form-label textarea:focus {
-  outline: 2px solid #a5c4b8;
-  outline-offset: 1px;
-  border-color: #183c34;
+  outline: 1px solid #e4eee8;
+  border-color: #15803d;
 }
 
 .leave-reset-button {
