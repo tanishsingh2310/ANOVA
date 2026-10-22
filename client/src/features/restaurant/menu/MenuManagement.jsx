@@ -68,6 +68,9 @@ function MenuManagement({
   const [categoryFilter, setCategoryFilter] = useState("All Categories");
   const [availabilityFilter, setAvailabilityFilter] = useState("All Items");
 
+  const [currentPage, setCurrentPage] = useState(1)
+const ITEMS_PER_PAGE = 10
+
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
@@ -81,6 +84,7 @@ function MenuManagement({
   const [deletingItem, setDeletingItem] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [busyItemId, setBusyItemId] = useState(null);
+  const [dietaryFilter, setDietaryFilter] = useState('all')
 
   const [formError, setFormError] = useState("");
 
@@ -253,14 +257,27 @@ function MenuManagement({
         availabilityFilter === "All Items" ||
         (availabilityFilter === "Available" && item.available === true) ||
         (availabilityFilter === "Unavailable" && item.available !== true);
+        const matchesDietary =
+  dietaryFilter === 'all' ||
+  item.dietary === dietaryFilter
 
       return (
         matchesSearch &&
         matchesCategory &&
-        matchesAvailability
+        matchesAvailability &&
+        matchesDietary
       );
     });
-  }, [menu, search, categoryFilter, availabilityFilter]);
+  }, [menu, search, categoryFilter, availabilityFilter, dietaryFilter]);
+  useEffect(() => {
+  setCurrentPage(1);
+}, [
+  search,
+  categoryFilter,
+  availabilityFilter,
+  dietaryFilter,
+  selectedBranchId,
+]);
 
   function refreshMenu() {
     setNotice(null);
@@ -586,6 +603,13 @@ function MenuManagement({
       ? "All Branches"
       : branchNames.get(selectedBranchId) || "Selected Branch";
 
+  const totalPages = Math.ceil(filteredMenu.length / ITEMS_PER_PAGE);
+
+const paginatedItems = filteredMenu.slice(
+  (currentPage - 1) * ITEMS_PER_PAGE,
+  currentPage * ITEMS_PER_PAGE
+);
+
   return (
     <section className="menu-management">
       <div className="menu-page-heading">
@@ -596,6 +620,17 @@ function MenuManagement({
         </div>
 
         <div className="menu-header-actions">
+          
+
+          <button
+            type="button"
+            className="menu-primary-button"
+            onClick={openAddForm}
+            disabled={branchLoading || !branchOptions.length}
+          >
+            <Plus size={17} aria-hidden="true" />
+            Add Menu Item
+          </button>
           <button
             type="button"
             className="menu-secondary-button menu-refresh-button"
@@ -608,16 +643,6 @@ function MenuManagement({
               aria-hidden="true"
             />
             Refresh
-          </button>
-
-          <button
-            type="button"
-            className="menu-primary-button"
-            onClick={openAddForm}
-            disabled={branchLoading || !branchOptions.length}
-          >
-            <Plus size={17} aria-hidden="true" />
-            Add Menu Item
           </button>
         </div>
       </div>
@@ -647,92 +672,107 @@ function MenuManagement({
         </div>
       )}
 
-      <div className="menu-toolbar">
-        <div className="menu-search">
-          <Search size={17} aria-hidden="true" />
+      
+<div className="menu-filter-card">
+  <div className="menu-toolbar">
+    <label className="menu-search">
+      <Search size={17} aria-hidden="true" />
 
-          <input
-            type="search"
-            placeholder="Search dishes or descriptions..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            aria-label="Search menu"
-          />
+      <input
+        type="search"
+        placeholder="Search dishes or descriptions..."
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        aria-label="Search menu"
+      />
 
-          {search && (
-            <button
-              type="button"
-              className="menu-search-clear"
-              onClick={() => setSearch("")}
-              aria-label="Clear search"
-            >
-              <X size={15} />
-            </button>
-          )}
-        </div>
-
-        <div className="branch-selector-wrapper">
-          <label
-            htmlFor="menu-branch-selector"
-            className="branch-filter-label"
-          >
-            Branch
-          </label>
-
-          <select
-            id="menu-branch-selector"
-            className="branch-selector"
-            value={selectedBranchId}
-            onChange={(event) => {
-              setNotice(null);
-              onBranchChange?.(event.target.value);
-            }}
-            disabled={branchLoading || !branchOptions.length}
-          >
-            <option value={ALL_BRANCHES}>All Branches</option>
-
-            {branchOptions.map((branch) => {
-              const id = String(branch._id || branch.id);
-
-              return (
-                <option key={id} value={id}>
-                  {branch.name}
-                </option>
-              );
-            })}
-          </select>
-
-          {branchError && (
-            <span className="branch-selector-error" role="alert">
-              {branchError}
-            </span>
-          )}
-        </div>
-
-        <select
-          className="menu-filter-select"
-          value={categoryFilter}
-          onChange={(event) => setCategoryFilter(event.target.value)}
-          aria-label="Filter by category"
+      {search && (
+        <button
+          type="button"
+          className="menu-search-clear"
+          onClick={() => setSearch("")}
+          aria-label="Clear search"
         >
-          <option>All Categories</option>
+          <X size={15} />
+        </button>
+      )}
+    </label>
 
-          {categories.map((category) => (
-            <option key={category}>{category}</option>
-          ))}
-        </select>
+    <label className="menu-filter">
+      <span>Branch</span>
+      <select
+        id="menu-branch-selector"
+        value={selectedBranchId}
+        onChange={(event) => {
+          setNotice(null);
+          onBranchChange?.(event.target.value);
+        }}
+        disabled={branchLoading || !branchOptions.length}
+      >
+        <option value={ALL_BRANCHES}>All Branches</option>
 
-        <select
-          className="menu-filter-select"
-          value={availabilityFilter}
-          onChange={(event) => setAvailabilityFilter(event.target.value)}
-          aria-label="Filter by availability"
-        >
-          <option>All Items</option>
-          <option>Available</option>
-          <option>Unavailable</option>
-        </select>
-      </div>
+        {branchOptions.map((branch) => {
+          const id = String(branch._id || branch.id);
+
+          return (
+            <option key={id} value={id}>
+              {branch.name}
+            </option>
+          );
+        })}
+      </select>
+
+      {branchError && (
+        <small className="menu-filter-error" role="alert">
+          {branchError}
+        </small>
+      )}
+    </label>
+
+    <label className="menu-filter">
+      <span>Category</span>
+      <select
+        value={categoryFilter}
+        onChange={(event) => setCategoryFilter(event.target.value)}
+        aria-label="Filter by category"
+      >
+        <option value="All Categories">All categories</option>
+
+        {categories.map((category) => (
+          <option key={category} value={category}>
+            {category}
+          </option>
+        ))}
+      </select>
+    </label>
+
+    <label className="menu-filter">
+      <span>Availability</span>
+      <select
+        value={availabilityFilter}
+        onChange={(event) => setAvailabilityFilter(event.target.value)}
+        aria-label="Filter by availability"
+      >
+        <option value="All Items">All items</option>
+        <option value="Available">Available</option>
+        <option value="Unavailable">Unavailable</option>
+      </select>
+    </label>
+    <div className="menu-filter">
+  <span>Dietary</span>
+  <select
+    value={dietaryFilter}
+    onChange={(e) => setDietaryFilter(e.target.value)}
+  >
+    <option value="all">All dietary types</option>
+    <option value="Vegetarian">Veg</option>
+    <option value="Vegan">Vegan</option>
+    <option value="Non-Vegetarian">Non-Veg</option>
+  </select>
+</div>
+  </div>
+</div>
+
 
       <div className="menu-table-container">
         <div className="menu-table-heading">
@@ -759,6 +799,7 @@ function MenuManagement({
             <colgroup>
               <col className="menu-col-item" />
               <col className="menu-col-category" />
+              <col className="menu-col-dietary" />
               <col className="menu-col-price" />
               <col className="menu-col-branch" />
               <col className="menu-col-availability" />
@@ -769,6 +810,7 @@ function MenuManagement({
               <tr>
                 <th scope="col">Menu Item</th>
                 <th scope="col">Category</th>
+                <th scope="col">Dietary</th>
                 <th scope="col">Price</th>
                 <th scope="col">Branch</th>
                 <th scope="col">Availability</th>
@@ -871,7 +913,7 @@ function MenuManagement({
                   </td>
                 </tr>
               ) : (
-                filteredMenu.map((item) => (
+                paginatedItems.map((item) => (
                   <tr key={item.id}>
                     <td>
                       <div className="menu-item-cell">
@@ -893,6 +935,23 @@ function MenuManagement({
                         {item.category || "Uncategorized"}
                       </span>
                     </td>
+                    <td>
+  <span className={`menu-dietary-badge ${
+    item.dietary === 'Vegan'
+      ? 'is-vegan'
+      : item.dietary === 'Vegetarian'
+        ? 'is-vegetarian'
+        : item.dietary === 'Non-Vegetarian'
+          ? 'is-non-vegetarian'
+          : 'is-unspecified'
+  }`}>
+    {item.dietary === 'Vegetarian'
+      ? 'Veg'
+      : item.dietary === 'Non-Vegetarian'
+        ? 'Non-Veg'
+        : item.dietary || '—'}
+  </span>
+</td>
 
                     <td className="menu-price">
                       ₹
@@ -992,7 +1051,51 @@ function MenuManagement({
           </table>
         </div>
       </div>
+{totalPages > 1 && !loading && !loadError && (
+  <div className="menu-pagination">
+    <span className="menu-pagination-info">
+      Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
+      {Math.min(currentPage * ITEMS_PER_PAGE, filteredMenu.length)} of{" "}
+      {filteredMenu.length} items
+    </span>
 
+    <div className="menu-pagination-buttons">
+      <button
+        type="button"
+        className="menu-pagination-button"
+        disabled={currentPage === 1}
+        onClick={() => setCurrentPage((page) => page - 1)}
+      >
+        Previous
+      </button>
+
+      {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+        (page) => (
+          <button
+            key={page}
+            type="button"
+            className={`menu-pagination-button ${
+              currentPage === page ? "active" : ""
+            }`}
+            onClick={() => setCurrentPage(page)}
+            aria-current={currentPage === page ? "page" : undefined}
+          >
+            {page}
+          </button>
+        )
+      )}
+
+      <button
+        type="button"
+        className="menu-pagination-button"
+        disabled={currentPage === totalPages}
+        onClick={() => setCurrentPage((page) => page + 1)}
+      >
+        Next
+      </button>
+    </div>
+  </div>
+)}
       {showForm && (
         <div
           className="menu-modal-backdrop"

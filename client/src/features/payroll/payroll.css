@@ -70,20 +70,12 @@
   color: #fff;
 }
 
-.payroll-primary-button:hover:not(:disabled) {
-  background: #245347;
-  border-color: #245347;
-}
+
 
 .payroll-secondary-button {
   background: #fff;
-  border-color: #d8e0d9;
+  border-color: #000000;
   color: #26342f;
-}
-
-.payroll-secondary-button:hover:not(:disabled) {
-  background: #f5f8f5;
-  border-color: #b8c7bc;
 }
 
 .payroll-danger-button {
