@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { AnalyticsService } from '../services/analyticsService';
 import { InventoryService } from '../services/inventoryService';
 import StockBadge from '../components/StockBadge';
+import '../../../styles/inventory-dashboard.css';
 
 export default function InventoryDashboard({ branchId, onNavigate }) {
   const [kpis, setKpis] = useState(null);

@@ -1,21 +1,21 @@
 import { useState, useEffect } from 'react';
 import InventoryNav from './components/InventoryNav';
-import InventoryDashboard from './pages/InventoryDashboard';
-import IngredientsPage from './pages/IngredientsPage';
-import SuppliersPage from './pages/SuppliersPage';
-import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
-import TransfersPage from './pages/TransfersPage';
-import WastagePage from './pages/WastagePage';
-import ReportsPage from './pages/ReportsPage';
+import InventoryDashboard from './dashboard/InventoryDashboard';
+import IngredientsPage from './ingredients/IngredientsPage';
+import SuppliersPage from './suppliers/SuppliersPage';
+import PurchaseOrdersPage from './orders/PurchaseOrdersPage';
+import TransfersPage from './transfers/TransfersPage';
+import WastagePage from './wastage/WastagePage';
+import ReportsPage from './reports/ReportsPage';
 import { InventoryService } from './services/inventoryService';
 import { AnalyticsService } from './services/analyticsService';
-import './styles/inventory.css';
+import '../../styles/inventory.css';
 
 export default function InventoryModule({
   activeSubpage = 'inv-dashboard',
   onSubpageChange = () => {},
   selectedBranch = 'all',
-  showSubnav = true
+  showSubnav = false
 }) {
   const [currentTab, setCurrentTab] = useState(activeSubpage);
   const [branches, setBranches] = useState([]);

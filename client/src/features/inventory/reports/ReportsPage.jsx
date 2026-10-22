@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AnalyticsService } from '../services/analyticsService';
 import { InventoryService } from '../services/inventoryService';
+import '../../../styles/inventory-reports.css';
 
 export default function ReportsPage({ branchId, branches = [] }) {
   const [reportType, setReportType] = useState('VALUATION'); // VALUATION, LOW_STOCK, EXPIRY, AUDIT_TRAIL

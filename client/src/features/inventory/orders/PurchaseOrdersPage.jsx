@@ -3,6 +3,7 @@ import { PurchaseOrderService } from '../services/purchaseOrderService';
 import { SupplierService } from '../services/supplierService';
 import { InventoryService } from '../services/inventoryService';
 import StockBadge from '../components/StockBadge';
+import '../../../styles/inventory-orders.css';
 
 export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   const [orders, setOrders] = useState([]);

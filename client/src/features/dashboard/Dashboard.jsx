@@ -19,6 +19,16 @@ import Attendance from '../attendance/Attendance.jsx'
 import Leave from '../leaves/Leaves.jsx'
 import Payroll from "../payroll/Payroll.jsx";
 
+const inventorySubpageMap = {
+  'inv-dashboard': 'Dashboard & KPIs',
+  'inv-ingredients': 'Ingredients & Stock',
+  'inv-suppliers': 'Suppliers',
+  'inv-orders': 'Purchase Orders & Receiving',
+  'inv-transfers': 'Branch Transfers',
+  'inv-wastage': 'Wastage & Spoilage',
+  'inv-reports': 'Valuation & Reports',
+};
+
 const navigation = [
   {
     label: 'Overview',
@@ -102,8 +112,44 @@ const navigation = [
   },
 
   {
-    label: 'Inventory',
-    icon: 'I',
+    label: 'Dashboard & KPIs',
+    icon: '◫',
+    group: 'Inventory & Supply Chain',
+    roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
+  },
+  {
+    label: 'Ingredients & Stock',
+    icon: '📦',
+    group: 'Inventory & Supply Chain',
+    roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
+  },
+  {
+    label: 'Suppliers',
+    icon: '🏢',
+    group: 'Inventory & Supply Chain',
+    roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
+  },
+  {
+    label: 'Purchase Orders & Receiving',
+    icon: '📋',
+    group: 'Inventory & Supply Chain',
+    roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
+  },
+  {
+    label: 'Branch Transfers',
+    icon: '⇄',
+    group: 'Inventory & Supply Chain',
+    roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
+  },
+  {
+    label: 'Wastage & Spoilage',
+    icon: '🗑',
+    group: 'Inventory & Supply Chain',
+    roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
+  },
+  {
+    label: 'Valuation & Reports',
+    icon: '📊',
     group: 'Inventory & Supply Chain',
     roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
   },
@@ -161,9 +207,45 @@ const modules = [
     tone: 'blue',
   },
   {
-  title: 'Inventory',
-  description: 'Track ingredients, suppliers, purchase orders, transfers and wastage.',
-  icon: 'I',
+  title: 'Dashboard & KPIs',
+  description: 'Track executive inventory metrics, stock valuation and urgent alerts.',
+  icon: '◫',
+  tone: 'green',
+},
+{
+  title: 'Ingredients & Stock',
+  description: 'Manage ingredients, stock balances, batch expiry and reorder thresholds.',
+  icon: '📦',
+  tone: 'gold',
+},
+{
+  title: 'Suppliers',
+  description: 'Manage supplier contacts, lead times, categories and vendor directory.',
+  icon: '🏢',
+  tone: 'blue',
+},
+{
+  title: 'Purchase Orders & Receiving',
+  description: 'Draft purchase orders, vendor procurement and goods received notes (GRN).',
+  icon: '📋',
+  tone: 'green',
+},
+{
+  title: 'Branch Transfers',
+  description: 'Coordinate inter-branch stock dispatches and receipt verifications.',
+  icon: '⇄',
+  tone: 'blue',
+},
+{
+  title: 'Wastage & Spoilage',
+  description: 'Log kitchen wastage, spoiled food items and shrinkage audit trails.',
+  icon: '🗑',
+  tone: 'gold',
+},
+{
+  title: 'Valuation & Reports',
+  description: 'FIFO inventory valuation, turnover metrics and audit movement logs.',
+  icon: '📊',
   tone: 'green',
 },
 ]
@@ -244,8 +326,12 @@ setSelectedBranchId((currentId) => {
 
 
   const [expandedGroups, setExpandedGroups] = useState({
-  'People & HR': false,
-})
+    'People & HR': false,
+    'Restaurant Operations': false,
+    'Inventory & Supply Chain': false,
+    'Customer Experience': false,
+  });
+
   const visibleNavigation = navigation.filter((item) =>
     item.roles.includes(user?.role),
   )
@@ -316,10 +402,10 @@ setSelectedBranchId((currentId) => {
 
     if (!items.length) return null
 
-    const isExpanded = Boolean(expandedGroups[group.label])
     const containsActivePage = items.some(
       (item) => item.label === activePage,
     )
+    const isExpanded = expandedGroups[group.label] !== undefined ? Boolean(expandedGroups[group.label]) : containsActivePage
     const groupId = `menu-${group.label
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')}`
@@ -336,7 +422,7 @@ setSelectedBranchId((currentId) => {
           onClick={() =>
             setExpandedGroups((previous) => ({
               ...previous,
-              [group.label]: !previous[group.label],
+              [group.label]: !(previous[group.label] !== undefined ? previous[group.label] : containsActivePage),
             }))
           }
         >
@@ -513,8 +599,55 @@ setSelectedBranchId((currentId) => {
     </section>
 
   </>
-) : activePage === 'Inventory' ? (
-  <InventoryModule selectedBranch="all" />
+) : activePage === 'Dashboard & KPIs' || activePage === 'Inventory' || activePage === 'Inventory & Supply Chain' ? (
+  <InventoryModule
+    activeSubpage="inv-dashboard"
+    showSubnav={false}
+    selectedBranch={selectedBranchId || 'all'}
+    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
+  />
+) : activePage === 'Ingredients & Stock' ? (
+  <InventoryModule
+    activeSubpage="inv-ingredients"
+    showSubnav={false}
+    selectedBranch={selectedBranchId || 'all'}
+    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
+  />
+) : activePage === 'Suppliers' ? (
+  <InventoryModule
+    activeSubpage="inv-suppliers"
+    showSubnav={false}
+    selectedBranch={selectedBranchId || 'all'}
+    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
+  />
+) : activePage === 'Purchase Orders & Receiving' ? (
+  <InventoryModule
+    activeSubpage="inv-orders"
+    showSubnav={false}
+    selectedBranch={selectedBranchId || 'all'}
+    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
+  />
+) : activePage === 'Branch Transfers' ? (
+  <InventoryModule
+    activeSubpage="inv-transfers"
+    showSubnav={false}
+    selectedBranch={selectedBranchId || 'all'}
+    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
+  />
+) : activePage === 'Wastage & Spoilage' ? (
+  <InventoryModule
+    activeSubpage="inv-wastage"
+    showSubnav={false}
+    selectedBranch={selectedBranchId || 'all'}
+    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
+  />
+) : activePage === 'Valuation & Reports' ? (
+  <InventoryModule
+    activeSubpage="inv-reports"
+    showSubnav={false}
+    selectedBranch={selectedBranchId || 'all'}
+    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
+  />
 ) : activePage === 'Menu' ? (
   <MenuManagement
   branchId={selectedBranchId}

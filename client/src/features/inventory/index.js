@@ -1,18 +1,24 @@
 /**
- * ANOVA Inventory & Supply Chain Module (Member 2)
+ * ANOVA Inventory & Supply Chain Module
  * Public API & Module Descriptor for shared integration
  */
 
 export { default as InventoryModule } from './InventoryModule';
 export { default as InventoryNav } from './components/InventoryNav';
-export { default as InventoryDashboard } from './pages/InventoryDashboard';
-export { default as IngredientsPage } from './pages/IngredientsPage';
-export { default as SuppliersPage } from './pages/SuppliersPage';
-export { default as PurchaseOrdersPage } from './pages/PurchaseOrdersPage';
-export { default as TransfersPage } from './pages/TransfersPage';
-export { default as WastagePage } from './pages/WastagePage';
-export { default as ReportsPage } from './pages/ReportsPage';
+export { default as StockBadge } from './components/StockBadge';
 
+// Module-wise sub-features
+export { default as InventoryDashboard } from './dashboard/InventoryDashboard';
+export { default as IngredientsPage } from './ingredients/IngredientsPage';
+export { default as BatchTrackerModal } from './ingredients/BatchTrackerModal';
+export { default as StockAdjustmentModal } from './ingredients/StockAdjustmentModal';
+export { default as SuppliersPage } from './suppliers/SuppliersPage';
+export { default as PurchaseOrdersPage } from './orders/PurchaseOrdersPage';
+export { default as TransfersPage } from './transfers/TransfersPage';
+export { default as WastagePage } from './wastage/WastagePage';
+export { default as ReportsPage } from './reports/ReportsPage';
+
+// Domain Services
 export { InventoryService } from './services/inventoryService';
 export { SupplierService } from './services/supplierService';
 export { PurchaseOrderService } from './services/purchaseOrderService';
@@ -21,7 +27,7 @@ export { AnalyticsService } from './services/analyticsService';
 export { UnitConversion } from './services/unitConversion';
 
 /**
- * Navigation specification for integration into Member 1's Centralized Sidebar
+ * Navigation specification for integration into Centralized Sidebar
  */
 export const inventoryNavigation = {
   id: 'inventory-supply-chain',

@@ -1,0 +1,8 @@
+@import "./inventory.css";
+
+/* ============================================================
+   ANOVA INVENTORY — PURCHASE ORDERS & GOODS RECEIVING STYLES
+   ============================================================ */
+.inv-orders-container {
+  width: 100%;
+}

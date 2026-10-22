@@ -1,0 +1,8 @@
+@import "./inventory.css";
+
+/* ============================================================
+   ANOVA INVENTORY — WASTAGE & SPOILAGE STYLES
+   ============================================================ */
+.inv-wastage-container {
+  width: 100%;
+}

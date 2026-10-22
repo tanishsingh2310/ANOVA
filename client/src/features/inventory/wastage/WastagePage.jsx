@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { MovementService } from '../services/movementService';
 import { InventoryService } from '../services/inventoryService';
+import '../../../styles/inventory-wastage.css';
 
 export default function WastagePage({ branchId, branches = [] }) {
   const [wastageList, setWastageList] = useState([]);

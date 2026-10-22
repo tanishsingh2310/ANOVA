@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { SupplierService } from '../services/supplierService';
 import { InventoryService } from '../services/inventoryService';
 import StockBadge from '../components/StockBadge';
+import '../../../styles/inventory-suppliers.css';
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState([]);

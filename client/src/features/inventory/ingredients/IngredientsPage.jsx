@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { InventoryService } from '../services/inventoryService';
 import { SupplierService } from '../services/supplierService';
 import StockBadge from '../components/StockBadge';
-import StockAdjustmentModal from '../components/StockAdjustmentModal';
-import BatchTrackerModal from '../components/BatchTrackerModal';
+import StockAdjustmentModal from './StockAdjustmentModal';
+import BatchTrackerModal from './BatchTrackerModal';
+import '../../../styles/inventory-ingredients.css';
 
 export default function IngredientsPage({ branchId, branches = [] }) {
   const [ingredients, setIngredients] = useState([]);

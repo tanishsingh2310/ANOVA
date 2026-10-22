@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { MovementService } from '../services/movementService';
 import { InventoryService } from '../services/inventoryService';
 import StockBadge from '../components/StockBadge';
+import '../../../styles/inventory-transfers.css';
 
 export default function TransfersPage({ branchId, branches = [] }) {
   const [transfers, setTransfers] = useState([]);
