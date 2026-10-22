@@ -814,3 +814,546 @@
     max-width: 100%;
   }
 }
+
+/* ============================================================
+   PEOPLE & HR DESIGN HARMONIZATION FOR INVENTORY
+   Matches Employees, Shifts, Attendance, Leaves (Images 1-5)
+   ============================================================ */
+
+.inventory-page,
+.employees-page {
+  --emp-primary: #183c34;
+  --emp-primary-hover: #17352d;
+  --emp-text: #26342f;
+  --emp-muted: #748078;
+  --emp-border: #e3e9e3;
+  --emp-surface: #ffffff;
+  --emp-surface-soft: #f6f8f5;
+  --emp-gold: #c5a46d;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.inventory-heading,
+.employees-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 4px;
+}
+
+.inventory-heading > div:first-child h2,
+.employees-heading > div:first-child h2 {
+  margin: 0 0 6px 0;
+  color: #183c34;
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.4px;
+}
+
+.inventory-heading > div:first-child p,
+.employees-heading > div:first-child p {
+  margin: 0;
+  color: #748078;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.inventory-heading-actions,
+.employees-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.employees-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 39px;
+  padding: 9px 13px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.employees-button svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.employees-button:focus-visible {
+  outline: 1px solid rgb(71 123 105 / 24%);
+  outline-offset: 1px;
+}
+
+.employees-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.employees-button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.employees-button-primary {
+  background: #183c34;
+  border-color: #183c34;
+  color: #fff;
+}
+
+.employees-button-primary:hover:not(:disabled) {
+  background: #17352d;
+  border-color: #17352d;
+}
+
+.employees-button-secondary {
+  background: #fff;
+  border-color: #000000;
+  color: #345548;
+}
+
+.employees-button-secondary:hover:not(:disabled) {
+  background: #f7f9f6;
+  border-color: #345548;
+}
+
+.employees-button-danger {
+  background: #fff;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.employees-button-danger:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
+.employees-spin {
+  animation: employees-rotate 0.9s linear infinite;
+}
+
+@keyframes employees-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.employees-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  margin-bottom: 4px;
+  border: 1px solid #e3e9e3;
+  border-radius: 13px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgb(31 58 43 / 3%);
+}
+
+.employees-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 240px;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #dfe7df;
+  border-radius: 9px;
+  background: #fff;
+  color: #839087;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.employees-search:focus-within {
+  border-color: #729886;
+  box-shadow: 0 0 0 3px rgb(71 123 105 / 10%);
+}
+
+.employees-search svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.employees-search input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #26342f;
+  font-size: 12px;
+}
+
+.employees-search input::placeholder {
+  color: #98a39b;
+}
+
+.employees-filter {
+  display: flex;
+  flex: 0 1 170px;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 130px;
+}
+
+.employees-filter > span {
+  color: #52645b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.employees-filter select,
+.employees-filter input {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #dfe7df;
+  border-radius: 9px;
+  background-color: #fff;
+  color: #263d34;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.employees-filter select:focus,
+.employees-filter input:focus {
+  outline: 1px solid #e4eee8;
+  border-color: #15803d;
+}
+
+.employees-filter select:disabled,
+.employees-filter input:disabled {
+  background: #f4f6f3;
+  color: #849087;
+  cursor: not-allowed;
+}
+
+.employees-table-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e3e9e3;
+  border-radius: 13px;
+  background: #ffffff;
+  box-shadow: 0 3px 12px rgb(31 58 43 / 3%);
+}
+
+.employees-table-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 19px 20px;
+  border-bottom: 1px solid #edf1ed;
+}
+
+.employees-table-heading h3 {
+  margin: 0;
+  color: #183c34;
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.25px;
+}
+
+.employees-table-heading p {
+  margin: 5px 0 0;
+  color: #748078;
+  font-size: 12px;
+}
+
+.employees-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.employees-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 12px;
+}
+
+.employees-table thead th {
+  padding: 13px 17px;
+  border-bottom: 1px solid #e3e9e3;
+  background: #f7f9f6;
+  color: #68786e;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.65px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.employees-table tbody td {
+  padding: 15px 17px;
+  border-bottom: 1px solid #edf1ed;
+  color: #52645a;
+  vertical-align: middle;
+}
+
+.employees-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.employees-table tbody tr {
+  transition: background-color 140ms ease;
+}
+
+.employees-table tbody tr:hover {
+  background: #fbfcfa;
+}
+
+.employees-table th:first-child,
+.employees-table td:first-child {
+  padding-left: 20px;
+}
+
+.employees-table th:last-child,
+.employees-table td:last-child {
+  padding-right: 20px;
+}
+
+.employees-row-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.employees-row-actions .employees-button {
+  min-height: 33px;
+  height: 33px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.employees-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.employees-status::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.employees-status.is-active,
+.employees-status.is-in-stock,
+.employees-status.is-received {
+  border-color: #cce8d2;
+  background: #eff9f0;
+  color: #287544;
+}
+
+.employees-status.is-warning,
+.employees-status.is-low-stock,
+.employees-status.is-in-transit,
+.employees-status.is-submitted {
+  border-color: #fde68a;
+  background: #fefce8;
+  color: #b45309;
+}
+
+.employees-status.is-danger,
+.employees-status.is-critical,
+.employees-status.is-out-of-stock {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.employees-status.is-inactive,
+.employees-status.is-draft,
+.employees-status.is-completed {
+  border-color: #e4e6e2;
+  background: #f3f4f1;
+  color: #727b73;
+}
+
+.employees-status.is-approved,
+.employees-status.is-ordered {
+  border-color: #bae6fd;
+  background: #f0f9ff;
+  color: #0369a1;
+}
+
+.employees-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  color: #748078;
+}
+
+.employees-empty-state svg {
+  margin-bottom: 12px;
+  color: #98a39b;
+}
+
+.employees-empty-state h3 {
+  margin: 0 0 6px 0;
+  color: #183c34;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.employees-empty-state p {
+  margin: 0;
+  font-size: 13px;
+  color: #748078;
+}
+
+/* Modals matching People and HR */
+.employees-modal-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 24px;
+  background: rgb(19 34 27 / 48%);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.employees-modal {
+  position: relative;
+  width: min(100%, 650px);
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  padding: 24px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgb(16 35 25 / 22%);
+}
+
+.employees-modal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.employees-eyebrow {
+  margin: 0 0 8px;
+  color: #c5a46d;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+}
+
+.employees-modal-heading h3 {
+  margin: 0;
+  color: #183c34;
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.5px;
+}
+
+.employees-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #f3f6f2;
+  color: #69786f;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.employees-modal-close:hover {
+  background: #e8eee7;
+  color: #183c34;
+}
+
+.employees-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.employees-form-grid > label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #52645b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.employees-form-grid > .employees-field-full {
+  grid-column: 1 / -1;
+}
+
+.employees-modal input,
+.employees-modal select,
+.employees-modal textarea {
+  display: block;
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #dfe7df;
+  border-radius: 9px;
+  background: #fff;
+  color: #263d34;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.employees-modal textarea {
+  height: auto;
+  min-height: 80px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.employees-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}

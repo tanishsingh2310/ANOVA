@@ -2,28 +2,34 @@ import { useState, useEffect } from 'react';
 import { AnalyticsService } from '../services/analyticsService';
 import { InventoryService } from '../services/inventoryService';
 import StockBadge from '../components/StockBadge';
+import { RefreshCw } from 'lucide-react';
 import '../../../styles/inventory-dashboard.css';
 
-export default function InventoryDashboard({ branchId, onNavigate }) {
+export default function InventoryDashboard({ branchId, onNavigate, branches = [] }) {
+  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
   const [kpis, setKpis] = useState(null);
   const [expiringBatches, setExpiringBatches] = useState([]);
   const [lowStockItems, setLowStockItems] = useState([]);
 
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const loadData = async () => {
+  useEffect(() => {
+    setSelectedBranch(branchId || 'all');
+  }, [branchId]);
+
+  const loadData = async (targetBranch = selectedBranch) => {
     // Initial local compute for instant render
-    const metrics = AnalyticsService.getDashboardKPIs(branchId);
+    const metrics = AnalyticsService.getDashboardKPIs(targetBranch);
     setKpis(metrics);
 
-    const expiring = InventoryService.getExpiringBatches(7, branchId);
+    const expiring = InventoryService.getExpiringBatches(7, targetBranch);
     setExpiringBatches(expiring.slice(0, 5));
 
-    const ingredients = InventoryService.getIngredients({ branchId });
+    const ingredients = InventoryService.getIngredients({ branchId: targetBranch });
     const low = ingredients
       .map(i => ({
         ...i,
-        status: InventoryService.calculateStockStatus(i, branchId)
+        status: InventoryService.calculateStockStatus(i, targetBranch)
       }))
       .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
     setLowStockItems(low.slice(0, 6));
@@ -32,9 +38,9 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
     setIsSyncing(true);
     try {
       const [remoteKpis, remoteExpiring, remoteIngs] = await Promise.all([
-        AnalyticsService.fetchDashboardKPIsRemote(branchId),
-        InventoryService.getExpiringBatchesRemote(7, branchId),
-        InventoryService.syncFromBackend(branchId)
+        AnalyticsService.fetchDashboardKPIsRemote(targetBranch),
+        InventoryService.getExpiringBatchesRemote(7, targetBranch),
+        InventoryService.syncFromBackend(targetBranch)
       ]);
 
       if (remoteKpis) setKpis(remoteKpis);
@@ -43,7 +49,7 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
         const remoteLow = remoteIngs
           .map(i => ({
             ...i,
-            status: InventoryService.calculateStockStatus(i, branchId)
+            status: InventoryService.calculateStockStatus(i, targetBranch)
           }))
           .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
         setLowStockItems(remoteLow.slice(0, 6));
@@ -56,13 +62,47 @@ export default function InventoryDashboard({ branchId, onNavigate }) {
   };
 
   useEffect(() => {
-    loadData();
-  }, [branchId]);
+    loadData(selectedBranch);
+  }, [selectedBranch]);
 
   if (!kpis) return <div>Loading executive dashboard...</div>;
 
   return (
     <div className="inv-dashboard-container">
+      <div className="employees-heading" style={{ marginBottom: '18px' }}>
+        <div>
+          <h2>Inventory Dashboard</h2>
+          <p>Real-time executive overview of stock levels, procurement alerts, and valuation.</p>
+        </div>
+        <div className="employees-heading-actions">
+          <button
+            type="button"
+            className="employees-button employees-button-secondary"
+            onClick={() => loadData(selectedBranch)}
+            disabled={isSyncing}
+          >
+            <RefreshCw size={16} className={isSyncing ? 'employees-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="employees-toolbar" style={{ marginBottom: '20px' }}>
+        <label className="employees-filter">
+          <span>Branch</span>
+          <select
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+          >
+            <option value="all">All branches</option>
+            {branches.map((b) => (
+              <option key={b.id || b._id} value={b.id || b._id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {/* Alert Header if critical stock or expiring batches */}
       {kpis.totalAlerts > 0 && (
         <div className="inv-alert-banner inv-alert-warning">

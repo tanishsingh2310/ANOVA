@@ -1,45 +1,58 @@
 import { useState, useEffect } from 'react';
+import {
+  Search,
+  RefreshCw,
+  Download,
+  BarChart3,
+  FileSpreadsheet
+} from 'lucide-react';
 import { AnalyticsService } from '../services/analyticsService';
 import { InventoryService } from '../services/inventoryService';
-import '../../../styles/inventory-reports.css';
 
 export default function ReportsPage({ branchId, branches = [] }) {
   const [reportType, setReportType] = useState('VALUATION'); // VALUATION, LOW_STOCK, EXPIRY, AUDIT_TRAIL
   const [valuationMethod, setValuationMethod] = useState('FIFO'); // FIFO or WEIGHTED_AVG
+  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
+  const [search, setSearch] = useState('');
+
   const [valuationData, setValuationData] = useState(null);
   const [movements, setMovements] = useState([]);
   const [expiringBatches, setExpiringBatches] = useState([]);
   const [lowStockList, setLowStockList] = useState([]);
+
+  const [notice, setNotice] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const loadData = async () => {
-    // Initial local render
-    const val = AnalyticsService.getInventoryValuation(branchId, valuationMethod);
+  useEffect(() => {
+    setSelectedBranch(branchId);
+  }, [branchId]);
+
+  const loadData = async (refresh = false) => {
+    const val = AnalyticsService.getInventoryValuation(selectedBranch, valuationMethod);
     setValuationData(val);
 
-    const movs = InventoryService.getMovements({ branchId });
+    const movs = InventoryService.getMovements({ branchId: selectedBranch });
     setMovements(movs);
 
-    const exp = InventoryService.getExpiringBatches(14, branchId);
+    const exp = InventoryService.getExpiringBatches(14, selectedBranch);
     setExpiringBatches(exp);
 
-    const ings = InventoryService.getIngredients({ branchId });
+    const ings = InventoryService.getIngredients({ branchId: selectedBranch });
     const low = ings
       .map(i => ({
         ...i,
-        status: InventoryService.calculateStockStatus(i, branchId)
+        status: InventoryService.calculateStockStatus(i, selectedBranch)
       }))
       .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
     setLowStockList(low);
 
-    // Live remote sync
     setIsSyncing(true);
     try {
       const [remoteVal, remoteMovs, remoteExp, remoteIngs] = await Promise.all([
-        AnalyticsService.fetchValuationRemote(branchId, valuationMethod),
-        InventoryService.getMovementsRemote({ branchId }),
-        InventoryService.getExpiringBatchesRemote(14, branchId),
-        InventoryService.syncFromBackend(branchId)
+        AnalyticsService.fetchValuationRemote(selectedBranch, valuationMethod),
+        InventoryService.getMovementsRemote({ branchId: selectedBranch }),
+        InventoryService.getExpiringBatchesRemote(14, selectedBranch),
+        InventoryService.syncFromBackend(selectedBranch)
       ]);
 
       if (remoteVal) setValuationData(remoteVal);
@@ -49,11 +62,12 @@ export default function ReportsPage({ branchId, branches = [] }) {
         const freshLow = remoteIngs
           .map(i => ({
             ...i,
-            status: InventoryService.calculateStockStatus(i, branchId)
+            status: InventoryService.calculateStockStatus(i, selectedBranch)
           }))
           .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
         setLowStockList(freshLow);
       }
+      if (refresh) setNotice('Report data updated.');
     } catch (err) {
       console.warn('Reports sync error:', err.message);
     } finally {
@@ -63,348 +77,402 @@ export default function ReportsPage({ branchId, branches = [] }) {
 
   useEffect(() => {
     loadData();
-  }, [branchId, valuationMethod]);
+  }, [selectedBranch, valuationMethod]);
 
-  // CSV Export Handlers
-  const handleExportValuation = () => {
-    if (!valuationData) return;
-    const headers = [
-      { label: 'SKU', key: 'sku' },
-      { label: 'Ingredient Name', key: 'name' },
-      { label: 'Category', key: 'category' },
-      { label: 'Stock Qty', key: 'quantity' },
-      { label: 'Unit', key: 'baseUnit' },
-      { label: 'Costing Method', key: 'valuationMethod' },
-      { label: 'Unit Cost (INR)', key: 'unitCost' },
-      { label: 'Total Value (INR)', key: 'totalValue' }
-    ];
-    const csv = AnalyticsService.generateCSV(headers, valuationData.items);
-    AnalyticsService.downloadCSV(`ANOVA_Valuation_${valuationMethod}_${branchId}`, csv);
-  };
-
-  const handleExportMovements = () => {
-    const headers = [
-      { label: 'Timestamp', key: 'timestamp' },
-      { label: 'Movement Type', key: 'type' },
-      { label: 'Reference Code', key: 'reference' },
-      { label: 'Ingredient ID', key: 'ingredientId' },
-      { label: 'Branch ID', key: 'branchId' },
-      { label: 'Delta Qty', key: 'deltaQty' },
-      { label: 'Unit', key: 'unit' },
-      { label: 'Resulting Balance', key: 'resultingBalance' },
-      { label: 'Auditor', key: 'performedBy' },
-      { label: 'Notes', key: 'notes' }
-    ];
-    const csv = AnalyticsService.generateCSV(headers, movements);
-    AnalyticsService.downloadCSV(`ANOVA_Stock_Movements_Audit_${branchId}`, csv);
-  };
-
-  const handleExportLowStock = () => {
-    const headers = [
-      { label: 'SKU', key: 'sku' },
-      { label: 'Ingredient', key: 'name' },
-      { label: 'Category', key: 'category' },
-      { label: 'Current Qty', key: 'currentQty' },
-      { label: 'Unit', key: 'baseUnit' },
-      { label: 'Min Threshold', key: 'minThreshold' },
-      { label: 'Reorder Level', key: 'reorderLevel' },
-      { label: 'Stock Status', key: 'statusLevel' }
-    ];
-    const rows = lowStockList.map(item => ({
-      sku: item.sku,
-      name: item.name,
-      category: item.category,
-      currentQty: item.status.qty,
-      baseUnit: item.baseUnit,
-      minThreshold: item.minThreshold,
-      reorderLevel: item.reorderLevel,
-      statusLevel: item.status.level
-    }));
-    const csv = AnalyticsService.generateCSV(headers, rows);
-    AnalyticsService.downloadCSV(`ANOVA_LowStock_Reorder_Schedule_${branchId}`, csv);
+  const handleExport = () => {
+    if (reportType === 'VALUATION' && valuationData) {
+      const headers = [
+        { label: 'SKU', key: 'sku' },
+        { label: 'Ingredient Name', key: 'name' },
+        { label: 'Category', key: 'category' },
+        { label: 'Stock Qty', key: 'quantity' },
+        { label: 'Unit', key: 'baseUnit' },
+        { label: 'Costing Method', key: 'valuationMethod' },
+        { label: 'Unit Cost (INR)', key: 'unitCost' },
+        { label: 'Total Value (INR)', key: 'totalValue' }
+      ];
+      const csv = AnalyticsService.generateCSV(headers, valuationData.items);
+      AnalyticsService.downloadCSV(`ANOVA_Valuation_${valuationMethod}_${selectedBranch}`, csv);
+      setNotice('Valuation report exported.');
+    } else if (reportType === 'LOW_STOCK') {
+      const headers = [
+        { label: 'SKU', key: 'sku' },
+        { label: 'Ingredient', key: 'name' },
+        { label: 'Category', key: 'category' },
+        { label: 'Current Qty', key: 'currentQty' },
+        { label: 'Unit', key: 'baseUnit' },
+        { label: 'Min Threshold', key: 'minThreshold' },
+        { label: 'Reorder Level', key: 'reorderLevel' },
+        { label: 'Stock Status', key: 'statusLevel' }
+      ];
+      const rows = lowStockList.map(item => ({
+        sku: item.sku,
+        name: item.name,
+        category: item.category,
+        currentQty: item.status.qty,
+        baseUnit: item.baseUnit,
+        minThreshold: item.minThreshold,
+        reorderLevel: item.reorderLevel,
+        statusLevel: item.status.level
+      }));
+      const csv = AnalyticsService.generateCSV(headers, rows);
+      AnalyticsService.downloadCSV(`ANOVA_Low_Stock_Action_List_${selectedBranch}`, csv);
+      setNotice('Low stock report exported.');
+    } else if (reportType === 'EXPIRY') {
+      const headers = [
+        { label: 'Batch #', key: 'batchNumber' },
+        { label: 'Ingredient', key: 'ingredientName' },
+        { label: 'SKU', key: 'sku' },
+        { label: 'Branch ID', key: 'branchId' },
+        { label: 'Quantity', key: 'qty' },
+        { label: 'Unit', key: 'unit' },
+        { label: 'Expiry Date', key: 'expiryDate' },
+        { label: 'Days Remaining', key: 'diffDays' }
+      ];
+      const csv = AnalyticsService.generateCSV(headers, expiringBatches);
+      AnalyticsService.downloadCSV(`ANOVA_Expiry_Horizon_14Days_${selectedBranch}`, csv);
+      setNotice('Expiry report exported.');
+    } else if (reportType === 'AUDIT_TRAIL') {
+      const headers = [
+        { label: 'Timestamp', key: 'timestamp' },
+        { label: 'Movement Type', key: 'type' },
+        { label: 'Reference Code', key: 'reference' },
+        { label: 'Ingredient ID', key: 'ingredientId' },
+        { label: 'Branch ID', key: 'branchId' },
+        { label: 'Delta Qty', key: 'deltaQty' },
+        { label: 'Unit', key: 'unit' },
+        { label: 'Resulting Balance', key: 'resultingBalance' },
+        { label: 'Auditor', key: 'performedBy' },
+        { label: 'Notes', key: 'notes' }
+      ];
+      const csv = AnalyticsService.generateCSV(headers, movements);
+      AnalyticsService.downloadCSV(`ANOVA_Stock_Movements_Audit_${selectedBranch}`, csv);
+      setNotice('Movement audit trail exported.');
+    }
   };
 
   const branchMap = {};
-  branches.forEach(b => { branchMap[b.id] = b.name; });
+  branches.forEach(b => { branchMap[b.id || b._id] = b.name; });
 
   return (
-    <div className="inv-reports-page">
-      {/* Sub Report Navigation */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          className={`inv-btn ${reportType === 'VALUATION' ? 'inv-btn-primary' : 'inv-btn-secondary'}`}
-          onClick={() => setReportType('VALUATION')}
-        >
-          Stock Valuation (FIFO / Weighted Avg)
-        </button>
-        <button
-          type="button"
-          className={`inv-btn ${reportType === 'LOW_STOCK' ? 'inv-btn-primary' : 'inv-btn-secondary'}`}
-          onClick={() => setReportType('LOW_STOCK')}
-        >
-          Low Stock & Reorder Schedule
-        </button>
-        <button
-          type="button"
-          className={`inv-btn ${reportType === 'EXPIRY' ? 'inv-btn-primary' : 'inv-btn-secondary'}`}
-          onClick={() => setReportType('EXPIRY')}
-        >
-          Batch Expiry Forecast (14 Days)
-        </button>
-        <button
-          type="button"
-          className={`inv-btn ${reportType === 'AUDIT_TRAIL' ? 'inv-btn-primary' : 'inv-btn-secondary'}`}
-          onClick={() => setReportType('AUDIT_TRAIL')}
-        >
-          Stock Movement Audit Trail
-        </button>
+    <div className="employees-page">
+      {/* Heading matching Images 1-4 */}
+      <div className="employees-heading">
+        <div>
+          <h2>Reports & Analytics</h2>
+          <p>Generate valuation audits, movement ledgers, and export analytics.</p>
+        </div>
+
+        <div className="employees-heading-actions">
+          <button
+            type="button"
+            className="employees-button employees-button-primary"
+            onClick={handleExport}
+          >
+            <Download size={16} />
+            + Export CSV
+          </button>
+          <button
+            type="button"
+            className="employees-button employees-button-secondary"
+            onClick={() => loadData(true)}
+            disabled={isSyncing}
+          >
+            <RefreshCw size={16} className={isSyncing ? 'employees-spin' : ''} />
+            Refresh
+          </button>
+        </div>
       </div>
 
-      {/* REPORT 1: STOCK VALUATION */}
-      {reportType === 'VALUATION' && (
-        !valuationData ? (
-          <div className="inv-card" style={{ padding: '32px', textAlign: 'center' }}>
-            <p style={{ color: 'var(--color-text-muted)' }}>Calculating inventory valuation...</p>
-          </div>
-        ) : (
-          <div className="inv-card">
-            <div className="inv-card-header">
+      {notice && (
+        <div className="employees-notice" role="status">
+          {notice}
+        </div>
+      )}
+
+      {/* Filter Toolbar matching Images 1-4 */}
+      <div className="employees-toolbar">
+        <label className="employees-search">
+          <Search size={18} />
+          <input
+            type="search"
+            placeholder="Search report items..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+
+        <label className="employees-filter">
+          <span>Report Type</span>
+          <select
+            value={reportType}
+            onChange={(e) => setReportType(e.target.value)}
+          >
+            <option value="VALUATION">Inventory Valuation</option>
+            <option value="LOW_STOCK">Low Stock Shortage Alert</option>
+            <option value="EXPIRY">14-Day Batch Expiry Horizon</option>
+            <option value="AUDIT_TRAIL">Complete Stock Movement Ledger</option>
+          </select>
+        </label>
+
+        {reportType === 'VALUATION' && (
+          <label className="employees-filter">
+            <span>Costing Method</span>
+            <select
+              value={valuationMethod}
+              onChange={(e) => setValuationMethod(e.target.value)}
+            >
+              <option value="FIFO">FIFO (First-In, First-Out)</option>
+              <option value="WEIGHTED_AVG">Weighted Moving Average</option>
+            </select>
+          </label>
+        )}
+
+        <label className="employees-filter">
+          <span>Branch</span>
+          <select
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+          >
+            <option value="all">All branches</option>
+            {branches.map((b) => (
+              <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {/* Table Card matching People & HR */}
+      <div className="employees-table-card">
+        {/* REPORT 1: VALUATION */}
+        {reportType === 'VALUATION' && (
+          <>
+            <div className="employees-table-heading">
               <div>
-                <h3>Enterprise Inventory Valuation Ledger</h3>
+                <h3>Inventory Portfolio Valuation ({valuationMethod})</h3>
                 <p>
-                  Branch: {valuationData.branchName || 'All Enterprise Branches'} • Generated: {valuationData.generatedAt ? valuationData.generatedAt.split('T')[0] : new Date().toISOString().split('T')[0]}
+                  Total Value: ₹{(valuationData?.totalPortfolioValue || 0).toLocaleString()} • Location: {selectedBranch === 'all' ? 'Enterprise All Branches' : selectedBranch}
                 </p>
               </div>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <select
-                  className="inv-select"
-                  value={valuationMethod}
-                  onChange={(e) => setValuationMethod(e.target.value)}
-                  aria-label="Costing method"
-                >
-                  <option value="FIFO">Method: FIFO (First-In, First-Out)</option>
-                  <option value="WEIGHTED_AVG">Method: Weighted Average Costing</option>
-                </select>
-
-                <button
-                  type="button"
-                  className="inv-btn inv-btn-sm inv-btn-gold"
-                  onClick={handleExportValuation}
-                >
-                  Export CSV
-                </button>
-              </div>
             </div>
 
-            <div className="inv-card-body" style={{ padding: '16px 24px', background: 'var(--color-surface)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>TOTAL PORTFOLIO VALUATION ({valuationMethod})</span>
-                  <div style={{ fontSize: '26px', fontWeight: 700, color: 'var(--anova-forest-green)', fontFamily: 'var(--font-display)' }}>
-                    ₹{(valuationData.totalPortfolioValue || 0).toLocaleString()}
-                  </div>
-                </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', textAlign: 'right' }}>
-                  Costing Method Grounding: <strong style={{ color: 'var(--anova-forest-green)' }}>{valuationMethod === 'FIFO' ? 'Oldest Batch Depletion' : 'Batch Value Weighted Average'}</strong>
-                </div>
+            {(!valuationData || !valuationData.items || valuationData.items.length === 0) ? (
+              <div className="employees-empty-state">
+                <FileSpreadsheet size={26} />
+                <h3>No valuation records found</h3>
+                <p>No inventory items registered in the active branch.</p>
               </div>
-            </div>
-
-            <div className="inv-card-body" style={{ padding: 0 }}>
-              <div className="inv-table-wrapper">
-                <table className="inv-table">
+            ) : (
+              <div className="employees-table-scroll">
+                <table className="employees-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '130px', whiteSpace: 'nowrap' }}>SKU</th>
+                      <th>SKU</th>
                       <th>Ingredient</th>
                       <th>Category</th>
                       <th>Branch Stock</th>
                       <th>Unit</th>
                       <th>Calculated Unit Cost</th>
-                      <th>Total Inventory Value</th>
+                      <th>Total Value</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(valuationData.items || []).map(row => (
-                      <tr key={row.id}>
-                        <td className="inv-cell-code"><code>{row.sku}</code></td>
-                        <td><strong>{row.name}</strong></td>
-                        <td className="inv-cell-nowrap">{row.category}</td>
-                        <td className="inv-cell-nowrap"><strong>{row.quantity}</strong></td>
-                        <td className="inv-cell-nowrap">{row.baseUnit}</td>
-                        <td className="inv-cell-amount">₹{row.unitCost}</td>
-                        <td className="inv-cell-amount"><strong>₹{((row.totalValue ?? row.valuation) || 0).toLocaleString()}</strong></td>
-                      </tr>
-                    ))}
+                    {(valuationData.items || [])
+                      .filter(row => !search || row.name.toLowerCase().includes(search.toLowerCase()) || row.sku.toLowerCase().includes(search.toLowerCase()))
+                      .map((row) => (
+                        <tr key={row.id}>
+                          <td><code>{row.sku}</code></td>
+                          <td><strong>{row.name}</strong></td>
+                          <td>{row.category}</td>
+                          <td><strong>{row.quantity}</strong></td>
+                          <td>{row.baseUnit}</td>
+                          <td>₹{row.unitCost}</td>
+                          <td>
+                            <strong>₹{((row.totalValue ?? row.valuation) || 0).toLocaleString()}</strong>
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
-            </div>
-          </div>
-        )
-      )}
+            )}
+          </>
+        )}
 
-      {/* REPORT 2: LOW STOCK */}
-      {reportType === 'LOW_STOCK' && (
-        <div className="inv-card">
-          <div className="inv-card-header">
-            <div>
-              <h3>Stock Shortage & Reorder Recommendation</h3>
-              <p>Items reaching or breaching minimum safety buffer</p>
+        {/* REPORT 2: LOW STOCK */}
+        {reportType === 'LOW_STOCK' && (
+          <>
+            <div className="employees-table-heading">
+              <div>
+                <h3>Stock Shortage & Reorder Deficit</h3>
+                <p>{lowStockList.length} items breaching minimum threshold buffers</p>
+              </div>
             </div>
-            <button
-              type="button"
-              className="inv-btn inv-btn-sm inv-btn-gold"
-              onClick={handleExportLowStock}
-            >
-              Export CSV
-            </button>
-          </div>
-          <div className="inv-card-body" style={{ padding: 0 }}>
-            <div className="inv-table-wrapper">
-              <table className="inv-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>SKU</th>
-                    <th>Ingredient</th>
-                    <th>Current Stock</th>
-                    <th>Safety Buffer (Min)</th>
-                    <th>Reorder Trigger</th>
-                    <th>Shortage Deficit</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lowStockList.map(item => {
-                    const deficit = Math.max(0, item.minThreshold - item.status.qty);
-                    return (
-                      <tr key={item.id}>
-                        <td className="inv-cell-code"><code>{item.sku}</code></td>
-                        <td><strong>{item.name}</strong></td>
-                        <td className="inv-cell-nowrap"><strong style={{ color: 'var(--color-error)' }}>{item.status.qty} {item.baseUnit}</strong></td>
-                        <td className="inv-cell-nowrap">{item.minThreshold} {item.baseUnit}</td>
-                        <td className="inv-cell-nowrap">{item.reorderLevel} {item.baseUnit}</td>
-                        <td className="inv-cell-nowrap"><strong style={{ color: 'var(--color-error)' }}>+{deficit} {item.baseUnit}</strong></td>
-                        <td className="inv-cell-badge">
-                          <span className={`inv-badge ${item.status.level === 'OUT_OF_STOCK' || item.status.level === 'CRITICAL' ? 'inv-badge-danger' : 'inv-badge-warning'}`}>
-                            {item.status.text}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* REPORT 3: EXPIRY FORECAST */}
-      {reportType === 'EXPIRY' && (
-        <div className="inv-card">
-          <div className="inv-card-header">
-            <div>
-              <h3>Batch Expiry Horizon (Next 14 Days)</h3>
-              <p>Schedule of perishables to prioritize for daily recipes</p>
-            </div>
-          </div>
-          <div className="inv-card-body" style={{ padding: 0 }}>
-            <div className="inv-table-wrapper">
-              <table className="inv-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Batch #</th>
-                    <th>Ingredient</th>
-                    <th>Branch Location</th>
-                    <th>Quantity</th>
-                    <th style={{ width: '110px', whiteSpace: 'nowrap' }}>Expiry Date</th>
-                    <th>Days Remaining</th>
-                    <th>Priority</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {expiringBatches.map(b => (
-                    <tr key={b.batchNumber}>
-                      <td className="inv-cell-code"><code>{b.batchNumber}</code></td>
-                      <td>{b.ingredientName}</td>
-                      <td className="inv-cell-nowrap">{branchMap[b.branchId] || b.branchId}</td>
-                      <td className="inv-cell-nowrap"><strong>{b.qty} {b.unit}</strong></td>
-                      <td className="inv-cell-date">{b.expiryDate}</td>
-                      <td className="inv-cell-nowrap">{b.diffDays <= 0 ? 'Expired' : `${b.diffDays} day(s)`}</td>
-                      <td className="inv-cell-badge">
-                        <span className={`inv-badge ${b.isExpired ? 'inv-badge-danger' : 'inv-badge-warning'}`}>
-                          {b.isExpired ? 'DISCARD REQUIRED' : 'USE FIRST (FIFO)'}
-                        </span>
-                      </td>
+            {lowStockList.length === 0 ? (
+              <div className="employees-empty-state">
+                <BarChart3 size={26} />
+                <h3>No stock shortages detected</h3>
+                <p>All items are operating with adequate buffer inventory.</p>
+              </div>
+            ) : (
+              <div className="employees-table-scroll">
+                <table className="employees-table">
+                  <thead>
+                    <tr>
+                      <th>SKU</th>
+                      <th>Ingredient</th>
+                      <th>Current Stock</th>
+                      <th>Min Safety Buffer</th>
+                      <th>Reorder Level</th>
+                      <th>Shortage Deficit</th>
+                      <th>Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+                  </thead>
+                  <tbody>
+                    {lowStockList
+                      .filter(item => !search || item.name.toLowerCase().includes(search.toLowerCase()) || item.sku.toLowerCase().includes(search.toLowerCase()))
+                      .map((item) => {
+                        const deficit = Math.max(0, item.minThreshold - item.status.qty);
+                        return (
+                          <tr key={item.id}>
+                            <td><code>{item.sku}</code></td>
+                            <td><strong>{item.name}</strong></td>
+                            <td style={{ color: '#b91c1c', fontWeight: 700 }}>
+                              {item.status.qty} {item.baseUnit}
+                            </td>
+                            <td>{item.minThreshold} {item.baseUnit}</td>
+                            <td>{item.reorderLevel} {item.baseUnit}</td>
+                            <td style={{ color: '#b91c1c', fontWeight: 700 }}>
+                              +{deficit} {item.baseUnit}
+                            </td>
+                            <td>
+                              <span className={`employees-status ${item.status.level === 'OUT_OF_STOCK' || item.status.level === 'CRITICAL' ? 'is-danger' : 'is-warning'}`}>
+                                {item.status.text}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
 
-      {/* REPORT 4: MOVEMENT AUDIT TRAIL */}
-      {reportType === 'AUDIT_TRAIL' && (
-        <div className="inv-card">
-          <div className="inv-card-header">
-            <div>
-              <h3>Stock Movement & Transaction Audit Trail</h3>
-              <p>Tamper-evident log of all receipts, transfers, adjustments and spoilage</p>
+        {/* REPORT 3: EXPIRY FORECAST */}
+        {reportType === 'EXPIRY' && (
+          <>
+            <div className="employees-table-heading">
+              <div>
+                <h3>Batch Expiry Horizon (Next 14 Days)</h3>
+                <p>{expiringBatches.length} perishable batches requiring priority preparation</p>
+              </div>
             </div>
-            <button
-              type="button"
-              className="inv-btn inv-btn-sm inv-btn-gold"
-              onClick={handleExportMovements}
-            >
-              Export CSV
-            </button>
-          </div>
-          <div className="inv-card-body" style={{ padding: 0 }}>
-            <div className="inv-table-wrapper">
-              <table className="inv-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Timestamp</th>
-                    <th>Type</th>
-                    <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Reference</th>
-                    <th>Delta Change</th>
-                    <th>Resulting Stock</th>
-                    <th>Performed By</th>
-                    <th>Audit Details</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(movements || []).map(m => (
-                    <tr key={m.id || m._id || `mov_${Math.random()}`}>
-                      <td className="inv-cell-date">
-                        {m.timestamp ? m.timestamp.replace('T', ' ').slice(0, 16) : (m.createdAt ? new Date(m.createdAt).toISOString().replace('T', ' ').slice(0, 16) : '—')}
-                      </td>
-                      <td className="inv-cell-badge">
-                        <span className="inv-badge inv-badge-info">
-                          {(m.type || 'MOVEMENT').replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="inv-cell-code"><code>{m.reference || '—'}</code></td>
-                      <td className="inv-cell-nowrap">
-                        <strong style={{ color: (m.deltaQty || 0) < 0 ? 'var(--color-error)' : 'var(--color-success)' }}>
-                          {(m.deltaQty || 0) > 0 ? `+${m.deltaQty}` : (m.deltaQty ?? 0)} {m.unit || ''}
-                        </strong>
-                      </td>
-                      <td className="inv-cell-nowrap"><strong>{m.resultingBalance ?? 0} {m.unit || ''}</strong></td>
-                      <td className="inv-cell-nowrap">{m.performedBy || 'System'}</td>
-                      <td style={{ fontSize: '11.5px', color: 'var(--color-text-muted)' }}>{m.notes || '—'}</td>
+
+            {expiringBatches.length === 0 ? (
+              <div className="employees-empty-state">
+                <BarChart3 size={26} />
+                <h3>No expiring batches found</h3>
+                <p>No batches nearing expiration within the next 14 days.</p>
+              </div>
+            ) : (
+              <div className="employees-table-scroll">
+                <table className="employees-table">
+                  <thead>
+                    <tr>
+                      <th>Batch Code</th>
+                      <th>Ingredient</th>
+                      <th>Branch</th>
+                      <th>Quantity</th>
+                      <th>Expiry Date</th>
+                      <th>Days Left</th>
+                      <th>Priority</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {expiringBatches
+                      .filter(b => !search || b.ingredientName.toLowerCase().includes(search.toLowerCase()) || b.batchNumber.toLowerCase().includes(search.toLowerCase()))
+                      .map((b) => (
+                        <tr key={b.batchNumber}>
+                          <td><code>{b.batchNumber}</code></td>
+                          <td><strong>{b.ingredientName}</strong></td>
+                          <td>{branchMap[b.branchId] || b.branchId}</td>
+                          <td><strong>{b.qty} {b.unit}</strong></td>
+                          <td>{b.expiryDate}</td>
+                          <td>{b.diffDays <= 0 ? 'Expired' : `${b.diffDays} day(s)`}</td>
+                          <td>
+                            <span className={`employees-status ${b.isExpired ? 'is-danger' : 'is-warning'}`}>
+                              {b.isExpired ? 'DISCARD REQUIRED' : 'USE FIRST (FIFO)'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* REPORT 4: MOVEMENT AUDIT TRAIL */}
+        {reportType === 'AUDIT_TRAIL' && (
+          <>
+            <div className="employees-table-heading">
+              <div>
+                <h3>Stock Movement Audit Ledger</h3>
+                <p>{movements.length} logged stock transactions and adjustments</p>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+
+            {movements.length === 0 ? (
+              <div className="employees-empty-state">
+                <BarChart3 size={26} />
+                <h3>No movement records found</h3>
+                <p>No stock changes recorded yet for this branch.</p>
+              </div>
+            ) : (
+              <div className="employees-table-scroll">
+                <table className="employees-table">
+                  <thead>
+                    <tr>
+                      <th>Timestamp</th>
+                      <th>Event Type</th>
+                      <th>Reference</th>
+                      <th>Delta Qty</th>
+                      <th>Balance</th>
+                      <th>Auditor</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {movements
+                      .filter(m => !search || (m.reference || '').toLowerCase().includes(search.toLowerCase()) || (m.notes || '').toLowerCase().includes(search.toLowerCase()))
+                      .map((m) => (
+                        <tr key={m.id}>
+                          <td>{m.timestamp ? m.timestamp.replace('T', ' ').slice(0, 16) : '-'}</td>
+                          <td>
+                            <span className={`employees-status ${m.deltaQty >= 0 ? 'is-active' : 'is-warning'}`}>
+                              {m.type}
+                            </span>
+                          </td>
+                          <td><code>{m.reference}</code></td>
+                          <td style={{ color: m.deltaQty >= 0 ? '#287544' : '#b91c1c', fontWeight: 700 }}>
+                            {m.deltaQty >= 0 ? `+${m.deltaQty}` : m.deltaQty} {m.unit}
+                          </td>
+                          <td><strong>{m.resultingBalance} {m.unit}</strong></td>
+                          <td>{m.performedBy || m.user || 'Storekeeper'}</td>
+                          <td>{m.notes || '—'}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

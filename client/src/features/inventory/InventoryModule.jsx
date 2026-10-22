@@ -26,7 +26,7 @@ export default function InventoryModule({
   }, [activeSubpage]);
 
   useEffect(() => {
-    setBranches(InventoryService.getBranches());
+    InventoryService.getBranchesRemote().then(b => { if (b && b.length > 0) setBranches(b); else setBranches(InventoryService.getBranches()); }).catch(() => setBranches(InventoryService.getBranches()));
     try {
       const kpis = AnalyticsService.getDashboardKPIs(selectedBranch);
       setAlertsCount(kpis?.totalAlerts || 0);
