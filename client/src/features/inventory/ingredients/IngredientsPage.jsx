@@ -1,10 +1,18 @@
 import { useState, useEffect } from 'react';
+import {
+  Search,
+  RefreshCw,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  AlertCircle,
+  Package
+} from 'lucide-react';
 import { InventoryService } from '../services/inventoryService';
 import { SupplierService } from '../services/supplierService';
-import StockBadge from '../components/StockBadge';
 import StockAdjustmentModal from './StockAdjustmentModal';
 import BatchTrackerModal from './BatchTrackerModal';
-import '../../../styles/inventory-ingredients.css';
 
 export default function IngredientsPage({ branchId, branches = [] }) {
   const [ingredients, setIngredients] = useState([]);
@@ -13,13 +21,18 @@ export default function IngredientsPage({ branchId, branches = [] }) {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
 
   // Modals state
   const [adjustTarget, setAdjustTarget] = useState(null);
   const [batchTarget, setBatchTarget] = useState(null);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingIngredient, setEditingIngredient] = useState(null);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
 
-  // New Ingredient form
+  // Form State
   const [form, setForm] = useState({
     name: '',
     sku: '',
@@ -32,12 +45,16 @@ export default function IngredientsPage({ branchId, branches = [] }) {
     primarySupplierId: ''
   });
   const [formError, setFormError] = useState('');
-
+  const [notice, setNotice] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const loadData = async () => {
+  useEffect(() => {
+    setSelectedBranch(branchId);
+  }, [branchId]);
+
+  const loadData = async (refresh = false) => {
     const ings = InventoryService.getIngredients({
-      branchId,
+      branchId: selectedBranch,
       category: categoryFilter,
       search,
       stockStatus: statusFilter
@@ -49,17 +66,18 @@ export default function IngredientsPage({ branchId, branches = [] }) {
     setIsSyncing(true);
     try {
       await Promise.all([
-        InventoryService.syncFromBackend(branchId),
+        InventoryService.syncFromBackend(selectedBranch),
         SupplierService.syncFromBackend()
       ]);
       const freshIngs = InventoryService.getIngredients({
-        branchId,
+        branchId: selectedBranch,
         category: categoryFilter,
         search,
         stockStatus: statusFilter
       });
       setIngredients(freshIngs);
       setSuppliers(SupplierService.getSuppliers());
+      if (refresh) setNotice('Ingredient catalog refreshed.');
     } catch (err) {
       console.warn('Ingredients sync error:', err.message);
     } finally {
@@ -69,192 +87,326 @@ export default function IngredientsPage({ branchId, branches = [] }) {
 
   useEffect(() => {
     loadData();
-  }, [branchId, categoryFilter, search, statusFilter]);
+  }, [selectedBranch, categoryFilter, search, statusFilter]);
 
-  const handleCreateIngredient = async (e) => {
+  const openAddModal = () => {
+    setEditingIngredient(null);
+    setForm({
+      name: '',
+      sku: '',
+      category: categories[0] || 'Produce & Greens',
+      baseUnit: 'kg',
+      unitCost: '',
+      minThreshold: '',
+      maxThreshold: '',
+      reorderLevel: '',
+      primarySupplierId: suppliers[0]?.id || ''
+    });
+    setFormError('');
+    setIsFormOpen(true);
+  };
+
+  const openEditModal = (ing) => {
+    setEditingIngredient(ing);
+    setForm({
+      name: ing.name || '',
+      sku: ing.sku || '',
+      category: ing.category || categories[0] || 'Produce & Greens',
+      baseUnit: ing.baseUnit || 'kg',
+      unitCost: ing.unitCost !== undefined ? String(ing.unitCost) : '',
+      minThreshold: ing.minThreshold !== undefined ? String(ing.minThreshold) : '',
+      maxThreshold: ing.maxThreshold !== undefined ? String(ing.maxThreshold) : '',
+      reorderLevel: ing.reorderLevel !== undefined ? String(ing.reorderLevel) : '',
+      primarySupplierId: ing.primarySupplierId || ''
+    });
+    setFormError('');
+    setIsFormOpen(true);
+  };
+
+  const closeFormModal = () => {
+    setIsFormOpen(false);
+    setEditingIngredient(null);
+    setFormError('');
+  };
+
+  const handleSaveIngredient = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.unitCost || !form.minThreshold) {
+    if (!form.name || form.unitCost === '' || form.minThreshold === '') {
       setFormError('Please fill in all mandatory fields');
       return;
     }
 
     try {
-      await InventoryService.saveIngredientRemote({
-        name: form.name,
-        sku: form.sku,
+      const payload = {
+        name: form.name.trim(),
+        sku: form.sku.trim(),
         category: form.category,
         baseUnit: form.baseUnit,
         unitCost: Number(form.unitCost),
         minThreshold: Number(form.minThreshold),
-        maxThreshold: Number(form.maxThreshold || form.minThreshold * 3),
-        reorderLevel: Number(form.reorderLevel || form.minThreshold * 1.3),
-        primarySupplierId: form.primarySupplierId || (suppliers[0]?.id || '')
-      });
+        maxThreshold: Number(form.maxThreshold || Number(form.minThreshold) * 3),
+        reorderLevel: Number(form.reorderLevel || Number(form.minThreshold) * 1.3),
+        primarySupplierId: form.primarySupplierId || undefined
+      };
 
-      setIsAddModalOpen(false);
-      setForm({
-        name: '',
-        sku: '',
-        category: 'Produce & Greens',
-        baseUnit: 'kg',
-        unitCost: '',
-        minThreshold: '',
-        maxThreshold: '',
-        reorderLevel: '',
-        primarySupplierId: ''
-      });
+      if (editingIngredient) {
+        payload.id = editingIngredient.id;
+        payload._id = editingIngredient._id || editingIngredient.id;
+        payload.stockByBranch = editingIngredient.stockByBranch;
+        payload.batches = editingIngredient.batches;
+      }
+
+      await InventoryService.saveIngredientRemote(payload);
+      closeFormModal();
+      setNotice(editingIngredient ? 'Ingredient updated successfully.' : 'Ingredient added successfully.');
       loadData();
     } catch (err) {
       setFormError(err.message || 'Error saving ingredient');
     }
   };
 
+  const handleDeleteIngredient = async (ing) => {
+    if (!ing || deleting) return;
+    setDeleting(true);
+    setError('');
+    setNotice('');
+    try {
+      await InventoryService.deleteIngredientRemote(ing.id || ing._id);
+      setDeleteConfirmTarget(null);
+      setNotice(`Ingredient "${ing.name}" deleted successfully.`);
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to delete ingredient');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const getBranchStock = (ing) => {
-    if (branchId === 'all') {
+    if (selectedBranch === 'all') {
       return Object.values(ing.stockByBranch || {}).reduce((s, v) => s + (Number(v) || 0), 0);
     }
-    return Number(ing.stockByBranch?.[branchId] || 0);
+    return Number(ing.stockByBranch?.[selectedBranch] || 0);
+  };
+
+  const getStatusClass = (level) => {
+    if (level === 'IN_STOCK') return 'is-in-stock';
+    if (level === 'LOW_STOCK') return 'is-low-stock';
+    if (level === 'CRITICAL') return 'is-critical';
+    if (level === 'OUT_OF_STOCK') return 'is-out-of-stock';
+    return 'is-inactive';
   };
 
   return (
-    <div className="inv-ingredients-page">
-      {/* Action Toolbar */}
-      <div className="inv-toolbar">
-        <div className="inv-search-box">
-          <span aria-hidden="true" style={{ opacity: 0.6, fontSize: '15px' }}>⌕</span>
+    <div className="employees-page">
+      {/* Heading matching Images 1-4 */}
+      <div className="employees-heading">
+        <div>
+          <h2>Ingredients</h2>
+          <p>View your ingredients, stock levels, and branch assignments.</p>
+        </div>
+
+        <div className="employees-heading-actions">
+          <button
+            type="button"
+            className="employees-button employees-button-primary"
+            onClick={openAddModal}
+          >
+            <Plus size={16} />
+            + Add Ingredient
+          </button>
+          <button
+            type="button"
+            className="employees-button employees-button-secondary"
+            onClick={() => loadData(true)}
+            disabled={isSyncing}
+          >
+            <RefreshCw size={16} className={isSyncing ? 'employees-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {notice && (
+        <div className="employees-notice" role="status">
+          {notice}
+        </div>
+      )}
+
+      {error && (
+        <div className="employees-error" role="alert">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Filter Toolbar matching Images 1-4 */}
+      <div className="employees-toolbar">
+        <label className="employees-search">
+          <Search size={18} />
           <input
-            type="text"
-            placeholder="Search ingredient name, SKU..."
+            type="search"
+            placeholder="Search name, SKU, or category..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-        </div>
+        </label>
 
-        <div className="inv-filter-group">
+        <label className="employees-filter">
+          <span>Category</span>
           <select
-            className="inv-select"
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            aria-label="Filter by category"
           >
-            <option value="ALL">All Categories</option>
-            {categories.map(c => (
+            <option value="ALL">All categories</option>
+            {categories.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
+        </label>
 
+        <label className="employees-filter">
+          <span>Branch</span>
           <select
-            className="inv-select"
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+          >
+            <option value="all">All branches</option>
+            {branches.map((b) => (
+              <option key={b.id || b._id} value={b.id || b._id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="employees-filter">
+          <span>Stock status</span>
+          <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            aria-label="Filter by stock status"
           >
-            <option value="ALL">All Stock Levels</option>
+            <option value="ALL">All statuses</option>
             <option value="IN_STOCK">Adequate Stock</option>
             <option value="LOW_STOCK">Low Stock</option>
             <option value="CRITICAL">Critically Low</option>
             <option value="OUT_OF_STOCK">Out of Stock</option>
           </select>
-
-          <button
-            type="button"
-            className="inv-btn inv-btn-primary"
-            onClick={() => setIsAddModalOpen(true)}
-          >
-            + Add New Ingredient
-          </button>
-        </div>
+        </label>
       </div>
 
-      {/* Main Ingredient Table */}
-      <div className="inv-card">
-        <div className="inv-card-header">
+      {/* Table Card matching People & HR and Actions from Image 5 */}
+      <div className="employees-table-card">
+        <div className="employees-table-heading">
           <div>
-            <h3>Ingredient Catalog & Stock Levels</h3>
+            <h3>All Ingredients</h3>
             <p>
-              Showing {ingredients.length} items • Location: {branchId === 'all' ? 'All Branches (Enterprise)' : branchId}
+              {ingredients.length} result{ingredients.length === 1 ? '' : 's'}
             </p>
           </div>
         </div>
-        <div className="inv-card-body" style={{ padding: 0 }}>
-          <div className="inv-table-wrapper">
-            <table className="inv-table">
+
+        {ingredients.length === 0 ? (
+          <div className="employees-empty-state">
+            <Package size={26} />
+            <h3>No ingredient records found</h3>
+            <p>Try changing the filters or add a new ingredient record.</p>
+          </div>
+        ) : (
+          <div className="employees-table-scroll">
+            <table className="employees-table">
               <thead>
                 <tr>
-                  <th style={{ width: '130px', whiteSpace: 'nowrap' }}>SKU</th>
-                  <th>Ingredient Name</th>
+                  <th>Ingredient</th>
+                  <th>SKU</th>
                   <th>Category</th>
-                  <th>Current Stock</th>
-                  <th>Min / Reorder</th>
+                  <th>Stock Level</th>
+                  <th>Thresholds</th>
                   <th>Unit Cost</th>
                   <th>Total Value</th>
                   <th>Status</th>
-                  <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
+                  <th style={{ width: '230px' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {ingredients.length === 0 ? (
-                  <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '30px', color: 'var(--color-text-muted)' }}>
-                      No ingredients found matching your search and filter criteria.
-                    </td>
-                  </tr>
-                ) : (
-                  ingredients.map((ing) => {
-                    const qty = getBranchStock(ing);
-                    const status = InventoryService.calculateStockStatus(ing, branchId);
-                    const totalVal = Math.round(qty * (Number(ing.unitCost) || 0));
+                {ingredients.map((ing) => {
+                  const qty = getBranchStock(ing);
+                  const status = InventoryService.calculateStockStatus(ing, selectedBranch);
+                  const totalVal = Math.round(qty * (Number(ing.unitCost) || 0));
 
-                    return (
-                      <tr key={ing.id}>
-                        <td className="inv-cell-code"><code>{ing.sku}</code></td>
-                        <td>
-                          <strong>{ing.name}</strong>
-                          <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-                            Base Unit: {ing.baseUnit}
+                  return (
+                    <tr key={ing.id || ing._id}>
+                      <td>
+                        <div className="employees-person">
+                          <span className="employees-avatar">
+                            {(ing.name || 'I').trim().charAt(0).toUpperCase()}
+                          </span>
+                          <div className="employees-person-details">
+                            <strong>{ing.name}</strong>
+                            <span>Base Unit: {ing.baseUnit}</span>
                           </div>
-                        </td>
-                        <td className="inv-cell-nowrap">{ing.category}</td>
-                        <td className="inv-cell-nowrap">
-                          <strong style={{ fontSize: '14px', color: qty <= 0 ? 'var(--color-error)' : 'inherit' }}>
-                            {qty} {ing.baseUnit}
-                          </strong>
-                        </td>
-                        <td className="inv-cell-nowrap">
-                          <span>{ing.minThreshold} {ing.baseUnit}</span>
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: '11px' }}> / {ing.reorderLevel || '-'}</span>
-                        </td>
-                        <td className="inv-cell-amount">₹{ing.unitCost}</td>
-                        <td className="inv-cell-amount"><strong>₹{totalVal.toLocaleString()}</strong></td>
-                        <td className="inv-cell-badge"><StockBadge status={status} /></td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', gap: '6px' }}>
-                            <button
-                              type="button"
-                              className="inv-btn inv-btn-sm inv-btn-secondary"
-                              title="Inspect Batch Expiry Details"
-                              onClick={() => setBatchTarget(ing)}
-                            >
-                              Batches
-                            </button>
-                            <button
-                              type="button"
-                              className="inv-btn inv-btn-sm inv-btn-gold"
-                              title="Adjust Physical Count"
-                              onClick={() => setAdjustTarget(ing)}
-                            >
-                              Adjust
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                        </div>
+                      </td>
+                      <td>
+                        <code>{ing.sku}</code>
+                      </td>
+                      <td>{ing.category}</td>
+                      <td>
+                        <strong>{qty} {ing.baseUnit}</strong>
+                      </td>
+                      <td>
+                        <span>Min: {ing.minThreshold} {ing.baseUnit}</span>
+                        <span style={{ color: '#748078', fontSize: '11px', display: 'block' }}>
+                          Reorder: {ing.reorderLevel || '-'}
+                        </span>
+                      </td>
+                      <td>₹{ing.unitCost}</td>
+                      <td>
+                        <strong>₹{totalVal.toLocaleString()}</strong>
+                      </td>
+                      <td>
+                        <span className={`employees-status ${getStatusClass(status.level)}`}>
+                          {status.text}
+                        </span>
+                      </td>
+                      <td>
+                        {/* Image 5: Edit | Deactivate/Adjust | Delete Action Group */}
+                        <div className="employees-row-actions">
+                          <button
+                            type="button"
+                            className="employees-button employees-button-secondary"
+                            onClick={() => openEditModal(ing)}
+                          >
+                            <Pencil size={15} />
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            className="employees-button employees-button-secondary"
+                            onClick={() => setAdjustTarget(ing)}
+                          >
+                            Adjust
+                          </button>
+
+                          <button
+                            type="button"
+                            className="employees-button employees-button-danger"
+                            onClick={() => setDeleteConfirmTarget(ing)}
+                            title={`Delete ${ing.name}`}
+                            aria-label={`Delete ${ing.name}`}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Stock Adjustment Modal */}
@@ -262,10 +414,10 @@ export default function IngredientsPage({ branchId, branches = [] }) {
         <StockAdjustmentModal
           isOpen={!!adjustTarget}
           ingredient={adjustTarget}
-          branchId={branchId}
+          branchId={selectedBranch}
           branches={branches}
           onClose={() => setAdjustTarget(null)}
-          onAdjusted={loadData}
+          onAdjusted={() => loadData()}
         />
       )}
 
@@ -279,140 +431,206 @@ export default function IngredientsPage({ branchId, branches = [] }) {
         />
       )}
 
-      {/* Add New Ingredient Modal */}
-      {isAddModalOpen && (
-        <div className="inv-modal-overlay">
-          <div className="inv-modal-content">
-            <div className="inv-modal-header">
-              <h3>Register New Ingredient</h3>
-              <button type="button" className="inv-modal-close" onClick={() => setIsAddModalOpen(false)}>✕</button>
+      {/* Add / Edit Ingredient Modal matching People & HR Form Modals */}
+      {isFormOpen && (
+        <div
+          className="employees-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeFormModal();
+          }}
+        >
+          <div className="employees-modal" role="dialog" aria-modal="true">
+            <div className="employees-modal-heading">
+              <div>
+                <p className="employees-eyebrow">INGREDIENT CONFIGURATION</p>
+                <h3>{editingIngredient ? 'Edit Ingredient' : 'Add New Ingredient'}</h3>
+              </div>
+              <button
+                type="button"
+                className="employees-modal-close"
+                onClick={closeFormModal}
+                aria-label="Close form"
+              >
+                <X size={20} />
+              </button>
             </div>
-            <form onSubmit={handleCreateIngredient}>
-              <div className="inv-modal-body">
-                {formError && <div className="inv-alert-banner inv-alert-danger">{formError}</div>}
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Ingredient Name *</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      placeholder="e.g. Fresh Sweet Basil"
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="inv-form-group">
-                    <label>SKU (Auto or Custom)</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      placeholder="e.g. ING-HRB-009"
-                      value={form.sku}
-                      onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                    />
-                  </div>
-                </div>
+            {formError && (
+              <div className="employees-error" role="alert">
+                <AlertCircle size={18} />
+                <span>{formError}</span>
+              </div>
+            )}
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Category *</label>
-                    <select
-                      className="inv-form-control"
-                      value={form.category}
-                      onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    >
-                      {categories.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="inv-form-group">
-                    <label>Base Measurement Unit *</label>
-                    <select
-                      className="inv-form-control"
-                      value={form.baseUnit}
-                      onChange={(e) => setForm({ ...form, baseUnit: e.target.value })}
-                    >
-                      <option value="kg">Kilograms (kg)</option>
-                      <option value="g">Grams (g)</option>
-                      <option value="L">Liters (L)</option>
-                      <option value="ml">Milliliters (ml)</option>
-                      <option value="pcs">Pieces (pcs)</option>
-                      <option value="can">Can / Tin</option>
-                      <option value="box">Box</option>
-                    </select>
-                  </div>
-                </div>
+            <form onSubmit={handleSaveIngredient}>
+              <div className="employees-form-grid">
+                <label className="employees-field-full">
+                  Ingredient Name *
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="e.g. Organic Roma Tomatoes"
+                    required
+                  />
+                </label>
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Standard Unit Cost (₹) *</label>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      className="inv-form-control"
-                      placeholder="450"
-                      value={form.unitCost}
-                      onChange={(e) => setForm({ ...form, unitCost: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="inv-form-group">
-                    <label>Primary Supplier</label>
-                    <select
-                      className="inv-form-control"
-                      value={form.primarySupplierId}
-                      onChange={(e) => setForm({ ...form, primarySupplierId: e.target.value })}
-                    >
-                      <option value="">Select Preferred Supplier...</option>
-                      {suppliers.map(s => (
-                        <option key={s.id} value={s.id}>{s.name} ({s.category})</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                <label>
+                  SKU Code
+                  <input
+                    type="text"
+                    value={form.sku}
+                    onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                    placeholder="Auto-generated if blank"
+                  />
+                </label>
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Minimum Stock Threshold *</label>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      className="inv-form-control"
-                      placeholder="10"
-                      value={form.minThreshold}
-                      onChange={(e) => setForm({ ...form, minThreshold: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="inv-form-group">
-                    <label>Reorder Point Trigger</label>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      className="inv-form-control"
-                      placeholder="15"
-                      value={form.reorderLevel}
-                      onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })}
-                    />
-                  </div>
-                </div>
+                <label>
+                  Category *
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    required
+                  >
+                    {categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Base Unit *
+                  <select
+                    value={form.baseUnit}
+                    onChange={(e) => setForm({ ...form, baseUnit: e.target.value })}
+                    required
+                  >
+                    <option value="kg">Kilograms (kg)</option>
+                    <option value="g">Grams (g)</option>
+                    <option value="L">Liters (L)</option>
+                    <option value="ml">Milliliters (ml)</option>
+                    <option value="pcs">Pieces (pcs)</option>
+                    <option value="box">Box (box)</option>
+                  </select>
+                </label>
+
+                <label>
+                  Unit Cost (₹) *
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.unitCost}
+                    onChange={(e) => setForm({ ...form, unitCost: e.target.value })}
+                    placeholder="0.00"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Min Stock Threshold *
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={form.minThreshold}
+                    onChange={(e) => setForm({ ...form, minThreshold: e.target.value })}
+                    placeholder="e.g. 10"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Reorder Level
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={form.reorderLevel}
+                    onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })}
+                    placeholder="Default 1.3x min"
+                  />
+                </label>
+
+                <label className="employees-field-full">
+                  Primary Supplier
+                  <select
+                    value={form.primarySupplierId}
+                    onChange={(e) => setForm({ ...form, primarySupplierId: e.target.value })}
+                  >
+                    <option value="">Select primary supplier (optional)</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+                    ))}
+                  </select>
+                </label>
               </div>
 
-              <div className="inv-modal-footer">
-                <button type="button" className="inv-btn inv-btn-secondary" onClick={() => setIsAddModalOpen(false)}>
+              <div className="employees-form-actions">
+                <button
+                  type="button"
+                  className="employees-button employees-button-secondary"
+                  onClick={closeFormModal}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="inv-btn inv-btn-primary">
-                  Save Ingredient
+                <button
+                  type="submit"
+                  className="employees-button employees-button-primary"
+                >
+                  {editingIngredient ? 'Save Changes' : 'Create Ingredient'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal (Standardized) */}
+      {deleteConfirmTarget && (
+        <div
+          className="employees-delete-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !deleting) setDeleteConfirmTarget(null);
+          }}
+        >
+          <div
+            className="employees-delete-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-ingredient-title"
+            aria-describedby="delete-ingredient-description"
+          >
+            <div className="employees-delete-icon">
+              <Trash2 size={24} />
+            </div>
+
+            <h3 id="delete-ingredient-title">Delete Ingredient?</h3>
+
+            <p id="delete-ingredient-description">
+              Are you sure you want to permanently delete{' '}
+              <strong>{deleteConfirmTarget.name}</strong> ({deleteConfirmTarget.sku})? This action cannot be undone.
+            </p>
+
+            <div className="employees-delete-actions">
+              <button
+                type="button"
+                className="employees-button employees-button-secondary"
+                onClick={() => setDeleteConfirmTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="employees-button employees-button-danger"
+                onClick={() => handleDeleteIngredient(deleteConfirmTarget)}
+                disabled={deleting}
+              >
+                <Trash2 size={16} />
+                {deleting ? 'Deleting...' : 'Delete Ingredient'}
+              </button>
+            </div>
           </div>
         </div>
       )}

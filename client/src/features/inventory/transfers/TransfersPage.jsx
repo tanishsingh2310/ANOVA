@@ -1,27 +1,46 @@
 import { useState, useEffect } from 'react';
+import {
+  Search,
+  RefreshCw,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  AlertCircle,
+  ArrowRightLeft
+} from 'lucide-react';
 import { MovementService } from '../services/movementService';
 import { InventoryService } from '../services/inventoryService';
-import StockBadge from '../components/StockBadge';
-import '../../../styles/inventory-transfers.css';
 
 export default function TransfersPage({ branchId, branches = [] }) {
   const [transfers, setTransfers] = useState([]);
   const [ingredients, setIngredients] = useState([]);
+  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
 
-  // New Transfer Modal
+  // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [fromBranch, setFromBranch] = useState(branches[0]?.id || 'b_downtown');
-  const [toBranch, setToBranch] = useState(branches[1]?.id || 'b_uptown');
+  const [fromBranch, setFromBranch] = useState(branches[0]?.id || branches[0]?._id || '');
+  const [toBranch, setToBranch] = useState(branches[1]?.id || branches[1]?._id || branches[0]?.id || branches[0]?._id || '');
   const [transferLines, setTransferLines] = useState([{ ingredientId: '', qty: '' }]);
   const [transferNotes, setTransferNotes] = useState('');
   const [error, setError] = useState('');
+  const [viewDetailsTarget, setViewDetailsTarget] = useState(null);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
+  const [notice, setNotice] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const loadData = async () => {
+  useEffect(() => {
+    setSelectedBranch(branchId);
+    if (branchId !== 'all') setFromBranch(branchId);
+  }, [branchId]);
+
+  const loadData = async (refresh = false) => {
     const list = MovementService.getTransfers({
-      branchId,
+      branchId: selectedBranch,
       status: statusFilter
     });
     setTransfers(list);
@@ -30,15 +49,16 @@ export default function TransfersPage({ branchId, branches = [] }) {
     setIsSyncing(true);
     try {
       await Promise.all([
-        MovementService.syncTransfersFromBackend(branchId),
-        InventoryService.syncFromBackend(branchId)
+        MovementService.syncTransfersFromBackend(selectedBranch),
+        InventoryService.syncFromBackend(selectedBranch)
       ]);
       const fresh = MovementService.getTransfers({
-        branchId,
+        branchId: selectedBranch,
         status: statusFilter
       });
       setTransfers(fresh);
       setIngredients(InventoryService.getIngredients());
+      if (refresh) setNotice('Transfers refreshed.');
     } catch (err) {
       console.warn('Transfers sync error:', err.message);
     } finally {
@@ -48,19 +68,28 @@ export default function TransfersPage({ branchId, branches = [] }) {
 
   useEffect(() => {
     loadData();
-  }, [branchId, statusFilter]);
+  }, [selectedBranch, statusFilter]);
 
   const handleReceive = async (transferId) => {
     try {
       await MovementService.receiveTransferRemote({
         transferId,
-        receivedBy: 'Arjun Verma (Director)'
+        receivedBy: 'Store Manager'
       });
-      await InventoryService.syncFromBackend(branchId);
+      await InventoryService.syncFromBackend(selectedBranch);
+      setNotice('Transfer received and stock credited successfully.');
       loadData();
     } catch (err) {
       alert(err.message || 'Error receiving transfer');
     }
+  };
+
+  const handleAddLine = () => {
+    setTransferLines([...transferLines, { ingredientId: '', qty: '' }]);
+  };
+
+  const handleRemoveLine = (idx) => {
+    setTransferLines(transferLines.filter((_, i) => i !== idx));
   };
 
   const handleLineChange = (index, field, value) => {
@@ -69,22 +98,14 @@ export default function TransfersPage({ branchId, branches = [] }) {
     setTransferLines(updated);
   };
 
-  const addLine = () => {
-    setTransferLines([...transferLines, { ingredientId: '', qty: '' }]);
-  };
-
-  const removeLine = (idx) => {
-    setTransferLines(transferLines.filter((_, i) => i !== idx));
-  };
-
-  const handleDispatch = async (e) => {
+  const handleDispatchTransfer = async (e) => {
     e.preventDefault();
     if (fromBranch === toBranch) {
       setError('Origin and destination branches must be different');
       return;
     }
-    if (transferLines.some(l => !l.ingredientId || !l.qty || Number(l.qty) <= 0)) {
-      setError('Please provide valid ingredients and transfer quantities');
+    if (!transferLines.some(l => l.ingredientId && Number(l.qty) > 0)) {
+      setError('Please add at least one line item with a positive quantity');
       return;
     }
 
@@ -92,7 +113,7 @@ export default function TransfersPage({ branchId, branches = [] }) {
       await MovementService.dispatchTransferRemote({
         fromBranchId: fromBranch,
         toBranchId: toBranch,
-        items: transferLines.map(l => {
+        items: transferLines.filter(l => l.ingredientId && Number(l.qty) > 0).map(l => {
           const ing = ingredients.find(i => i.id === l.ingredientId);
           return {
             ingredientId: l.ingredientId,
@@ -102,244 +123,490 @@ export default function TransfersPage({ branchId, branches = [] }) {
           };
         }),
         notes: transferNotes,
-        dispatchedBy: 'Arjun Verma (Logistics Lead)'
+        dispatchedBy: 'Logistics Supervisor'
       });
-      await InventoryService.syncFromBackend(branchId);
+      await InventoryService.syncFromBackend(selectedBranch);
 
       setIsModalOpen(false);
       setTransferLines([{ ingredientId: '', qty: '' }]);
       setTransferNotes('');
       setError('');
+      setNotice('Transfer dispatched successfully.');
       loadData();
     } catch (err) {
       setError(err.message || 'Transfer dispatch failed');
     }
   };
 
+  const handleDeleteTransfer = async (tr) => {
+    if (!tr || deleting) return;
+    setDeleting(true);
+    setError('');
+    setNotice('');
+    try {
+      await MovementService.deleteTransferRemote(tr.id || tr._id);
+      setDeleteConfirmTarget(null);
+      setNotice(`Transfer ${tr.transferNumber} deleted.`);
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to delete transfer');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const branchMap = {};
-  branches.forEach(b => { branchMap[b.id] = b.name; });
+  branches.forEach(b => { branchMap[b.id || b._id] = b.name; });
 
   const ingredientMap = {};
   ingredients.forEach(i => { ingredientMap[i.id] = i.name; });
 
+  const filteredTransfers = transfers.filter((tr) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    const tNum = (tr.transferNumber || '').toLowerCase();
+    const fromB = (branchMap[tr.fromBranchId] || '').toLowerCase();
+    const toB = (branchMap[tr.toBranchId] || '').toLowerCase();
+    return tNum.includes(q) || fromB.includes(q) || toB.includes(q);
+  });
+
   return (
-    <div className="inv-transfers-page">
-      {/* Toolbar */}
-      <div className="inv-toolbar">
-        <div className="inv-filter-group">
-          <select
-            className="inv-select"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            aria-label="Filter transfers by status"
-          >
-            <option value="ALL">All Transfer Statuses</option>
-            <option value="IN_TRANSIT">In-Transit Only</option>
-            <option value="RECEIVED">Received & Stocked</option>
-          </select>
+    <div className="employees-page">
+      {/* Heading matching Images 1-4 */}
+      <div className="employees-heading">
+        <div>
+          <h2>Transfers</h2>
+          <p>Track and dispatch inter-branch inventory stock transfers.</p>
         </div>
 
-        <button
-          type="button"
-          className="inv-btn inv-btn-primary"
-          onClick={() => setIsModalOpen(true)}
-        >
-          + Dispatch New Branch Transfer
-        </button>
+        <div className="employees-heading-actions">
+          <button
+            type="button"
+            className="employees-button employees-button-primary"
+            onClick={() => {
+              setError('');
+              setIsModalOpen(true);
+            }}
+          >
+            <Plus size={16} />
+            + Dispatch transfer
+          </button>
+          <button
+            type="button"
+            className="employees-button employees-button-secondary"
+            onClick={() => loadData(true)}
+            disabled={isSyncing}
+          >
+            <RefreshCw size={16} className={isSyncing ? 'employees-spin' : ''} />
+            Refresh
+          </button>
+        </div>
       </div>
 
-      {/* Transfer List */}
-      <div className="inv-card">
-        <div className="inv-card-header">
+      {notice && (
+        <div className="employees-notice" role="status">
+          {notice}
+        </div>
+      )}
+
+      {error && (
+        <div className="employees-error" role="alert">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Filter Toolbar matching Images 1-4 */}
+      <div className="employees-toolbar">
+        <label className="employees-search">
+          <Search size={18} />
+          <input
+            type="search"
+            placeholder="Search transfer number, origin, or destination..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+
+        <label className="employees-filter">
+          <span>Branch</span>
+          <select
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+          >
+            <option value="all">All branches</option>
+            {branches.map((b) => (
+              <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="employees-filter">
+          <span>Status</span>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="ALL">All statuses</option>
+            <option value="IN_TRANSIT">In-Transit</option>
+            <option value="RECEIVED">Received & Stocked</option>
+          </select>
+        </label>
+      </div>
+
+      {/* Table Card matching People & HR and Actions from Image 5 */}
+      <div className="employees-table-card">
+        <div className="employees-table-heading">
           <div>
-            <h3>Inter-Branch Stock Transfers</h3>
-            <p>Prevents double counting: stock is deducted from source and placed In-Transit until confirmed</p>
+            <h3>Inter-Branch Transfers</h3>
+            <p>
+              {filteredTransfers.length} result{filteredTransfers.length === 1 ? '' : 's'}
+            </p>
           </div>
         </div>
-        <div className="inv-card-body" style={{ padding: 0 }}>
-          <div className="inv-table-wrapper">
-            <table className="inv-table">
+
+        {filteredTransfers.length === 0 ? (
+          <div className="employees-empty-state">
+            <ArrowRightLeft size={26} />
+            <h3>No transfer records found</h3>
+            <p>Try changing the filters or dispatch a new branch transfer.</p>
+          </div>
+        ) : (
+          <div className="employees-table-scroll">
+            <table className="employees-table">
               <thead>
                 <tr>
-                  <th style={{ width: '140px', whiteSpace: 'nowrap' }}>Transfer #</th>
+                  <th>Transfer #</th>
                   <th>Origin Branch</th>
                   <th>Destination Branch</th>
                   <th>Items Transferred</th>
-                  <th style={{ width: '140px', whiteSpace: 'nowrap' }}>Dispatched Time</th>
+                  <th>Dispatched Time</th>
                   <th>Status</th>
-                  <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
+                  <th style={{ width: '230px' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {transfers.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '30px', color: 'var(--color-text-muted)' }}>
-                      No inter-branch transfers found for this filter.
+                {filteredTransfers.map((tr) => (
+                  <tr key={tr.id || tr._id}>
+                    <td>
+                      <code>{tr.transferNumber}</code>
                     </td>
-                  </tr>
-                ) : (
-                  transfers.map(tr => (
-                    <tr key={tr.id}>
-                      <td className="inv-cell-code"><code>{tr.transferNumber}</code></td>
-                      <td className="inv-cell-nowrap">{branchMap[tr.fromBranchId] || tr.fromBranchId}</td>
-                      <td className="inv-cell-nowrap">{branchMap[tr.toBranchId] || tr.toBranchId}</td>
-                      <td>
-                        {tr.items.map((it, idx) => (
-                          <div key={idx} style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
-                            • <strong>{ingredientMap[it.ingredientId] || it.ingredientId}</strong>: {it.qty} {it.unit}
-                          </div>
-                        ))}
-                      </td>
-                      <td className="inv-cell-date">
-                        <div>{tr.dispatchedAt ? tr.dispatchedAt.replace('T', ' ').slice(0, 16) : '-'}</div>
-                        <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>by {tr.dispatchedBy}</span>
-                      </td>
-                      <td className="inv-cell-badge"><StockBadge status={tr.status} /></td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td>{branchMap[tr.fromBranchId] || tr.fromBranchId}</td>
+                    <td>{branchMap[tr.toBranchId] || tr.toBranchId}</td>
+                    <td>
+                      {(tr.items || []).map((it, idx) => (
+                        <div key={idx} style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
+                          • <strong>{ingredientMap[it.ingredientId] || it.ingredientName || it.ingredientId}</strong>: {it.qty} {it.unit}
+                        </div>
+                      ))}
+                    </td>
+                    <td>
+                      <div>{tr.dispatchedAt ? tr.dispatchedAt.replace('T', ' ').slice(0, 16) : '-'}</div>
+                      <span style={{ fontSize: '11px', color: '#748078' }}>by {tr.dispatchedBy || 'Staff'}</span>
+                    </td>
+                    <td>
+                      <span
+                        className={`employees-status ${
+                          tr.status === 'RECEIVED' ? 'is-received' : 'is-in-transit'
+                        }`}
+                      >
+                        {tr.status === 'RECEIVED' ? 'Received' : 'In-Transit'}
+                      </span>
+                    </td>
+                    <td>
+                      {/* Image 5: View | Receive | Delete Action Group */}
+                      <div className="employees-row-actions">
+                        <button
+                          type="button"
+                          className="employees-button employees-button-secondary"
+                          onClick={() => setViewDetailsTarget(tr)}
+                        >
+                          <Pencil size={15} />
+                          View
+                        </button>
+
                         {tr.status === 'IN_TRANSIT' ? (
                           <button
                             type="button"
-                            className="inv-btn inv-btn-sm inv-btn-gold"
-                            onClick={() => handleReceive(tr.id)}
-                            title="Confirm receipt at destination branch"
+                            className="employees-button employees-button-secondary"
+                            onClick={() => handleReceive(tr.id || tr._id)}
                           >
-                            ✓ Receive Stock
+                            Receive
                           </button>
                         ) : (
-                          <span style={{ fontSize: '11.5px', color: 'var(--color-text-muted)' }}>
-                            Received on {tr.receivedAt ? tr.receivedAt.split('T')[0] : 'Done'}
-                          </span>
+                          <button
+                            type="button"
+                            className="employees-button employees-button-secondary"
+                            disabled
+                          >
+                            Done
+                          </button>
                         )}
-                      </td>
-                    </tr>
-                  ))
-                )}
+
+                        <button
+                          type="button"
+                          className="employees-button employees-button-danger"
+                          onClick={() => setDeleteConfirmTarget(tr)}
+                          title={`Cancel Transfer ${tr.transferNumber}`}
+                          aria-label={`Cancel Transfer ${tr.transferNumber}`}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* DISPATCH TRANSFER MODAL */}
+      {/* DISPATCH NEW TRANSFER MODAL */}
       {isModalOpen && (
-        <div className="inv-modal-overlay">
-          <div className="inv-modal-content" style={{ maxWidth: '750px' }}>
-            <div className="inv-modal-header">
-              <h3>Dispatch Inter-Branch Stock Transfer</h3>
-              <button type="button" className="inv-modal-close" onClick={() => setIsModalOpen(false)}>✕</button>
+        <div
+          className="employees-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setIsModalOpen(false);
+          }}
+        >
+          <div className="employees-modal" role="dialog" aria-modal="true" style={{ maxWidth: '700px' }}>
+            <div className="employees-modal-heading">
+              <div>
+                <p className="employees-eyebrow">BRANCH DISPATCH</p>
+                <h3>Dispatch Stock Transfer</h3>
+              </div>
+              <button
+                type="button"
+                className="employees-modal-close"
+                onClick={() => setIsModalOpen(false)}
+              >
+                <X size={20} />
+              </button>
             </div>
-            <form onSubmit={handleDispatch}>
-              <div className="inv-modal-body">
-                {error && <div className="inv-alert-banner inv-alert-danger">{error}</div>}
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Source Branch (Stock Deducted) *</label>
-                    <select
-                      className="inv-form-control"
-                      value={fromBranch}
-                      onChange={(e) => setFromBranch(e.target.value)}
-                    >
-                      {branches.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="inv-form-group">
-                    <label>Destination Branch (Receiving) *</label>
-                    <select
-                      className="inv-form-control"
-                      value={toBranch}
-                      onChange={(e) => setToBranch(e.target.value)}
-                    >
-                      {branches.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+            {error && (
+              <div className="employees-error" role="alert">
+                <AlertCircle size={18} />
+                <span>{error}</span>
+              </div>
+            )}
 
-                <div style={{ marginTop: '16px', marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: 700 }}>TRANSFER ITEMS</label>
-                    <button type="button" className="inv-btn inv-btn-sm inv-btn-secondary" onClick={addLine}>
-                      + Add Item
-                    </button>
-                  </div>
+            <form onSubmit={handleDispatchTransfer}>
+              <div className="employees-form-grid">
+                <label>
+                  Origin Branch (Source) *
+                  <select
+                    value={fromBranch}
+                    onChange={(e) => setFromBranch(e.target.value)}
+                    required
+                  >
+                    {branches.map((b) => (
+                      <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                    ))}
+                  </select>
+                </label>
 
-                  {transferLines.map((line, idx) => {
-                    const selectedIng = ingredients.find(i => i.id === line.ingredientId);
-                    const sourceAvailable = selectedIng ? Number(selectedIng.stockByBranch?.[fromBranch] || 0) : 0;
+                <label>
+                  Destination Branch (Target) *
+                  <select
+                    value={toBranch}
+                    onChange={(e) => setToBranch(e.target.value)}
+                    required
+                  >
+                    {branches.map((b) => (
+                      <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                    ))}
+                  </select>
+                </label>
 
-                    return (
-                      <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-                        <select
-                          className="inv-form-control"
-                          style={{ flex: 3 }}
-                          value={line.ingredientId}
-                          onChange={(e) => handleLineChange(idx, 'ingredientId', e.target.value)}
-                          required
-                        >
-                          <option value="">Select Ingredient...</option>
-                          {ingredients.map(ing => (
-                            <option key={ing.id} value={ing.id}>
-                              {ing.name} (Avail: {ing.stockByBranch?.[fromBranch] || 0} {ing.baseUnit})
-                            </option>
-                          ))}
-                        </select>
-
-                        <input
-                          type="number"
-                          step="any"
-                          min="0.1"
-                          max={sourceAvailable > 0 ? sourceAvailable : undefined}
-                          className="inv-form-control"
-                          placeholder="Transfer Qty"
-                          style={{ flex: 1.5 }}
-                          value={line.qty}
-                          onChange={(e) => handleLineChange(idx, 'qty', e.target.value)}
-                          required
-                        />
-
-                        <span style={{ fontSize: '12px', width: '60px', color: 'var(--color-text-muted)' }}>
-                          {selectedIng?.baseUnit || 'unit'}
-                        </span>
-
-                        {transferLines.length > 1 && (
-                          <button
-                            type="button"
-                            className="inv-btn inv-btn-sm inv-btn-danger"
-                            onClick={() => removeLine(idx)}
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="inv-form-group">
-                  <label>Transfer Notes & Van / Driver Details</label>
-                  <textarea
-                    className="inv-form-control"
-                    rows="2"
-                    placeholder="Courier dispatch note, driver contact, vehicle registration..."
+                <label className="employees-field-full">
+                  Transfer Dispatch Notes
+                  <input
+                    type="text"
                     value={transferNotes}
                     onChange={(e) => setTransferNotes(e.target.value)}
-                  ></textarea>
-                </div>
+                    placeholder="e.g. Urgently requested for evening service rush"
+                  />
+                </label>
               </div>
 
-              <div className="inv-modal-footer">
-                <button type="button" className="inv-btn inv-btn-secondary" onClick={() => setIsModalOpen(false)}>
+              <div style={{ marginTop: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#52645b' }}>Transfer Items</span>
+                  <button
+                    type="button"
+                    className="employees-button employees-button-secondary"
+                    onClick={handleAddLine}
+                    style={{ minHeight: '30px', height: '30px', padding: '4px 8px' }}
+                  >
+                    + Add Item
+                  </button>
+                </div>
+
+                {transferLines.map((line, idx) => (
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                    <select
+                      value={line.ingredientId}
+                      onChange={(e) => handleLineChange(idx, 'ingredientId', e.target.value)}
+                      required
+                    >
+                      <option value="">Select Ingredient</option>
+                      {ingredients.map((ing) => (
+                        <option key={ing.id} value={ing.id}>{ing.name} ({ing.sku})</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      placeholder="Quantity"
+                      min="0.1"
+                      step="any"
+                      value={line.qty}
+                      onChange={(e) => handleLineChange(idx, 'qty', e.target.value)}
+                      required
+                    />
+                    {transferLines.length > 1 && (
+                      <button
+                        type="button"
+                        className="employees-button employees-button-danger"
+                        onClick={() => handleRemoveLine(idx)}
+                        style={{ minHeight: '33px', height: '33px' }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="employees-form-actions">
+                <button
+                  type="button"
+                  className="employees-button employees-button-secondary"
+                  onClick={() => setIsModalOpen(false)}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="inv-btn inv-btn-primary">
-                  Dispatch Transfer (Deduct Source Stock)
+                <button
+                  type="submit"
+                  className="employees-button employees-button-primary"
+                >
+                  Dispatch Transfer
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW DETAILS MODAL */}
+      {viewDetailsTarget && (
+        <div
+          className="employees-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setViewDetailsTarget(null);
+          }}
+        >
+          <div className="employees-modal" role="dialog" aria-modal="true" style={{ maxWidth: '600px' }}>
+            <div className="employees-modal-heading">
+              <div>
+                <p className="employees-eyebrow">TRANSFER RECORD</p>
+                <h3>{viewDetailsTarget.transferNumber}</h3>
+              </div>
+              <button
+                type="button"
+                className="employees-modal-close"
+                onClick={() => setViewDetailsTarget(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ marginBottom: '16px', fontSize: '13px', color: '#52645a' }}>
+              <p><strong>From:</strong> {branchMap[viewDetailsTarget.fromBranchId] || viewDetailsTarget.fromBranchId}</p>
+              <p><strong>To:</strong> {branchMap[viewDetailsTarget.toBranchId] || viewDetailsTarget.toBranchId}</p>
+              <p><strong>Status:</strong> {viewDetailsTarget.status}</p>
+              <p><strong>Dispatched:</strong> {viewDetailsTarget.dispatchedAt || '—'}</p>
+              <p><strong>Received:</strong> {viewDetailsTarget.receivedAt || 'Pending in-transit'}</p>
+            </div>
+
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#52645b', display: 'block', marginBottom: '8px' }}>Transferred Ingredients</span>
+            <div className="employees-table-scroll" style={{ marginBottom: '20px' }}>
+              <table className="employees-table">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Quantity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(viewDetailsTarget.items || []).map((it, idx) => (
+                    <tr key={idx}>
+                      <td><strong>{ingredientMap[it.ingredientId] || it.ingredientName || it.ingredientId}</strong></td>
+                      <td>{it.qty} {it.unit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="employees-form-actions">
+              <button
+                type="button"
+                className="employees-button employees-button-secondary"
+                onClick={() => setViewDetailsTarget(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal (Standardized) */}
+      {deleteConfirmTarget && (
+        <div
+          className="employees-delete-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !deleting) setDeleteConfirmTarget(null);
+          }}
+        >
+          <div
+            className="employees-delete-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-transfer-title"
+            aria-describedby="delete-transfer-description"
+          >
+            <div className="employees-delete-icon">
+              <Trash2 size={24} />
+            </div>
+
+            <h3 id="delete-transfer-title">Delete Transfer?</h3>
+
+            <p id="delete-transfer-description">
+              Are you sure you want to permanently delete transfer <strong>{deleteConfirmTarget.transferNumber}</strong>? This action cannot be undone.
+            </p>
+
+            <div className="employees-delete-actions">
+              <button
+                type="button"
+                className="employees-button employees-button-secondary"
+                onClick={() => setDeleteConfirmTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="employees-button employees-button-danger"
+                onClick={() => handleDeleteTransfer(deleteConfirmTarget)}
+                disabled={deleting}
+              >
+                <Trash2 size={16} />
+                {deleting ? 'Deleting...' : 'Delete Transfer'}
+              </button>
+            </div>
           </div>
         </div>
       )}

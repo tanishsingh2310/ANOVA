@@ -1357,3 +1357,91 @@
   gap: 12px;
   margin-top: 24px;
 }
+
+/* =========================================
+   Delete Confirmation Modal (Standardized)
+========================================= */
+
+.employees-delete-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(19 34 27 / 48%);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+.employees-delete-modal {
+  width: 100%;
+  max-width: 420px;
+  padding: 28px;
+  border: 1px solid var(--emp-border, #e3e9e3);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgb(16 35 25 / 22%);
+  animation: employees-delete-enter 160ms ease-out;
+  box-sizing: border-box;
+}
+
+.employees-delete-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.employees-delete-modal h3 {
+  margin: 0 0 10px;
+  color: #26342f;
+  font-size: 21px;
+  font-weight: 700;
+}
+
+.employees-delete-modal p {
+  margin: 0;
+  color: #748078;
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.employees-delete-modal p strong {
+  color: #37483f;
+}
+
+.employees-delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.employees-delete-actions .employees-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+@keyframes employees-delete-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+

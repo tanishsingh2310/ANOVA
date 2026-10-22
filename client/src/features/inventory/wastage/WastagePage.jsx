@@ -1,27 +1,47 @@
 import { useState, useEffect } from 'react';
+import {
+  Search,
+  RefreshCw,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  AlertCircle,
+  AlertTriangle
+} from 'lucide-react';
 import { MovementService } from '../services/movementService';
 import { InventoryService } from '../services/inventoryService';
-import '../../../styles/inventory-wastage.css';
 
 export default function WastagePage({ branchId, branches = [] }) {
   const [wastageList, setWastageList] = useState([]);
   const [ingredients, setIngredients] = useState([]);
+  const [search, setSearch] = useState('');
   const [reasonFilter, setReasonFilter] = useState('ALL');
+  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
 
-  // Modal
+  // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [targetBranch, setTargetBranch] = useState(branchId === 'all' ? (branches[0]?.id || 'b_downtown') : branchId);
+  const [targetBranch, setTargetBranch] = useState(branchId === 'all' ? (branches[0]?.id || branches[0]?._id || '') : branchId);
   const [selectedIngId, setSelectedIngId] = useState('');
   const [wasteQty, setWasteQty] = useState('');
   const [reason, setReason] = useState('EXPIRED');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
+  const [viewNotesTarget, setViewNotesTarget] = useState(null);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
+  const [notice, setNotice] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const loadData = async () => {
+  useEffect(() => {
+    setSelectedBranch(branchId);
+    if (branchId !== 'all') setTargetBranch(branchId);
+  }, [branchId]);
+
+  const loadData = async (refresh = false) => {
     const list = MovementService.getWastage({
-      branchId,
+      branchId: selectedBranch,
       reason: reasonFilter
     });
     setWastageList(list);
@@ -30,15 +50,16 @@ export default function WastagePage({ branchId, branches = [] }) {
     setIsSyncing(true);
     try {
       await Promise.all([
-        MovementService.syncWastageFromBackend(branchId),
-        InventoryService.syncFromBackend(branchId)
+        MovementService.syncWastageFromBackend(selectedBranch),
+        InventoryService.syncFromBackend(selectedBranch)
       ]);
       const fresh = MovementService.getWastage({
-        branchId,
+        branchId: selectedBranch,
         reason: reasonFilter
       });
       setWastageList(fresh);
       setIngredients(InventoryService.getIngredients());
+      if (refresh) setNotice('Wastage log refreshed.');
     } catch (err) {
       console.warn('Wastage sync error:', err.message);
     } finally {
@@ -48,121 +69,178 @@ export default function WastagePage({ branchId, branches = [] }) {
 
   useEffect(() => {
     loadData();
-  }, [branchId, reasonFilter]);
-
-  const selectedIng = ingredients.find(i => i.id === selectedIngId);
-  const availableStock = selectedIng ? Number(selectedIng.stockByBranch?.[targetBranch] || 0) : 0;
-  const unitCost = Number(selectedIng?.unitCost || 0);
-  const calculatedLoss = Math.round(unitCost * (Number(wasteQty) || 0) * 100) / 100;
+  }, [selectedBranch, reasonFilter]);
 
   const handleRecordWaste = async (e) => {
     e.preventDefault();
     if (!selectedIngId || !wasteQty || Number(wasteQty) <= 0) {
-      setError('Please select an ingredient and enter a valid quantity');
-      return;
-    }
-    if (Number(wasteQty) > availableStock) {
-      setError(`Cannot write off ${wasteQty} ${selectedIng.baseUnit}. Only ${availableStock} available in this branch.`);
+      setError('Please choose an ingredient and enter a positive quantity');
       return;
     }
 
     try {
       await MovementService.logWastageRemote({
-        branchId: targetBranch,
+        branchId: targetBranch || (branches[0]?.id || branches[0]?._id),
         ingredientId: selectedIngId,
         qty: Number(wasteQty),
         reason,
         notes,
-        loggedBy: 'Arjun Verma (Chef Director)'
+        loggedBy: 'Kitchen Staff'
       });
-      await InventoryService.syncFromBackend(branchId);
+      await InventoryService.syncFromBackend(targetBranch || selectedBranch);
 
       setIsModalOpen(false);
       setSelectedIngId('');
       setWasteQty('');
       setNotes('');
       setError('');
+      setNotice('Wastage recorded and stock written off successfully.');
       loadData();
     } catch (err) {
-      setError(err.message || 'Error recording wastage');
+      setError(err.message || 'Wastage logging failed');
+    }
+  };
+
+  const handleDeleteWastage = async (w) => {
+    if (!w || deleting) return;
+    setDeleting(true);
+    setError('');
+    setNotice('');
+    try {
+      await MovementService.deleteWastageRemote(w.id || w._id);
+      setDeleteConfirmTarget(null);
+      setNotice(`Wastage record ${w.wasteNumber} deleted.`);
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to delete record');
+    } finally {
+      setDeleting(false);
     }
   };
 
   const branchMap = {};
-  branches.forEach(b => { branchMap[b.id] = b.name; });
+  branches.forEach(b => { branchMap[b.id || b._id] = b.name; });
 
   const ingredientMap = {};
   ingredients.forEach(i => { ingredientMap[i.id] = i.name; });
 
-  const totalLoss = wastageList.reduce((sum, w) => sum + (Number(w.totalCost) || 0), 0);
+  const filteredWastage = wastageList.filter((w) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    const wNum = (w.wasteNumber || '').toLowerCase();
+    const ingName = (ingredientMap[w.ingredientId] || '').toLowerCase();
+    return wNum.includes(q) || ingName.includes(q);
+  });
 
   return (
-    <div className="inv-wastage-page">
-      {/* Top metrics summary */}
-      <div className="inv-kpi-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
-        <div className="inv-kpi-card danger">
-          <div className="inv-kpi-header">
-            <span className="inv-kpi-label">Total Spoilage & Loss Value</span>
-            <span className="dashboard-summary-indicator revenue" style={{ background: 'var(--color-error)' }} aria-hidden="true" />
-          </div>
-          <div className="inv-kpi-value" style={{ color: 'var(--color-error)' }}>
-            ₹{totalLoss.toLocaleString()}
-          </div>
-          <div className="inv-kpi-sub">{wastageList.length} incident logs recorded</div>
+    <div className="employees-page">
+      {/* Heading matching Images 1-4 */}
+      <div className="employees-heading">
+        <div>
+          <h2>Wastage & Spoilage</h2>
+          <p>Log discarded ingredients, kitchen prep losses, and track write-offs.</p>
         </div>
 
-        <div className="inv-kpi-card">
-          <div className="inv-kpi-header">
-            <span className="inv-kpi-label">Primary Loss Cause</span>
-            <span className="dashboard-summary-indicator orders" aria-hidden="true" />
-          </div>
-          <div className="inv-kpi-value" style={{ fontSize: '20px', marginTop: '4px' }}>
-            Expiration & Spoilage
-          </div>
-          <div className="inv-kpi-sub">Focus area: batch rotation & FIFO controls</div>
+        <div className="employees-heading-actions">
+          <button
+            type="button"
+            className="employees-button employees-button-primary"
+            onClick={() => {
+              setError('');
+              setIsModalOpen(true);
+            }}
+          >
+            <Plus size={16} />
+            + Record wastage
+          </button>
+          <button
+            type="button"
+            className="employees-button employees-button-secondary"
+            onClick={() => loadData(true)}
+            disabled={isSyncing}
+          >
+            <RefreshCw size={16} className={isSyncing ? 'employees-spin' : ''} />
+            Refresh
+          </button>
         </div>
       </div>
 
-      {/* Toolbar */}
-      <div className="inv-toolbar">
-        <div className="inv-filter-group">
+      {notice && (
+        <div className="employees-notice" role="status">
+          {notice}
+        </div>
+      )}
+
+      {error && (
+        <div className="employees-error" role="alert">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Filter Toolbar matching Images 1-4 */}
+      <div className="employees-toolbar">
+        <label className="employees-search">
+          <Search size={18} />
+          <input
+            type="search"
+            placeholder="Search log number or ingredient..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+
+        <label className="employees-filter">
+          <span>Branch</span>
           <select
-            className="inv-select"
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+          >
+            <option value="all">All branches</option>
+            {branches.map((b) => (
+              <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="employees-filter">
+          <span>Loss reason</span>
+          <select
             value={reasonFilter}
             onChange={(e) => setReasonFilter(e.target.value)}
-            aria-label="Filter wastage by reason"
           >
-            <option value="ALL">All Loss Reasons</option>
+            <option value="ALL">All loss reasons</option>
             <option value="EXPIRED">Expired Stock</option>
             <option value="SPOILED">Spoiled / Temperature Fluctuation</option>
-            <option value="PREP_LOSS">Kitchen Preparation Loss / Over-trim</option>
+            <option value="PREP_LOSS">Kitchen Preparation Loss</option>
             <option value="HANDLING_DAMAGE">Handling Damage / Spillage</option>
           </select>
-        </div>
-
-        <button
-          type="button"
-          className="inv-btn inv-btn-danger"
-          onClick={() => setIsModalOpen(true)}
-        >
-          + Record Wastage / Spoilage
-        </button>
+        </label>
       </div>
 
-      {/* Wastage Table */}
-      <div className="inv-card">
-        <div className="inv-card-header">
+      {/* Table Card matching People & HR and Actions from Image 5 */}
+      <div className="employees-table-card">
+        <div className="employees-table-heading">
           <div>
-            <h3>Wastage & Kitchen Spoilage Log</h3>
-            <p>Every write-off creates an audited reduction in available stock</p>
+            <h3>Wastage Log</h3>
+            <p>
+              {filteredWastage.length} result{filteredWastage.length === 1 ? '' : 's'}
+            </p>
           </div>
         </div>
-        <div className="inv-card-body" style={{ padding: 0 }}>
-          <div className="inv-table-wrapper">
-            <table className="inv-table">
+
+        {filteredWastage.length === 0 ? (
+          <div className="employees-empty-state">
+            <AlertTriangle size={26} />
+            <h3>No wastage records found</h3>
+            <p>Try changing the filters or record a new wastage write-off.</p>
+          </div>
+        ) : (
+          <div className="employees-table-scroll">
+            <table className="employees-table">
               <thead>
                 <tr>
-                  <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Log #</th>
+                  <th>Log #</th>
                   <th>Branch</th>
                   <th>Ingredient</th>
                   <th>Qty Discarded</th>
@@ -170,163 +248,264 @@ export default function WastagePage({ branchId, branches = [] }) {
                   <th>Financial Loss</th>
                   <th>Reason</th>
                   <th>Reported By</th>
-                  <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Date & Time</th>
+                  <th>Date & Time</th>
+                  <th style={{ width: '190px' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {wastageList.length === 0 ? (
-                  <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '30px', color: 'var(--color-text-muted)' }}>
-                      No wastage records found for this branch.
+                {filteredWastage.map((w) => (
+                  <tr key={w.id || w._id}>
+                    <td><code>{w.wasteNumber}</code></td>
+                    <td>{branchMap[w.branchId] || w.branchId}</td>
+                    <td><strong>{ingredientMap[w.ingredientId] || w.ingredientId}</strong></td>
+                    <td style={{ color: '#b91c1c', fontWeight: 700 }}>
+                      -{w.qty} {w.unit}
+                    </td>
+                    <td>₹{w.unitCost}</td>
+                    <td>
+                      <strong style={{ color: '#b91c1c' }}>₹{Number(w.totalCost || 0).toLocaleString()}</strong>
+                    </td>
+                    <td>
+                      <span className="employees-status is-danger">
+                        {String(w.reason || 'WASTE').replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td>{w.loggedBy || 'Kitchen Staff'}</td>
+                    <td>{w.date ? w.date.replace('T', ' ').slice(0, 16) : '-'}</td>
+                    <td>
+                      {/* Image 5: View Notes | Delete Action Group */}
+                      <div className="employees-row-actions">
+                        <button
+                          type="button"
+                          className="employees-button employees-button-secondary"
+                          onClick={() => setViewNotesTarget(w)}
+                        >
+                          <Pencil size={15} />
+                          Notes
+                        </button>
+
+                        <button
+                          type="button"
+                          className="employees-button employees-button-danger"
+                          onClick={() => setDeleteConfirmTarget(w)}
+                          title={`Delete Log ${w.wasteNumber}`}
+                          aria-label={`Delete Log ${w.wasteNumber}`}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ) : (
-                  wastageList.map(w => (
-                    <tr key={w.id}>
-                      <td className="inv-cell-code"><code>{w.wasteNumber}</code></td>
-                      <td className="inv-cell-nowrap">{branchMap[w.branchId] || w.branchId}</td>
-                      <td><strong>{ingredientMap[w.ingredientId] || w.ingredientId}</strong></td>
-                      <td className="inv-cell-nowrap" style={{ color: 'var(--color-error)', fontWeight: 600 }}>
-                        -{w.qty} {w.unit}
-                      </td>
-                      <td className="inv-cell-amount">₹{w.unitCost}</td>
-                      <td className="inv-cell-amount"><strong style={{ color: 'var(--color-error)' }}>₹{w.totalCost.toLocaleString()}</strong></td>
-                      <td>
-                        <span className="inv-badge inv-badge-danger">{w.reason.replace(/_/g, ' ')}</span>
-                        {w.notes && <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontStyle: 'italic', marginTop: '2px' }}>"{w.notes}"</div>}
-                      </td>
-                      <td className="inv-cell-nowrap">{w.loggedBy}</td>
-                      <td className="inv-cell-date">{w.date.replace('T', ' ').slice(0, 16)}</td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
-        </div>
+        )}
       </div>
 
       {/* RECORD WASTAGE MODAL */}
       {isModalOpen && (
-        <div className="inv-modal-overlay">
-          <div className="inv-modal-content">
-            <div className="inv-modal-header">
-              <h3>Record Inventory Wastage / Spoilage</h3>
-              <button type="button" className="inv-modal-close" onClick={() => setIsModalOpen(false)}>✕</button>
+        <div
+          className="employees-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setIsModalOpen(false);
+          }}
+        >
+          <div className="employees-modal" role="dialog" aria-modal="true">
+            <div className="employees-modal-heading">
+              <div>
+                <p className="employees-eyebrow">INVENTORY WRITE-OFF</p>
+                <h3>Record Wastage / Spoilage</h3>
+              </div>
+              <button
+                type="button"
+                className="employees-modal-close"
+                onClick={() => setIsModalOpen(false)}
+              >
+                <X size={20} />
+              </button>
             </div>
+
+            {error && (
+              <div className="employees-error" role="alert">
+                <AlertCircle size={18} />
+                <span>{error}</span>
+              </div>
+            )}
+
             <form onSubmit={handleRecordWaste}>
-              <div className="inv-modal-body">
-                {error && <div className="inv-alert-banner inv-alert-danger">{error}</div>}
-
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Branch Location *</label>
-                    <select
-                      className="inv-form-control"
-                      value={targetBranch}
-                      onChange={(e) => setTargetBranch(e.target.value)}
-                    >
-                      {branches.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="inv-form-group">
-                    <label>Select Ingredient *</label>
-                    <select
-                      className="inv-form-control"
-                      value={selectedIngId}
-                      onChange={(e) => setSelectedIngId(e.target.value)}
-                      required
-                    >
-                      <option value="">Select Ingredient...</option>
-                      {ingredients.map(ing => (
-                        <option key={ing.id} value={ing.id}>
-                          {ing.name} ({ing.sku})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {selectedIng && (
-                  <div style={{
-                    background: 'var(--color-background)',
-                    padding: '10px 14px',
-                    borderRadius: 'var(--radius-sm)',
-                    marginBottom: '14px',
-                    fontSize: '12.5px',
-                    display: 'flex',
-                    justifyContent: 'space-between'
-                  }}>
-                    <span>Available Stock: <strong>{availableStock} {selectedIng.baseUnit}</strong></span>
-                    <span>Standard Cost: <strong>₹{selectedIng.unitCost} / {selectedIng.baseUnit}</strong></span>
-                  </div>
-                )}
-
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Quantity to Discard *</label>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0.1"
-                      className="inv-form-control"
-                      placeholder="e.g. 2.5"
-                      value={wasteQty}
-                      onChange={(e) => setWasteQty(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div className="inv-form-group">
-                    <label>Calculated Monetary Impact</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      value={`₹${calculatedLoss.toLocaleString()}`}
-                      disabled
-                      style={{ fontWeight: 700, color: 'var(--color-error)', background: 'var(--color-error-bg)' }}
-                    />
-                  </div>
-                </div>
-
-                <div className="inv-form-group">
-                  <label>Wastage Reason Code *</label>
+              <div className="employees-form-grid">
+                <label>
+                  Branch Location *
                   <select
-                    className="inv-form-control"
+                    value={targetBranch}
+                    onChange={(e) => setTargetBranch(e.target.value)}
+                    required
+                  >
+                    {branches.map((b) => (
+                      <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Ingredient *
+                  <select
+                    value={selectedIngId}
+                    onChange={(e) => setSelectedIngId(e.target.value)}
+                    required
+                  >
+                    <option value="">Select ingredient</option>
+                    {ingredients.map((ing) => (
+                      <option key={ing.id} value={ing.id}>{ing.name} ({ing.sku})</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Quantity Discarded *
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={wasteQty}
+                    onChange={(e) => setWasteQty(e.target.value)}
+                    placeholder="e.g. 2.5"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Loss Reason *
+                  <select
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
+                    required
                   >
-                    <option value="EXPIRED">Expired Past Best-Before / Use-By Date</option>
-                    <option value="SPOILED">Spoiled Due to Heat or Cold-Chain Interruption</option>
-                    <option value="PREP_LOSS">Excessive Preparation Trimming or Kitchen Burn</option>
-                    <option value="HANDLING_DAMAGE">Dropped, Broken Container, or Contaminated</option>
+                    <option value="EXPIRED">Expired Past Best-Before</option>
+                    <option value="SPOILED">Spoiled / Quality Degradation</option>
+                    <option value="PREP_LOSS">Kitchen Prep Loss / Trimming</option>
+                    <option value="HANDLING_DAMAGE">Handling Damage / Accidental Spill</option>
                   </select>
-                </div>
+                </label>
 
-                <div className="inv-form-group">
-                  <label>Auditor / Incident Notes</label>
+                <label className="employees-field-full">
+                  Detailed Notes / Root Cause
                   <textarea
-                    className="inv-form-control"
-                    rows="2"
-                    placeholder="Describe context (e.g., chiller door left ajar, recipe testing burn)..."
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                  ></textarea>
-                </div>
+                    placeholder="Explain causes for loss analysis and preventative action"
+                  />
+                </label>
               </div>
 
-              <div className="inv-modal-footer">
-                <button type="button" className="inv-btn inv-btn-secondary" onClick={() => setIsModalOpen(false)}>
+              <div className="employees-form-actions">
+                <button
+                  type="button"
+                  className="employees-button employees-button-secondary"
+                  onClick={() => setIsModalOpen(false)}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="inv-btn inv-btn-danger">
-                  Confirm Spoilage Write-Off
+                <button
+                  type="submit"
+                  className="employees-button employees-button-danger"
+                >
+                  Confirm Write-off
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW NOTES MODAL */}
+      {viewNotesTarget && (
+        <div
+          className="employees-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setViewNotesTarget(null);
+          }}
+        >
+          <div className="employees-modal" role="dialog" aria-modal="true" style={{ maxWidth: '500px' }}>
+            <div className="employees-modal-heading">
+              <div>
+                <p className="employees-eyebrow">WASTAGE AUDIT</p>
+                <h3>{viewNotesTarget.wasteNumber} Notes</h3>
+              </div>
+              <button
+                type="button"
+                className="employees-modal-close"
+                onClick={() => setViewNotesTarget(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{ fontSize: '13px', color: '#52645a', lineHeight: 1.6 }}>
+              <p><strong>Ingredient:</strong> {ingredientMap[viewNotesTarget.ingredientId] || viewNotesTarget.ingredientId}</p>
+              <p><strong>Quantity:</strong> -{viewNotesTarget.qty} {viewNotesTarget.unit}</p>
+              <p><strong>Financial Impact:</strong> ₹{Number(viewNotesTarget.totalCost || 0).toLocaleString()}</p>
+              <p><strong>Reason:</strong> {viewNotesTarget.reason}</p>
+              <p><strong>Reported By:</strong> {viewNotesTarget.loggedBy || 'Staff'}</p>
+              <p><strong>Notes:</strong> {viewNotesTarget.notes || 'No extra notes provided.'}</p>
+            </div>
+            <div className="employees-form-actions">
+              <button
+                type="button"
+                className="employees-button employees-button-secondary"
+                onClick={() => setViewNotesTarget(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal (Standardized) */}
+      {deleteConfirmTarget && (
+        <div
+          className="employees-delete-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !deleting) setDeleteConfirmTarget(null);
+          }}
+        >
+          <div
+            className="employees-delete-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-wastage-title"
+            aria-describedby="delete-wastage-description"
+          >
+            <div className="employees-delete-icon">
+              <Trash2 size={24} />
+            </div>
+
+            <h3 id="delete-wastage-title">Delete Wastage Log?</h3>
+
+            <p id="delete-wastage-description">
+              Are you sure you want to permanently delete wastage record <strong>{deleteConfirmTarget.wasteNumber}</strong>? This action cannot be undone.
+            </p>
+
+            <div className="employees-delete-actions">
+              <button
+                type="button"
+                className="employees-button employees-button-secondary"
+                onClick={() => setDeleteConfirmTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="employees-button employees-button-danger"
+                onClick={() => handleDeleteWastage(deleteConfirmTarget)}
+                disabled={deleting}
+              >
+                <Trash2 size={16} />
+                {deleting ? 'Deleting...' : 'Delete Wastage Log'}
+              </button>
+            </div>
           </div>
         </div>
       )}

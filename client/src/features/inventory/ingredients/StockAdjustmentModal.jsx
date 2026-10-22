@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X, AlertCircle } from 'lucide-react';
 import { InventoryService } from '../services/inventoryService';
 
 export default function StockAdjustmentModal({
@@ -9,7 +10,7 @@ export default function StockAdjustmentModal({
   branches = [],
   onAdjusted
 }) {
-  const [selectedBranch, setSelectedBranch] = useState(branchId === 'all' ? (branches[0]?.id || 'b_downtown') : branchId);
+  const [selectedBranch, setSelectedBranch] = useState(branchId === 'all' ? (branches[0]?.id || branches[0]?._id || '') : branchId);
   const [newCount, setNewCount] = useState('');
   const [reason, setReason] = useState('PHYSICAL_COUNT_VARIANCE');
   const [notes, setNotes] = useState('');
@@ -49,7 +50,7 @@ export default function StockAdjustmentModal({
         newQty: enteredQty,
         reason,
         notes,
-        user: 'Arjun Verma (Director)'
+        user: 'Store Manager'
       });
 
       onAdjusted();
@@ -60,117 +61,130 @@ export default function StockAdjustmentModal({
   };
 
   return (
-    <div className="inv-modal-overlay">
-      <div className="inv-modal-content">
-        <div className="inv-modal-header">
+    <div
+      className="employees-modal-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="employees-modal" role="dialog" aria-modal="true">
+        <div className="employees-modal-heading">
           <div>
-            <h3>Adjust Physical Stock Count</h3>
-            <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-              {ingredient.name} • SKU: <code style={{ fontSize: '11px' }}>{ingredient.sku}</code>
-            </p>
+            <p className="employees-eyebrow">PHYSICAL AUDIT</p>
+            <h3>Adjust Stock: {ingredient.name}</h3>
           </div>
-          <button type="button" className="inv-modal-close" onClick={onClose}>✕</button>
+          <button
+            type="button"
+            className="employees-modal-close"
+            onClick={onClose}
+          >
+            <X size={20} />
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="inv-modal-body">
-            {error && <div className="inv-alert-banner inv-alert-danger">{error}</div>}
+        {error && (
+          <div className="employees-error" role="alert">
+            <AlertCircle size={18} />
+            <span>{error}</span>
+          </div>
+        )}
 
-            <div className="inv-form-group">
-              <label>Select Target Branch</label>
+        <form onSubmit={handleSubmit}>
+          <div className="employees-form-grid">
+            <label className="employees-field-full">
+              Target Branch Location *
               <select
-                className="inv-form-control"
                 value={selectedBranch}
                 onChange={(e) => handleBranchChange(e.target.value)}
               >
                 {branches.map(b => (
-                  <option key={b.id} value={b.id}>{b.name} ({b.city})</option>
+                  <option key={b.id || b._id} value={b.id || b._id}>{b.name} ({b.city})</option>
                 ))}
               </select>
-            </div>
+            </label>
 
-            <div className="inv-form-row">
-              <div className="inv-form-group">
-                <label>Current System Stock</label>
-                <input
-                  type="text"
-                  className="inv-form-control"
-                  value={`${currentQty} ${ingredient.baseUnit}`}
-                  disabled
-                  style={{ background: 'var(--color-background)', fontWeight: 600 }}
-                />
-              </div>
+            <label>
+              Current System Balance
+              <input
+                type="text"
+                value={`${currentQty} ${ingredient.baseUnit}`}
+                disabled
+                style={{ background: '#f4f6f3', fontWeight: 600 }}
+              />
+            </label>
 
-              <div className="inv-form-group">
-                <label>New Physical Count</label>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  className="inv-form-control"
-                  placeholder="Enter counted quantity"
-                  value={newCount}
-                  onChange={(e) => setNewCount(e.target.value)}
-                  required
-                  autoFocus
-                />
-              </div>
-            </div>
+            <label>
+              New Counted Physical Stock *
+              <input
+                type="number"
+                step="any"
+                min="0"
+                placeholder="Enter physical count"
+                value={newCount}
+                onChange={(e) => setNewCount(e.target.value)}
+                required
+                autoFocus
+              />
+            </label>
 
             {/* Delta calculation */}
-            <div style={{
-              background: delta < 0 ? 'var(--color-error-bg)' : delta > 0 ? 'var(--color-success-bg)' : '#F5F1E8',
-              padding: '10px 14px',
-              borderRadius: 'var(--radius-sm)',
-              marginBottom: '16px',
+            <div className="employees-field-full" style={{
+              background: delta < 0 ? '#fef2f2' : delta > 0 ? '#eff9f0' : '#f6f8f5',
+              padding: '12px 16px',
+              borderRadius: '9px',
+              border: `1px solid ${delta < 0 ? '#fecaca' : delta > 0 ? '#cce8d2' : '#e3e9e3'}`,
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              fontSize: '13px',
-              fontWeight: 600
+              fontSize: '12px',
+              fontWeight: 650
             }}>
               <span>Audit Variance (Delta):</span>
               <span style={{
-                color: delta < 0 ? 'var(--color-error)' : delta > 0 ? 'var(--color-success)' : 'var(--color-text)'
+                color: delta < 0 ? '#b91c1c' : delta > 0 ? '#287544' : '#26342f'
               }}>
                 {delta > 0 ? `+${delta}` : delta} {ingredient.baseUnit} ({delta < 0 ? 'Shortage' : delta > 0 ? 'Surplus' : 'Balanced'})
               </span>
             </div>
 
-            <div className="inv-form-group">
-              <label>Adjustment Reason Code *</label>
+            <label className="employees-field-full">
+              Adjustment Reason Code *
               <select
-                className="inv-form-control"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 required
               >
                 <option value="PHYSICAL_COUNT_VARIANCE">Physical Count Audit Variance</option>
                 <option value="UNRECORDED_USAGE">Unrecorded Kitchen Preparation Usage</option>
-                <option value="HANDLING_DAMAGE">Handling Damage / Container Leak</option>
+                <option value="HANDLING_DAMAGE">Handling Damage / Spill</option>
                 <option value="RECEIVING_CORRECTION">Vendor Delivery Discrepancy Correction</option>
                 <option value="QUALITY_WRITE_OFF">Quality Inspection Write-Off</option>
               </select>
-            </div>
+            </label>
 
-            <div className="inv-form-group">
-              <label>Auditor Notes & Reference ID</label>
+            <label className="employees-field-full">
+              Auditor Notes & Reference
               <textarea
-                className="inv-form-control"
-                rows="3"
-                placeholder="Provide reference details or stock sheet count sheet ID..."
+                placeholder="Provide reference details or stock sheet count ID..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-              ></textarea>
-            </div>
+              />
+            </label>
           </div>
 
-          <div className="inv-modal-footer">
-            <button type="button" className="inv-btn inv-btn-secondary" onClick={onClose}>
+          <div className="employees-form-actions">
+            <button
+              type="button"
+              className="employees-button employees-button-secondary"
+              onClick={onClose}
+            >
               Cancel
             </button>
-            <button type="submit" className="inv-btn inv-btn-primary">
-              Confirm & Post Audit Adjustment
+            <button
+              type="submit"
+              className="employees-button employees-button-primary"
+            >
+              Post Stock Adjustment
             </button>
           </div>
         </form>

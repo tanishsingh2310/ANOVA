@@ -1,24 +1,40 @@
 import { useState, useEffect } from 'react';
+import {
+  Search,
+  RefreshCw,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  AlertCircle,
+  ShoppingBag,
+  FileText
+} from 'lucide-react';
 import { PurchaseOrderService } from '../services/purchaseOrderService';
 import { SupplierService } from '../services/supplierService';
 import { InventoryService } from '../services/inventoryService';
-import StockBadge from '../components/StockBadge';
-import '../../../styles/inventory-orders.css';
 
 export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   const [orders, setOrders] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [ingredients, setIngredients] = useState([]);
+
+  // Filters
+  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [supplierFilter, setSupplierFilter] = useState('ALL');
+  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [receivingPO, setReceivingPO] = useState(null);
   const [viewHistoryPO, setViewHistoryPO] = useState(null);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
 
   // Create PO Form
-  const [newPoBranch, setNewPoBranch] = useState(branchId === 'all' ? (branches[0]?.id || 'b_downtown') : branchId);
+  const [newPoBranch, setNewPoBranch] = useState(branchId === 'all' ? (branches[0]?.id || branches[0]?._id || '') : branchId);
   const [newPoSupplier, setNewPoSupplier] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
   const [lineItems, setLineItems] = useState([
@@ -28,16 +44,21 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
 
   // Goods Receiving Note (GRN) Form
   const [grnNumber, setGrnNumber] = useState('');
-  const [receiverName, setReceiverName] = useState('Arjun Verma');
-  const [grnItems, setGrnItems] = useState([]);
+  const [grnReceiptItems, setGrnReceiptItems] = useState([]);
   const [grnNotes, setGrnNotes] = useState('');
   const [grnError, setGrnError] = useState('');
 
+  const [notice, setNotice] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const loadData = async () => {
+  useEffect(() => {
+    setSelectedBranch(branchId);
+    if (branchId !== 'all') setNewPoBranch(branchId);
+  }, [branchId]);
+
+  const loadData = async (refresh = false) => {
     const list = PurchaseOrderService.getPurchaseOrders({
-      branchId,
+      branchId: selectedBranch,
       status: statusFilter,
       supplierId: supplierFilter
     });
@@ -48,18 +69,19 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     setIsSyncing(true);
     try {
       await Promise.all([
-        PurchaseOrderService.syncFromBackend(branchId),
+        PurchaseOrderService.syncFromBackend(selectedBranch),
         SupplierService.syncFromBackend(),
-        InventoryService.syncFromBackend(branchId)
+        InventoryService.syncFromBackend(selectedBranch)
       ]);
       const fresh = PurchaseOrderService.getPurchaseOrders({
-        branchId,
+        branchId: selectedBranch,
         status: statusFilter,
         supplierId: supplierFilter
       });
       setOrders(fresh);
       setSuppliers(SupplierService.getSuppliers());
       setIngredients(InventoryService.getIngredients());
+      if (refresh) setNotice('Purchase orders refreshed.');
     } catch (err) {
       console.warn('PurchaseOrders sync error:', err.message);
     } finally {
@@ -69,25 +91,23 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
 
   useEffect(() => {
     loadData();
-  }, [branchId, statusFilter, supplierFilter]);
+  }, [selectedBranch, statusFilter, supplierFilter]);
 
-  // Handle PO Lifecycle Progression
   const handleTransition = async (poId, nextStatus) => {
     try {
-      await PurchaseOrderService.updateStatusRemote(poId, nextStatus, 'Arjun Verma (Director)');
+      await PurchaseOrderService.updateStatusRemote(poId, nextStatus, 'Procurement Manager');
+      setNotice(`Order updated to ${nextStatus}.`);
       loadData();
     } catch (err) {
       alert(err.message || 'Status transition error');
     }
   };
 
-  // Open Goods Receiving Modal
   const handleOpenReceive = (po) => {
     setReceivingPO(po);
     setGrnNumber(`GRN-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
     setGrnError('');
     setGrnNotes('');
-    // Initialise receipt rows
     const items = po.items.map(it => {
       const remaining = Math.max(0, it.orderedQty - ((it.receivedQty || 0) + (it.rejectedQty || 0) + (it.damagedQty || 0)));
       return {
@@ -98,47 +118,43 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
         damagedQty: 0,
         unit: it.unit,
         unitCost: it.unitPrice,
-        batchNumber: `BAT-${new Date().getFullYear().toString().slice(-2)}${(new Date().getMonth() + 1).toString().padStart(2, '0')}-${Math.floor(10 + Math.random() * 90)}`,
+        batchNumber: `BAT-${Date.now().toString().slice(-4)}`,
         expiryDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
       };
     });
-    setGrnItems(items);
+    setGrnReceiptItems(items);
   };
 
   const handleProcessGRN = async (e) => {
     e.preventDefault();
-    if (!receivingPO) return;
-
     try {
       await PurchaseOrderService.receiveGoodsRemote({
-        poId: receivingPO.id,
+        poId: receivingPO.id || receivingPO._id || receivingPO.poNumber,
         grnNumber,
-        receiverName,
-        receiptItems: grnItems,
+        receiverName: 'Receiving Officer',
+        receiptItems: grnReceiptItems,
         notes: grnNotes
       });
-      await InventoryService.syncFromBackend(branchId);
-
+      await InventoryService.syncFromBackend(receivingPO.branchId);
       setReceivingPO(null);
+      setNotice(`Goods receipt note ${grnNumber} processed successfully.`);
       loadData();
     } catch (err) {
-      setGrnError(err.message || 'Error processing goods receipt note');
+      setGrnError(err.message || 'GRN submission failed');
     }
   };
 
-  // Line item helpers for Create PO
-  const addLineItem = () => {
+  const handleAddLineItem = () => {
     setLineItems([...lineItems, { ingredientId: '', orderedQty: '', unitPrice: '', unit: 'kg' }]);
   };
 
-  const removeLineItem = (index) => {
-    setLineItems(lineItems.filter((_, idx) => idx !== index));
+  const handleRemoveLineItem = (idx) => {
+    setLineItems(lineItems.filter((_, i) => i !== idx));
   };
 
   const handleLineChange = (index, field, value) => {
     const updated = [...lineItems];
     updated[index][field] = value;
-
     if (field === 'ingredientId') {
       const ing = ingredients.find(i => i.id === value);
       if (ing) {
@@ -151,26 +167,48 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
 
   const handleCreatePO = async (e) => {
     e.preventDefault();
-    if (!newPoSupplier || lineItems.length === 0 || lineItems.some(i => !i.ingredientId || !i.orderedQty)) {
-      setCreateError('Please select a supplier and provide valid line items with quantities');
+    if (!newPoSupplier) {
+      setCreateError('Please select a supplier');
+      return;
+    }
+    if (!lineItems.some(i => i.ingredientId && Number(i.orderedQty) > 0)) {
+      setCreateError('Please specify at least one valid line item with quantity');
       return;
     }
 
     try {
       await PurchaseOrderService.createPORemote({
         supplierId: newPoSupplier,
-        branchId: newPoBranch,
+        branchId: newPoBranch || (branches[0]?.id || branches[0]?._id),
         expectedDate: expectedDate || new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
-        items: lineItems
+        items: lineItems.filter(i => i.ingredientId && Number(i.orderedQty) > 0),
+        notes: 'Enterprise PO',
+        createdBy: 'Procurement Specialist'
       });
-
       setIsCreateOpen(false);
       setLineItems([{ ingredientId: '', orderedQty: '', unitPrice: '', unit: 'kg' }]);
-      setNewPoSupplier('');
       setCreateError('');
+      setNotice('Purchase order created successfully.');
       loadData();
     } catch (err) {
-      setCreateError(err.message || 'Error creating PO');
+      setCreateError(err.message || 'PO creation failed');
+    }
+  };
+
+  const handleDeletePO = async (po) => {
+    if (!po || deleting) return;
+    setDeleting(true);
+    setError('');
+    setNotice('');
+    try {
+      await PurchaseOrderService.deletePORemote(po.id || po._id || po.poNumber);
+      setDeleteConfirmTarget(null);
+      setNotice(`Purchase Order ${po.poNumber} deleted.`);
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to delete order');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -178,472 +216,417 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   suppliers.forEach(s => { supplierMap[s.id] = s.name; });
 
   const branchMap = {};
-  branches.forEach(b => { branchMap[b.id] = b.name; });
+  branches.forEach(b => { branchMap[b.id || b._id] = b.name; });
 
   const ingredientMap = {};
   ingredients.forEach(i => { ingredientMap[i.id] = i.name; });
 
+  // Filtered orders
+  const filteredOrders = orders.filter((po) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    const poNum = (po.poNumber || '').toLowerCase();
+    const supName = (supplierMap[po.supplierId] || '').toLowerCase();
+    return poNum.includes(q) || supName.includes(q);
+  });
+
+  const getStatusClass = (status) => {
+    if (status === 'RECEIVED') return 'is-received';
+    if (status === 'ORDERED') return 'is-ordered';
+    if (status === 'APPROVED') return 'is-approved';
+    if (status === 'SUBMITTED' || status === 'PARTIALLY_RECEIVED') return 'is-submitted';
+    return 'is-draft';
+  };
+
   return (
-    <div className="inv-orders-page">
-      {/* Toolbar */}
-      <div className="inv-toolbar">
-        <div className="inv-filter-group">
+    <div className="employees-page">
+      {/* Heading matching Images 1-4 */}
+      <div className="employees-heading">
+        <div>
+          <h2>Purchase Orders</h2>
+          <p>Plan procurement, approve orders, and track goods receipts.</p>
+        </div>
+
+        <div className="employees-heading-actions">
+          <button
+            type="button"
+            className="employees-button employees-button-primary"
+            onClick={() => setIsCreateOpen(true)}
+          >
+            <Plus size={16} />
+            + Create purchase order
+          </button>
+          <button
+            type="button"
+            className="employees-button employees-button-secondary"
+            onClick={() => loadData(true)}
+            disabled={isSyncing}
+          >
+            <RefreshCw size={16} className={isSyncing ? 'employees-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {notice && (
+        <div className="employees-notice" role="status">
+          {notice}
+        </div>
+      )}
+
+      {error && (
+        <div className="employees-error" role="alert">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Filter Toolbar matching Images 1-4 */}
+      <div className="employees-toolbar">
+        <label className="employees-search">
+          <Search size={18} />
+          <input
+            type="search"
+            placeholder="Search PO number or supplier..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+
+        <label className="employees-filter">
+          <span>Branch</span>
           <select
-            className="inv-select"
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+          >
+            <option value="all">All branches</option>
+            {branches.map((b) => (
+              <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="employees-filter">
+          <span>Status</span>
+          <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            aria-label="Filter POs by lifecycle status"
           >
-            <option value="ALL">All Order Statuses</option>
+            <option value="ALL">All statuses</option>
             <option value="DRAFT">Draft</option>
-            <option value="SUBMITTED">Submitted (Pending Approval)</option>
+            <option value="SUBMITTED">Submitted for Approval</option>
             <option value="APPROVED">Approved</option>
-            <option value="ORDERED">Ordered (Awaiting Delivery)</option>
+            <option value="ORDERED">Ordered</option>
             <option value="PARTIALLY_RECEIVED">Partially Received</option>
             <option value="RECEIVED">Fully Received</option>
           </select>
+        </label>
 
+        <label className="employees-filter">
+          <span>Supplier</span>
           <select
-            className="inv-select"
             value={supplierFilter}
             onChange={(e) => setSupplierFilter(e.target.value)}
-            aria-label="Filter POs by vendor"
           >
-            <option value="ALL">All Suppliers</option>
-            {suppliers.map(s => (
+            <option value="ALL">All suppliers</option>
+            {suppliers.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
-        </div>
-
-        <button
-          type="button"
-          className="inv-btn inv-btn-primary"
-          onClick={() => setIsCreateOpen(true)}
-        >
-          + Create Purchase Order
-        </button>
+        </label>
       </div>
 
-      {/* PO List Table */}
-      <div className="inv-card">
-        <div className="inv-card-header">
+      {/* Table Card matching People & HR and Actions from Image 5 */}
+      <div className="employees-table-card">
+        <div className="employees-table-heading">
           <div>
-            <h3>Purchase Orders & Goods Receiving Lifecycle</h3>
-            <p>Full audit trail: Draft → Approval → Order → GRN Verification</p>
+            <h3>Purchase Orders</h3>
+            <p>
+              {filteredOrders.length} result{filteredOrders.length === 1 ? '' : 's'}
+            </p>
           </div>
         </div>
-        <div className="inv-card-body" style={{ padding: 0 }}>
-          <div className="inv-table-wrapper">
-            <table className="inv-table">
+
+        {filteredOrders.length === 0 ? (
+          <div className="employees-empty-state">
+            <ShoppingBag size={26} />
+            <h3>No purchase order records found</h3>
+            <p>Try changing the filters or create a new purchase order.</p>
+          </div>
+        ) : (
+          <div className="employees-table-scroll">
+            <table className="employees-table">
               <thead>
                 <tr>
-                  <th style={{ width: '140px', whiteSpace: 'nowrap' }}>PO #</th>
+                  <th>PO Number</th>
                   <th>Supplier</th>
-                  <th>Receiving Branch</th>
-                  <th style={{ width: '110px', whiteSpace: 'nowrap' }}>Order Date</th>
-                  <th style={{ width: '110px', whiteSpace: 'nowrap' }}>Expected</th>
+                  <th>Branch</th>
+                  <th>Order Date</th>
+                  <th>Expected</th>
                   <th>Line Items</th>
                   <th>Total Amount</th>
-                  <th>Lifecycle Status</th>
-                  <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
+                  <th>Status</th>
+                  <th style={{ width: '230px' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {orders.length === 0 ? (
-                  <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '30px', color: 'var(--color-text-muted)' }}>
-                      No purchase orders found matching this filter.
-                    </td>
-                  </tr>
-                ) : (
-                  orders.map(po => {
-                    const supName = supplierMap[po.supplierId] || po.supplierId;
-                    const bName = branchMap[po.branchId] || po.branchId;
+                {filteredOrders.map((po) => {
+                  const supName = supplierMap[po.supplierId] || po.supplierId || 'Supplier';
+                  const bName = branchMap[po.branchId] || po.branchId || 'Branch';
 
-                    return (
-                      <tr key={po.id}>
-                        <td className="inv-cell-code"><code>{po.poNumber}</code></td>
-                        <td>
-                          <strong>{supName}</strong>
-                        </td>
-                        <td className="inv-cell-nowrap">{bName}</td>
-                        <td className="inv-cell-date">
-                          {po.createdAt ? (typeof po.createdAt === 'string' && po.createdAt.includes('T') ? po.createdAt.split('T')[0] : new Date(po.createdAt).toISOString().split('T')[0]) : '—'}
-                        </td>
-                        <td className="inv-cell-date">
-                          {po.expectedDate ? (typeof po.expectedDate === 'string' && po.expectedDate.includes('T') ? po.expectedDate.split('T')[0] : String(po.expectedDate)) : '—'}
-                        </td>
-                        <td>
-                          <span style={{ fontWeight: 600 }}>{(po.items || []).length} item{(po.items || []).length !== 1 ? 's' : ''}</span>
-                          <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', display: 'block', maxWidth: '220px', whiteSpace: 'normal' }}>
-                            {(po.items || []).map(i => ingredientMap[i.ingredientId] || i.ingredientName || i.ingredientId).slice(0, 2).join(', ')}
-                            {(po.items || []).length > 2 ? '...' : ''}
+                  return (
+                    <tr key={po.id || po._id || po.poNumber}>
+                      <td>
+                        <div className="employees-person">
+                          <span className="employees-avatar" style={{ fontSize: '11px' }}>
+                            <FileText size={16} />
                           </span>
-                        </td>
-                        <td className="inv-cell-amount"><strong>₹{(po.totalAmount || 0).toLocaleString()}</strong></td>
-                        <td className="inv-cell-badge"><StockBadge status={po.status} /></td>
-                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'inline-flex', gap: '6px' }}>
-                            {po.status === 'DRAFT' && (
-                              <button
-                                type="button"
-                                className="inv-btn inv-btn-sm inv-btn-secondary"
-                                onClick={() => handleTransition(po.id || po._id || po.poNumber, 'SUBMITTED')}
-                              >
-                                Submit
-                              </button>
-                            )}
-
-                            {po.status === 'SUBMITTED' && (
-                              <button
-                                type="button"
-                                className="inv-btn inv-btn-sm inv-btn-gold"
-                                onClick={() => handleTransition(po.id || po._id || po.poNumber, 'APPROVED')}
-                              >
-                                Approve
-                              </button>
-                            )}
-
-                            {po.status === 'APPROVED' && (
-                              <button
-                                type="button"
-                                className="inv-btn inv-btn-sm inv-btn-primary"
-                                onClick={() => handleTransition(po.id || po._id || po.poNumber, 'ORDERED')}
-                              >
-                                Issue PO
-                              </button>
-                            )}
-
-                            {(po.status === 'ORDERED' || po.status === 'PARTIALLY_RECEIVED') && (
-                              <button
-                                type="button"
-                                className="inv-btn inv-btn-sm inv-btn-gold"
-                                onClick={() => handleOpenReceive(po)}
-                              >
-                                Receive GRN
-                              </button>
-                            )}
-
-                            {po.receiptHistory && po.receiptHistory.length > 0 && (
-                              <button
-                                type="button"
-                                className="inv-btn inv-btn-sm inv-btn-secondary"
-                                onClick={() => setViewHistoryPO(po)}
-                              >
-                                GRNs ({po.receiptHistory.length})
-                              </button>
-                            )}
+                          <div className="employees-person-details">
+                            <strong>{po.poNumber}</strong>
+                            <span>{po.createdBy || 'Staff'}</span>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                        </div>
+                      </td>
+                      <td>{supName}</td>
+                      <td>{bName}</td>
+                      <td>
+                        {po.createdAt ? (typeof po.createdAt === 'string' && po.createdAt.includes('T') ? po.createdAt.split('T')[0] : new Date(po.createdAt).toISOString().split('T')[0]) : '—'}
+                      </td>
+                      <td>
+                        {po.expectedDate ? (typeof po.expectedDate === 'string' && po.expectedDate.includes('T') ? po.expectedDate.split('T')[0] : String(po.expectedDate)) : '—'}
+                      </td>
+                      <td>
+                        <strong>{(po.items || []).length} item{(po.items || []).length !== 1 ? 's' : ''}</strong>
+                      </td>
+                      <td>
+                        <strong>₹{(po.totalAmount || 0).toLocaleString()}</strong>
+                      </td>
+                      <td>
+                        <span className={`employees-status ${getStatusClass(po.status)}`}>
+                          {po.status}
+                        </span>
+                      </td>
+                      <td>
+                        {/* Image 5: Edit/View | Transition | Delete Action Group */}
+                        <div className="employees-row-actions">
+                          <button
+                            type="button"
+                            className="employees-button employees-button-secondary"
+                            onClick={() => setViewHistoryPO(po)}
+                          >
+                            <Pencil size={15} />
+                            View
+                          </button>
+
+                          {po.status === 'DRAFT' && (
+                            <button
+                              type="button"
+                              className="employees-button employees-button-secondary"
+                              onClick={() => handleTransition(po.id || po._id || po.poNumber, 'SUBMITTED')}
+                            >
+                              Submit
+                            </button>
+                          )}
+
+                          {po.status === 'SUBMITTED' && (
+                            <button
+                              type="button"
+                              className="employees-button employees-button-secondary"
+                              onClick={() => handleTransition(po.id || po._id || po.poNumber, 'APPROVED')}
+                            >
+                              Approve
+                            </button>
+                          )}
+
+                          {po.status === 'APPROVED' && (
+                            <button
+                              type="button"
+                              className="employees-button employees-button-secondary"
+                              onClick={() => handleTransition(po.id || po._id || po.poNumber, 'ORDERED')}
+                            >
+                              Issue PO
+                            </button>
+                          )}
+
+                          {(po.status === 'ORDERED' || po.status === 'PARTIALLY_RECEIVED') && (
+                            <button
+                              type="button"
+                              className="employees-button employees-button-secondary"
+                              onClick={() => handleOpenReceive(po)}
+                            >
+                              Receive
+                            </button>
+                          )}
+
+                          {po.status === 'RECEIVED' && (
+                            <button
+                              type="button"
+                              className="employees-button employees-button-secondary"
+                              onClick={() => setViewHistoryPO(po)}
+                            >
+                              GRNs
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            className="employees-button employees-button-danger"
+                            onClick={() => setDeleteConfirmTarget(po)}
+                            title={`Cancel PO ${po.poNumber}`}
+                            aria-label={`Cancel PO ${po.poNumber}`}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-        </div>
+        )}
       </div>
-
-      {/* GOODS RECEIVING NOTE (GRN) MODAL */}
-      {receivingPO && (
-        <div className="inv-modal-overlay">
-          <div className="inv-modal-content" style={{ maxWidth: '850px' }}>
-            <div className="inv-modal-header">
-              <div>
-                <h3>Receive Goods: Goods Receiving Note (GRN)</h3>
-                <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                  Purchase Order: <strong>{receivingPO.poNumber}</strong> • Supplier: {supplierMap[receivingPO.supplierId]}
-                </p>
-              </div>
-              <button type="button" className="inv-modal-close" onClick={() => setReceivingPO(null)}>✕</button>
-            </div>
-
-            <form onSubmit={handleProcessGRN}>
-              <div className="inv-modal-body">
-                {grnError && <div className="inv-alert-banner inv-alert-danger">{grnError}</div>}
-
-                <div className="inv-alert-banner inv-alert-warning" style={{ fontSize: '12px' }}>
-                  ℹ️ <strong>Stock Integrity Rule:</strong> Only Accepted Quantity increases live inventory. Damaged or rejected quantities are excluded from stock and tracked for vendor credit.
-                </div>
-
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>GRN Reference Number *</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      value={grnNumber}
-                      onChange={(e) => setGrnNumber(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="inv-form-group">
-                    <label>Receiving Officer Name *</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      value={receiverName}
-                      onChange={(e) => setReceiverName(e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Line Items Receiving Table */}
-                <div style={{ marginTop: '12px', marginBottom: '16px' }}>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-text)' }}>
-                    RECEIPT LINE ITEMS VERIFICATION
-                  </label>
-                  <table className="inv-table" style={{ marginTop: '8px' }}>
-                    <thead>
-                      <tr>
-                        <th>Ingredient</th>
-                        <th>Ordered</th>
-                        <th style={{ width: '100px' }}>Accepted *</th>
-                        <th style={{ width: '90px' }}>Rejected</th>
-                        <th style={{ width: '90px' }}>Damaged</th>
-                        <th>Batch Code *</th>
-                        <th>Expiry Date *</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {grnItems.map((item, idx) => {
-                        const ingName = ingredientMap[item.ingredientId] || item.ingredientId;
-                        return (
-                          <tr key={item.ingredientId}>
-                            <td><strong>{ingName}</strong></td>
-                            <td>{item.orderedQty} {item.unit}</td>
-                            <td>
-                              <input
-                                type="number"
-                                step="any"
-                                min="0"
-                                className="inv-form-control"
-                                value={item.acceptedQty}
-                                onChange={(e) => {
-                                  const updated = [...grnItems];
-                                  updated[idx].acceptedQty = e.target.value;
-                                  setGrnItems(updated);
-                                }}
-                                required
-                              />
-                            </td>
-                            <td>
-                              <input
-                                type="number"
-                                step="any"
-                                min="0"
-                                className="inv-form-control"
-                                value={item.rejectedQty}
-                                onChange={(e) => {
-                                  const updated = [...grnItems];
-                                  updated[idx].rejectedQty = e.target.value;
-                                  setGrnItems(updated);
-                                }}
-                              />
-                            </td>
-                            <td>
-                              <input
-                                type="number"
-                                step="any"
-                                min="0"
-                                className="inv-form-control"
-                                value={item.damagedQty}
-                                onChange={(e) => {
-                                  const updated = [...grnItems];
-                                  updated[idx].damagedQty = e.target.value;
-                                  setGrnItems(updated);
-                                }}
-                              />
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                className="inv-form-control"
-                                value={item.batchNumber}
-                                onChange={(e) => {
-                                  const updated = [...grnItems];
-                                  updated[idx].batchNumber = e.target.value;
-                                  setGrnItems(updated);
-                                }}
-                                required
-                              />
-                            </td>
-                            <td>
-                              <input
-                                type="date"
-                                className="inv-form-control"
-                                value={item.expiryDate}
-                                onChange={(e) => {
-                                  const updated = [...grnItems];
-                                  updated[idx].expiryDate = e.target.value;
-                                  setGrnItems(updated);
-                                }}
-                                required
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="inv-form-group">
-                  <label>Receiving Quality Notes & Observations</label>
-                  <textarea
-                    className="inv-form-control"
-                    rows="2"
-                    placeholder="Temperature on arrival, packaging integrity, seal notes..."
-                    value={grnNotes}
-                    onChange={(e) => setGrnNotes(e.target.value)}
-                  ></textarea>
-                </div>
-              </div>
-
-              <div className="inv-modal-footer">
-                <button type="button" className="inv-btn inv-btn-secondary" onClick={() => setReceivingPO(null)}>
-                  Cancel
-                </button>
-                <button type="submit" className="inv-btn inv-btn-primary">
-                  Confirm Receipt & Commit Stock
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* CREATE PURCHASE ORDER MODAL */}
       {isCreateOpen && (
-        <div className="inv-modal-overlay">
-          <div className="inv-modal-content" style={{ maxWidth: '850px' }}>
-            <div className="inv-modal-header">
-              <h3>Create Purchase Order (PO)</h3>
-              <button type="button" className="inv-modal-close" onClick={() => setIsCreateOpen(false)}>✕</button>
+        <div
+          className="employees-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setIsCreateOpen(false);
+          }}
+        >
+          <div className="employees-modal" role="dialog" aria-modal="true" style={{ maxWidth: '750px' }}>
+            <div className="employees-modal-heading">
+              <div>
+                <p className="employees-eyebrow">PROCUREMENT ORDER</p>
+                <h3>Create Purchase Order</h3>
+              </div>
+              <button
+                type="button"
+                className="employees-modal-close"
+                onClick={() => setIsCreateOpen(false)}
+              >
+                <X size={20} />
+              </button>
             </div>
+
+            {createError && (
+              <div className="employees-error" role="alert">
+                <AlertCircle size={18} />
+                <span>{createError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleCreatePO}>
-              <div className="inv-modal-body">
-                {createError && <div className="inv-alert-banner inv-alert-danger">{createError}</div>}
+              <div className="employees-form-grid">
+                <label>
+                  Supplier *
+                  <select
+                    value={newPoSupplier}
+                    onChange={(e) => setNewPoSupplier(e.target.value)}
+                    required
+                  >
+                    <option value="">Select a supplier</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+                    ))}
+                  </select>
+                </label>
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Select Supplier *</label>
-                    <select
-                      className="inv-form-control"
-                      value={newPoSupplier}
-                      onChange={(e) => setNewPoSupplier(e.target.value)}
-                      required
-                    >
-                      <option value="">Select Vendor...</option>
-                      {suppliers.map(s => (
-                        <option key={s.id} value={s.id}>{s.name} ({s.category})</option>
-                      ))}
-                    </select>
-                  </div>
+                <label>
+                  Receiving Branch *
+                  <select
+                    value={newPoBranch}
+                    onChange={(e) => setNewPoBranch(e.target.value)}
+                    required
+                  >
+                    {branches.map((b) => (
+                      <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                    ))}
+                  </select>
+                </label>
 
-                  <div className="inv-form-group">
-                    <label>Receiving Branch *</label>
-                    <select
-                      className="inv-form-control"
-                      value={newPoBranch}
-                      onChange={(e) => setNewPoBranch(e.target.value)}
-                    >
-                      {branches.map(b => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="inv-form-group">
-                  <label>Expected Delivery Date</label>
+                <label className="employees-field-full">
+                  Expected Delivery Date
                   <input
                     type="date"
-                    className="inv-form-control"
                     value={expectedDate}
                     onChange={(e) => setExpectedDate(e.target.value)}
                   />
-                </div>
-
-                {/* Line Items */}
-                <div style={{ marginTop: '16px', marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: 700 }}>ORDER LINE ITEMS</label>
-                    <button type="button" className="inv-btn inv-btn-sm inv-btn-secondary" onClick={addLineItem}>
-                      + Add Item
-                    </button>
-                  </div>
-
-                  {lineItems.map((line, idx) => (
-                    <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-                      <select
-                        className="inv-form-control"
-                        style={{ flex: 3 }}
-                        value={line.ingredientId}
-                        onChange={(e) => handleLineChange(idx, 'ingredientId', e.target.value)}
-                        required
-                      >
-                        <option value="">Select Ingredient...</option>
-                        {ingredients.map(ing => (
-                          <option key={ing.id} value={ing.id}>{ing.name} ({ing.sku})</option>
-                        ))}
-                      </select>
-
-                      <input
-                        type="number"
-                        step="any"
-                        min="1"
-                        className="inv-form-control"
-                        placeholder="Quantity"
-                        style={{ flex: 1.5 }}
-                        value={line.orderedQty}
-                        onChange={(e) => handleLineChange(idx, 'orderedQty', e.target.value)}
-                        required
-                      />
-
-                      <span style={{ fontSize: '12px', width: '40px', color: 'var(--color-text-muted)' }}>
-                        {line.unit}
-                      </span>
-
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        className="inv-form-control"
-                        placeholder="Price ₹"
-                        style={{ flex: 1.5 }}
-                        value={line.unitPrice}
-                        onChange={(e) => handleLineChange(idx, 'unitPrice', e.target.value)}
-                        required
-                      />
-
-                      <span style={{ fontSize: '13px', fontWeight: 600, width: '100px', textAlign: 'right' }}>
-                        ₹{Math.round((Number(line.orderedQty) || 0) * (Number(line.unitPrice) || 0))}
-                      </span>
-
-                      {lineItems.length > 1 && (
-                        <button
-                          type="button"
-                          className="inv-btn inv-btn-sm inv-btn-danger"
-                          onClick={() => removeLineItem(idx)}
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                </label>
               </div>
 
-              <div className="inv-modal-footer">
-                <button type="button" className="inv-btn inv-btn-secondary" onClick={() => setIsCreateOpen(false)}>
+              <div style={{ marginTop: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#52645b' }}>Order Line Items</span>
+                  <button
+                    type="button"
+                    className="employees-button employees-button-secondary"
+                    onClick={handleAddLineItem}
+                    style={{ minHeight: '30px', height: '30px', padding: '4px 8px' }}
+                  >
+                    + Add Item
+                  </button>
+                </div>
+
+                {lineItems.map((line, idx) => (
+                  <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                    <select
+                      value={line.ingredientId}
+                      onChange={(e) => handleLineChange(idx, 'ingredientId', e.target.value)}
+                      required
+                    >
+                      <option value="">Select Ingredient</option>
+                      {ingredients.map((ing) => (
+                        <option key={ing.id} value={ing.id}>{ing.name} ({ing.sku})</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      placeholder="Qty"
+                      min="0.1"
+                      step="any"
+                      value={line.orderedQty}
+                      onChange={(e) => handleLineChange(idx, 'orderedQty', e.target.value)}
+                      required
+                    />
+                    <input
+                      type="number"
+                      placeholder="Unit Price (₹)"
+                      min="0"
+                      step="any"
+                      value={line.unitPrice}
+                      onChange={(e) => handleLineChange(idx, 'unitPrice', e.target.value)}
+                      required
+                    />
+                    {lineItems.length > 1 && (
+                      <button
+                        type="button"
+                        className="employees-button employees-button-danger"
+                        onClick={() => handleRemoveLineItem(idx)}
+                        style={{ minHeight: '33px', height: '33px' }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="employees-form-actions">
+                <button
+                  type="button"
+                  className="employees-button employees-button-secondary"
+                  onClick={() => setIsCreateOpen(false)}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="inv-btn inv-btn-primary">
-                  Create Draft Purchase Order
+                <button
+                  type="submit"
+                  className="employees-button employees-button-primary"
+                >
+                  Create Order
                 </button>
               </div>
             </form>
@@ -651,66 +634,275 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
         </div>
       )}
 
-      {/* VIEW RECEIPT HISTORY DRAWER */}
-      {viewHistoryPO && (
-        <div className="inv-modal-overlay">
-          <div className="inv-modal-content">
-            <div className="inv-modal-header">
+      {/* GOODS RECEIVING NOTE (GRN) MODAL */}
+      {receivingPO && (
+        <div
+          className="employees-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setReceivingPO(null);
+          }}
+        >
+          <div className="employees-modal" role="dialog" aria-modal="true" style={{ maxWidth: '850px' }}>
+            <div className="employees-modal-heading">
               <div>
-                <h3>Goods Receipts (GRN History)</h3>
-                <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{viewHistoryPO.poNumber}</p>
+                <p className="employees-eyebrow">GOODS RECEIPT NOTE</p>
+                <h3>Receive Goods: {receivingPO.poNumber}</h3>
               </div>
-              <button type="button" className="inv-modal-close" onClick={() => setViewHistoryPO(null)}>✕</button>
+              <button
+                type="button"
+                className="employees-modal-close"
+                onClick={() => setReceivingPO(null)}
+              >
+                <X size={20} />
+              </button>
             </div>
-            <div className="inv-modal-body">
-              {viewHistoryPO.receiptHistory.map((grn, i) => (
-                <div key={i} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '12px', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <strong>{grn.grnNumber}</strong>
-                    <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{grn.receivedAt.replace('T', ' ').slice(0, 16)}</span>
-                  </div>
-                  <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
-                    Received by: <strong>{grn.receivedBy}</strong>
-                  </div>
-                  {grn.notes && <div style={{ fontSize: '12px', fontStyle: 'italic', marginBottom: '8px' }}>"{grn.notes}"</div>}
-                  {grn.rejectionReason && (
-                    <div style={{ color: 'var(--color-error)', fontSize: '12px', marginBottom: '8px' }}>
-                      Rejection Reason: {grn.rejectionReason}
-                    </div>
-                  )}
-                  <table className="inv-table" style={{ fontSize: '11px' }}>
-                    <thead>
-                      <tr>
-                        <th>Batch Code</th>
-                        <th>Accepted</th>
-                        <th>Rejected</th>
-                        <th>Damaged</th>
+
+            {grnError && (
+              <div className="employees-error" role="alert">
+                <AlertCircle size={18} />
+                <span>{grnError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleProcessGRN}>
+              <div className="employees-form-grid" style={{ marginBottom: '16px' }}>
+                <label>
+                  GRN Identifier
+                  <input
+                    type="text"
+                    value={grnNumber}
+                    onChange={(e) => setGrnNumber(e.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  Notes / Dispatch Info
+                  <input
+                    type="text"
+                    value={grnNotes}
+                    onChange={(e) => setGrnNotes(e.target.value)}
+                    placeholder="e.g. Delivery truck #KA-01-AB-1234"
+                  />
+                </label>
+              </div>
+
+              <div className="employees-table-scroll" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                <table className="employees-table">
+                  <thead>
+                    <tr>
+                      <th>Ingredient</th>
+                      <th>Ordered</th>
+                      <th>Accepted</th>
+                      <th>Rejected</th>
+                      <th>Damaged</th>
+                      <th>Batch Code</th>
+                      <th>Expiry</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {grnReceiptItems.map((item, idx) => (
+                      <tr key={idx}>
+                        <td><strong>{ingredientMap[item.ingredientId] || item.ingredientId}</strong></td>
+                        <td>{item.orderedQty} {item.unit}</td>
+                        <td>
+                          <input
+                            type="number"
+                            style={{ width: '75px', height: '34px' }}
+                            value={item.acceptedQty}
+                            min="0"
+                            step="any"
+                            onChange={(e) => {
+                              const updated = [...grnReceiptItems];
+                              updated[idx].acceptedQty = e.target.value;
+                              setGrnReceiptItems(updated);
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            style={{ width: '65px', height: '34px' }}
+                            value={item.rejectedQty}
+                            min="0"
+                            onChange={(e) => {
+                              const updated = [...grnReceiptItems];
+                              updated[idx].rejectedQty = e.target.value;
+                              setGrnReceiptItems(updated);
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            style={{ width: '65px', height: '34px' }}
+                            value={item.damagedQty}
+                            min="0"
+                            onChange={(e) => {
+                              const updated = [...grnReceiptItems];
+                              updated[idx].damagedQty = e.target.value;
+                              setGrnReceiptItems(updated);
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{ width: '100px', height: '34px' }}
+                            value={item.batchNumber}
+                            onChange={(e) => {
+                              const updated = [...grnReceiptItems];
+                              updated[idx].batchNumber = e.target.value;
+                              setGrnReceiptItems(updated);
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="date"
+                            style={{ width: '130px', height: '34px' }}
+                            value={item.expiryDate}
+                            onChange={(e) => {
+                              const updated = [...grnReceiptItems];
+                              updated[idx].expiryDate = e.target.value;
+                              setGrnReceiptItems(updated);
+                            }}
+                          />
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {grn.items ? grn.items.map((it, idx) => (
-                        <tr key={idx}>
-                          <td><code>{it.batchNumber}</code></td>
-                          <td style={{ color: 'var(--color-success)', fontWeight: 600 }}>{it.acceptedQty}</td>
-                          <td>{it.rejectedQty}</td>
-                          <td>{it.damagedQty}</td>
-                        </tr>
-                      )) : (
-                        <tr>
-                          <td><code>{grn.batchNumber}</code></td>
-                          <td style={{ color: 'var(--color-success)', fontWeight: 600 }}>{grn.acceptedQty}</td>
-                          <td>{grn.rejectedQty}</td>
-                          <td>{grn.damagedQty}</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="employees-form-actions">
+                <button
+                  type="button"
+                  className="employees-button employees-button-secondary"
+                  onClick={() => setReceivingPO(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="employees-button employees-button-primary"
+                >
+                  Confirm Goods Receipt
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW DETAILS / GRN HISTORY MODAL */}
+      {viewHistoryPO && (
+        <div
+          className="employees-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setViewHistoryPO(null);
+          }}
+        >
+          <div className="employees-modal" role="dialog" aria-modal="true" style={{ maxWidth: '700px' }}>
+            <div className="employees-modal-heading">
+              <div>
+                <p className="employees-eyebrow">ORDER DETAILS</p>
+                <h3>{viewHistoryPO.poNumber}</h3>
+              </div>
+              <button
+                type="button"
+                className="employees-modal-close"
+                onClick={() => setViewHistoryPO(null)}
+              >
+                <X size={20} />
+              </button>
             </div>
-            <div className="inv-modal-footer">
-              <button type="button" className="inv-btn inv-btn-secondary" onClick={() => setViewHistoryPO(null)}>
+
+            <div style={{ marginBottom: '16px', fontSize: '13px', color: '#52645a' }}>
+              <p><strong>Supplier:</strong> {supplierMap[viewHistoryPO.supplierId] || viewHistoryPO.supplierId}</p>
+              <p><strong>Branch:</strong> {branchMap[viewHistoryPO.branchId] || viewHistoryPO.branchId}</p>
+              <p><strong>Status:</strong> {viewHistoryPO.status}</p>
+              <p><strong>Total Amount:</strong> ₹{(viewHistoryPO.totalAmount || 0).toLocaleString()}</p>
+            </div>
+
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#52645b', display: 'block', marginBottom: '8px' }}>Line Items</span>
+            <div className="employees-table-scroll" style={{ marginBottom: '20px' }}>
+              <table className="employees-table">
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Ordered</th>
+                    <th>Received</th>
+                    <th>Unit Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(viewHistoryPO.items || []).map((it, idx) => (
+                    <tr key={idx}>
+                      <td><strong>{ingredientMap[it.ingredientId] || it.ingredientName || it.ingredientId}</strong></td>
+                      <td>{it.orderedQty} {it.unit}</td>
+                      <td>{it.receivedQty || 0} {it.unit}</td>
+                      <td>₹{it.unitPrice}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="employees-form-actions">
+              <button
+                type="button"
+                className="employees-button employees-button-secondary"
+                onClick={() => setViewHistoryPO(null)}
+              >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal (Standardized) */}
+      {deleteConfirmTarget && (
+        <div
+          className="employees-delete-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !deleting) setDeleteConfirmTarget(null);
+          }}
+        >
+          <div
+            className="employees-delete-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-po-title"
+            aria-describedby="delete-po-description"
+          >
+            <div className="employees-delete-icon">
+              <Trash2 size={24} />
+            </div>
+
+            <h3 id="delete-po-title">Delete Purchase Order?</h3>
+
+            <p id="delete-po-description">
+              Are you sure you want to permanently delete PO <strong>{deleteConfirmTarget.poNumber}</strong>? This action cannot be undone.
+            </p>
+
+            <div className="employees-delete-actions">
+              <button
+                type="button"
+                className="employees-button employees-button-secondary"
+                onClick={() => setDeleteConfirmTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="employees-button employees-button-danger"
+                onClick={() => handleDeletePO(deleteConfirmTarget)}
+                disabled={deleting}
+              >
+                <Trash2 size={16} />
+                {deleting ? 'Deleting...' : 'Delete Purchase Order'}
               </button>
             </div>
           </div>

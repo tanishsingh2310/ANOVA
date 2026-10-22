@@ -1,8 +1,16 @@
 import { useState, useEffect } from 'react';
+import {
+  Search,
+  RefreshCw,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  AlertCircle,
+  Truck
+} from 'lucide-react';
 import { SupplierService } from '../services/supplierService';
 import { InventoryService } from '../services/inventoryService';
-import StockBadge from '../components/StockBadge';
-import '../../../styles/inventory-suppliers.css';
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState([]);
@@ -12,9 +20,13 @@ export default function SuppliersPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   // Modals / Drawers
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState(null);
   const [catalogSupplier, setCatalogSupplier] = useState(null);
   const [suppliedItems, setSuppliedItems] = useState([]);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
 
   // Form State
   const [form, setForm] = useState({
@@ -24,16 +36,16 @@ export default function SuppliersPage() {
     contactPerson: '',
     email: '',
     phone: '',
-    city: '',
+    city: 'Mumbai',
     leadTimeDays: 2,
     paymentTerms: 'Net 30',
     taxId: ''
   });
   const [formError, setFormError] = useState('');
-
+  const [notice, setNotice] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
-  const loadData = async () => {
+  const loadData = async (refresh = false) => {
     const list = SupplierService.getSuppliers({
       category: categoryFilter,
       status: statusFilter,
@@ -51,6 +63,7 @@ export default function SuppliersPage() {
         search
       });
       setSuppliers(fresh);
+      if (refresh) setNotice('Supplier directory refreshed.');
     } catch (err) {
       console.warn('Suppliers sync error:', err.message);
     } finally {
@@ -62,15 +75,58 @@ export default function SuppliersPage() {
     loadData();
   }, [categoryFilter, statusFilter, search]);
 
+  const openAddModal = () => {
+    setEditingSupplier(null);
+    setForm({
+      name: '',
+      code: '',
+      category: categories[0] || 'Produce & Greens',
+      contactPerson: '',
+      email: '',
+      phone: '',
+      city: 'Mumbai',
+      leadTimeDays: 2,
+      paymentTerms: 'Net 30',
+      taxId: ''
+    });
+    setFormError('');
+    setIsFormOpen(true);
+  };
+
+  const openEditModal = (sup) => {
+    setEditingSupplier(sup);
+    setForm({
+      name: sup.name || '',
+      code: sup.code || '',
+      category: sup.category || categories[0] || 'Produce & Greens',
+      contactPerson: sup.contactPerson || '',
+      email: sup.email || '',
+      phone: sup.phone || '',
+      city: sup.city || 'Mumbai',
+      leadTimeDays: sup.leadTimeDays || 2,
+      paymentTerms: sup.paymentTerms || 'Net 30',
+      taxId: sup.taxId || ''
+    });
+    setFormError('');
+    setIsFormOpen(true);
+  };
+
+  const closeFormModal = () => {
+    setIsFormOpen(false);
+    setEditingSupplier(null);
+    setFormError('');
+  };
+
   const handleOpenCatalog = (supplier) => {
     setCatalogSupplier(supplier);
     const items = SupplierService.getSuppliedIngredients(supplier.id);
     setSuppliedItems(items);
   };
 
-  const handleToggleStatus = async (supplierId) => {
+  const handleToggleStatus = async (supplier) => {
     try {
-      await SupplierService.toggleStatusRemote(supplierId);
+      await SupplierService.toggleStatusRemote(supplier.id);
+      setNotice(`Supplier "${supplier.name}" ${supplier.status === 'ACTIVE' ? 'deactivated' : 'activated'} successfully.`);
       loadData();
     } catch (err) {
       alert(err.message || 'Error updating supplier status');
@@ -85,206 +141,306 @@ export default function SuppliersPage() {
     }
 
     try {
-      await SupplierService.saveSupplierRemote({
-        ...form,
-        leadTimeDays: Number(form.leadTimeDays)
-      });
-      setIsAddModalOpen(false);
-      setForm({
-        name: '',
-        code: '',
-        category: 'Produce & Greens',
-        contactPerson: '',
-        email: '',
-        phone: '',
-        city: '',
-        leadTimeDays: 2,
-        paymentTerms: 'Net 30',
-        taxId: ''
-      });
+      const payload = {
+        name: form.name.trim(),
+        code: form.code.trim(),
+        category: form.category,
+        contactPerson: form.contactPerson.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        city: form.city.trim(),
+        leadTimeDays: Number(form.leadTimeDays || 2),
+        paymentTerms: form.paymentTerms,
+        taxId: form.taxId.trim()
+      };
+
+      if (editingSupplier) {
+        payload.id = editingSupplier.id;
+        payload._id = editingSupplier._id || editingSupplier.id;
+        payload.status = editingSupplier.status;
+        payload.rating = editingSupplier.rating;
+      }
+
+      await SupplierService.saveSupplierRemote(payload);
+      closeFormModal();
+      setNotice(editingSupplier ? 'Supplier updated successfully.' : 'Supplier onboarded successfully.');
       loadData();
     } catch (err) {
       setFormError(err.message || 'Error saving supplier');
     }
   };
 
+  const handleDeleteSupplier = async (sup) => {
+    if (!sup || deleting) return;
+    setDeleting(true);
+    setError('');
+    setNotice('');
+    try {
+      await SupplierService.deleteSupplierRemote(sup.id || sup._id);
+      setDeleteConfirmTarget(null);
+      setNotice(`Supplier "${sup.name}" deleted successfully.`);
+      await loadData();
+    } catch (err) {
+      setError(err.message || 'Failed to delete supplier');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
-    <div className="inv-suppliers-page">
-      {/* Toolbar */}
-      <div className="inv-toolbar">
-        <div className="inv-search-box">
-          <span aria-hidden="true" style={{ opacity: 0.6, fontSize: '15px' }}>⌕</span>
-          <input
-            type="text"
-            placeholder="Search supplier, contact, city, GST..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+    <div className="employees-page">
+      {/* Heading matching Images 1-4 */}
+      <div className="employees-heading">
+        <div>
+          <h2>Suppliers</h2>
+          <p>Manage verified suppliers, lead times, payment terms, and vendor contacts.</p>
         </div>
 
-        <div className="inv-filter-group">
-          <select
-            className="inv-select"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            aria-label="Filter by category"
-          >
-            <option value="ALL">All Categories</option>
-            {categories.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-
-          <select
-            className="inv-select"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            aria-label="Filter by active status"
-          >
-            <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active Suppliers</option>
-            <option value="INACTIVE">Inactive Suppliers</option>
-          </select>
-
+        <div className="employees-heading-actions">
           <button
             type="button"
-            className="inv-btn inv-btn-primary"
-            onClick={() => setIsAddModalOpen(true)}
+            className="employees-button employees-button-primary"
+            onClick={openAddModal}
           >
-            + Onboard New Supplier
+            <Plus size={16} />
+            + Add Supplier
+          </button>
+          <button
+            type="button"
+            className="employees-button employees-button-secondary"
+            onClick={() => loadData(true)}
+            disabled={isSyncing}
+          >
+            <RefreshCw size={16} className={isSyncing ? 'employees-spin' : ''} />
+            Refresh
           </button>
         </div>
       </div>
 
-      {/* Supplier Table */}
-      <div className="inv-card">
-        <div className="inv-card-header">
+      {notice && (
+        <div className="employees-notice" role="status">
+          {notice}
+        </div>
+      )}
+
+      {error && (
+        <div className="employees-error" role="alert">
+          <AlertCircle size={18} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Filter Toolbar matching Images 1-4 */}
+      <div className="employees-toolbar">
+        <label className="employees-search">
+          <Search size={18} />
+          <input
+            type="search"
+            placeholder="Search name, code, contact, or city..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+
+        <label className="employees-filter">
+          <span>Category</span>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="ALL">All categories</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="employees-filter">
+          <span>Status</span>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="ALL">All statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </select>
+        </label>
+      </div>
+
+      {/* Table Card matching People & HR and Actions from Image 5 */}
+      <div className="employees-table-card">
+        <div className="employees-table-heading">
           <div>
-            <h3>Enterprise Supplier Network</h3>
-            <p>Verified vendors, lead times, payment terms & reliability metrics</p>
+            <h3>Vendor Directory</h3>
+            <p>
+              {suppliers.length} result{suppliers.length === 1 ? '' : 's'}
+            </p>
           </div>
         </div>
-        <div className="inv-card-body" style={{ padding: 0 }}>
-          <div className="inv-table-wrapper">
-            <table className="inv-table">
+
+        {suppliers.length === 0 ? (
+          <div className="employees-empty-state">
+            <Truck size={26} />
+            <h3>No supplier records found</h3>
+            <p>Try changing the filters or add a new supplier record.</p>
+          </div>
+        ) : (
+          <div className="employees-table-scroll">
+            <table className="employees-table">
               <thead>
                 <tr>
-                  <th style={{ width: '130px', whiteSpace: 'nowrap' }}>Vendor Code</th>
-                  <th>Supplier Name</th>
-                  <th>Specialty Category</th>
-                  <th>Primary Contact</th>
+                  <th>Vendor</th>
+                  <th>Category</th>
+                  <th>Contact Person</th>
+                  <th>Location</th>
                   <th>Lead Time</th>
                   <th>Payment Terms</th>
                   <th>Rating</th>
                   <th>Status</th>
-                  <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>Actions</th>
+                  <th style={{ width: '230px' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {suppliers.length === 0 ? (
-                  <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '30px', color: 'var(--color-text-muted)' }}>
-                      No suppliers match your current filter.
+                {suppliers.map((sup) => (
+                  <tr key={sup.id || sup._id}>
+                    <td>
+                      <div className="employees-person">
+                        <span className="employees-avatar">
+                          {(sup.name || 'S').trim().charAt(0).toUpperCase()}
+                        </span>
+                        <div className="employees-person-details">
+                          <strong>{sup.name}</strong>
+                          <span>Code: {sup.code}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{sup.category}</td>
+                    <td>
+                      <div>{sup.contactPerson}</div>
+                      <span style={{ fontSize: '11px', color: '#748078' }}>
+                        {sup.phone} • {sup.email}
+                      </span>
+                    </td>
+                    <td>
+                      <div>{sup.city}</div>
+                      <span style={{ fontSize: '11px', color: '#748078' }}>
+                        GST: {sup.taxId || 'N/A'}
+                      </span>
+                    </td>
+                    <td>
+                      <strong>{sup.leadTimeDays} days</strong>
+                    </td>
+                    <td>{sup.paymentTerms}</td>
+                    <td>
+                      <span style={{ color: '#c48a36', fontWeight: 700 }}>
+                        ★ {sup.rating || '4.5'}
+                      </span>
+                    </td>
+                    <td>
+                      <span
+                        className={`employees-status ${
+                          sup.status === 'ACTIVE' ? 'is-active' : 'is-inactive'
+                        }`}
+                      >
+                        {sup.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td>
+                      {/* Image 5: Edit | Deactivate/Activate | Delete Action Group */}
+                      <div className="employees-row-actions">
+                        <button
+                          type="button"
+                          className="employees-button employees-button-secondary"
+                          onClick={() => openEditModal(sup)}
+                        >
+                          <Pencil size={15} />
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          className="employees-button employees-button-secondary"
+                          onClick={() => handleToggleStatus(sup)}
+                        >
+                          {sup.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="employees-button employees-button-danger"
+                          onClick={() => setDeleteConfirmTarget(sup)}
+                          title={`Delete ${sup.name}`}
+                          aria-label={`Delete ${sup.name}`}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ) : (
-                  suppliers.map((sup) => (
-                    <tr key={sup.id}>
-                      <td className="inv-cell-code"><code>{sup.code}</code></td>
-                      <td>
-                        <strong>{sup.name}</strong>
-                        <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-                          {sup.city} • GST: {sup.taxId || 'N/A'}
-                        </div>
-                      </td>
-                      <td className="inv-cell-nowrap">{sup.category}</td>
-                      <td>
-                        <div>{sup.contactPerson}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
-                          {sup.phone} • {sup.email}
-                        </div>
-                      </td>
-                      <td className="inv-cell-nowrap"><strong>{sup.leadTimeDays} days</strong></td>
-                      <td className="inv-cell-nowrap">{sup.paymentTerms}</td>
-                      <td className="inv-cell-nowrap">
-                        <span style={{ color: 'var(--color-warning)', fontWeight: 700 }}>
-                          ★ {sup.rating || '4.5'}
-                        </span>
-                      </td>
-                      <td className="inv-cell-badge"><StockBadge status={sup.status} /></td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'inline-flex', gap: '6px' }}>
-                          <button
-                            type="button"
-                            className="inv-btn inv-btn-sm inv-btn-secondary"
-                            onClick={() => handleOpenCatalog(sup)}
-                          >
-                            Catalog
-                          </button>
-                          <button
-                            type="button"
-                            className={`inv-btn inv-btn-sm ${sup.status === 'ACTIVE' ? 'inv-btn-secondary' : 'inv-btn-gold'}`}
-                            onClick={() => handleToggleStatus(sup.id)}
-                            title={sup.status === 'ACTIVE' ? 'Deactivate supplier' : 'Reactivate supplier'}
-                          >
-                            {sup.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Catalog Modal */}
       {catalogSupplier && (
-        <div className="inv-modal-overlay">
-          <div className="inv-modal-content">
-            <div className="inv-modal-header">
+        <div
+          className="employees-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setCatalogSupplier(null);
+          }}
+        >
+          <div className="employees-modal" role="dialog" aria-modal="true" style={{ maxWidth: '700px' }}>
+            <div className="employees-modal-heading">
               <div>
-                <h3>Supplied Ingredients Catalog</h3>
-                <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                  {catalogSupplier.name} ({catalogSupplier.code})
-                </p>
+                <p className="employees-eyebrow">SUPPLIED ITEMS</p>
+                <h3>{catalogSupplier.name} Catalog</h3>
               </div>
-              <button type="button" className="inv-modal-close" onClick={() => setCatalogSupplier(null)}>✕</button>
+              <button
+                type="button"
+                className="employees-modal-close"
+                onClick={() => setCatalogSupplier(null)}
+              >
+                <X size={20} />
+              </button>
             </div>
-            <div className="inv-modal-body">
-              {suppliedItems.length === 0 ? (
-                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                  No ingredients currently linked to this supplier.
-                </div>
-              ) : (
-                <table className="inv-table">
+            {suppliedItems.length === 0 ? (
+              <div className="employees-empty-state">
+                <p>No ingredients currently associated with this vendor.</p>
+              </div>
+            ) : (
+              <div className="employees-table-scroll">
+                <table className="employees-table">
                   <thead>
                     <tr>
                       <th>SKU</th>
                       <th>Ingredient</th>
                       <th>Category</th>
                       <th>Unit Cost</th>
-                      <th>Base Unit</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {suppliedItems.map(item => (
+                    {suppliedItems.map((item) => (
                       <tr key={item.id}>
                         <td><code>{item.sku}</code></td>
                         <td><strong>{item.name}</strong></td>
                         <td>{item.category}</td>
                         <td>₹{item.unitCost}</td>
-                        <td>{item.baseUnit}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              )}
-            </div>
-            <div className="inv-modal-footer">
-              <button type="button" className="inv-btn inv-btn-secondary" onClick={() => setCatalogSupplier(null)}>
+              </div>
+            )}
+            <div className="employees-form-actions">
+              <button
+                type="button"
+                className="employees-button employees-button-secondary"
+                onClick={() => setCatalogSupplier(null)}
+              >
                 Close
               </button>
             </div>
@@ -292,153 +448,218 @@ export default function SuppliersPage() {
         </div>
       )}
 
-      {/* Onboard Supplier Modal */}
-      {isAddModalOpen && (
-        <div className="inv-modal-overlay">
-          <div className="inv-modal-content">
-            <div className="inv-modal-header">
-              <h3>Onboard Vendor / Supplier</h3>
-              <button type="button" className="inv-modal-close" onClick={() => setIsAddModalOpen(false)}>✕</button>
+      {/* Add / Edit Supplier Modal matching People & HR Form Modals */}
+      {isFormOpen && (
+        <div
+          className="employees-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeFormModal();
+          }}
+        >
+          <div className="employees-modal" role="dialog" aria-modal="true">
+            <div className="employees-modal-heading">
+              <div>
+                <p className="employees-eyebrow">VENDOR REGISTRATION</p>
+                <h3>{editingSupplier ? 'Edit Supplier' : 'Add New Supplier'}</h3>
+              </div>
+              <button
+                type="button"
+                className="employees-modal-close"
+                onClick={closeFormModal}
+                aria-label="Close form"
+              >
+                <X size={20} />
+              </button>
             </div>
+
+            {formError && (
+              <div className="employees-error" role="alert">
+                <AlertCircle size={18} />
+                <span>{formError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleSaveSupplier}>
-              <div className="inv-modal-body">
-                {formError && <div className="inv-alert-banner inv-alert-danger">{formError}</div>}
+              <div className="employees-form-grid">
+                <label className="employees-field-full">
+                  Supplier / Company Name *
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="e.g. Verdant Harvest Organic Farms"
+                    required
+                  />
+                </label>
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Supplier Business Name *</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      placeholder="e.g. Malabar Spice Traders"
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="inv-form-group">
-                    <label>Vendor Code</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      placeholder="e.g. MST"
-                      value={form.code}
-                      onChange={(e) => setForm({ ...form, code: e.target.value })}
-                    />
-                  </div>
-                </div>
+                <label>
+                  Vendor Code
+                  <input
+                    type="text"
+                    value={form.code}
+                    onChange={(e) => setForm({ ...form, code: e.target.value })}
+                    placeholder="Auto-generated if blank"
+                  />
+                </label>
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Supply Category *</label>
-                    <select
-                      className="inv-form-control"
-                      value={form.category}
-                      onChange={(e) => setForm({ ...form, category: e.target.value })}
-                    >
-                      {categories.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="inv-form-group">
-                    <label>City / Hub Location</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      placeholder="e.g. Mumbai / Pune"
-                      value={form.city}
-                      onChange={(e) => setForm({ ...form, city: e.target.value })}
-                    />
-                  </div>
-                </div>
+                <label>
+                  Category *
+                  <select
+                    value={form.category}
+                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    required
+                  >
+                    {categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </label>
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Primary Contact Person *</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      placeholder="e.g. Rajesh Nair"
-                      value={form.contactPerson}
-                      onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="inv-form-group">
-                    <label>Phone Number *</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      placeholder="+91 98..."
-                      value={form.phone}
-                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
+                <label>
+                  Contact Person *
+                  <input
+                    type="text"
+                    value={form.contactPerson}
+                    onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
+                    placeholder="Representative Name"
+                    required
+                  />
+                </label>
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Email Address *</label>
-                    <input
-                      type="email"
-                      className="inv-form-control"
-                      placeholder="orders@vendor.com"
-                      value={form.email}
-                      onChange={(e) => setForm({ ...form, email: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="inv-form-group">
-                    <label>GST / Tax Identification ID</label>
-                    <input
-                      type="text"
-                      className="inv-form-control"
-                      placeholder="27AABC..."
-                      value={form.taxId}
-                      onChange={(e) => setForm({ ...form, taxId: e.target.value })}
-                    />
-                  </div>
-                </div>
+                <label>
+                  Phone Number *
+                  <input
+                    type="tel"
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    placeholder="+91 98200 00000"
+                    required
+                  />
+                </label>
 
-                <div className="inv-form-row">
-                  <div className="inv-form-group">
-                    <label>Standard Lead Time (Days)</label>
-                    <input
-                      type="number"
-                      min="1"
-                      className="inv-form-control"
-                      value={form.leadTimeDays}
-                      onChange={(e) => setForm({ ...form, leadTimeDays: e.target.value })}
-                    />
-                  </div>
-                  <div className="inv-form-group">
-                    <label>Payment Terms</label>
-                    <select
-                      className="inv-form-control"
-                      value={form.paymentTerms}
-                      onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
-                    >
-                      <option value="Net 15">Net 15 Days</option>
-                      <option value="Net 30">Net 30 Days</option>
-                      <option value="Net 45">Net 45 Days</option>
-                      <option value="Due on Receipt">Due on Receipt</option>
-                      <option value="Advance">Advance 100%</option>
-                    </select>
-                  </div>
-                </div>
+                <label>
+                  Email Address *
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="orders@supplier.com"
+                    required
+                  />
+                </label>
+
+                <label>
+                  City / Location
+                  <input
+                    type="text"
+                    value={form.city}
+                    onChange={(e) => setForm({ ...form, city: e.target.value })}
+                    placeholder="Mumbai"
+                  />
+                </label>
+
+                <label>
+                  Lead Time (Days)
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={form.leadTimeDays}
+                    onChange={(e) => setForm({ ...form, leadTimeDays: e.target.value })}
+                    required
+                  />
+                </label>
+
+                <label>
+                  Payment Terms
+                  <select
+                    value={form.paymentTerms}
+                    onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })}
+                  >
+                    <option value="Net 15">Net 15</option>
+                    <option value="Net 30">Net 30</option>
+                    <option value="Net 45">Net 45</option>
+                    <option value="Due on Receipt">Due on Receipt</option>
+                    <option value="Advance">Advance</option>
+                  </select>
+                </label>
+
+                <label className="employees-field-full">
+                  Tax / GST Identification Number
+                  <input
+                    type="text"
+                    value={form.taxId}
+                    onChange={(e) => setForm({ ...form, taxId: e.target.value })}
+                    placeholder="e.g. 27AABCV1234F1Z8"
+                  />
+                </label>
               </div>
 
-              <div className="inv-modal-footer">
-                <button type="button" className="inv-btn inv-btn-secondary" onClick={() => setIsAddModalOpen(false)}>
+              <div className="employees-form-actions">
+                <button
+                  type="button"
+                  className="employees-button employees-button-secondary"
+                  onClick={closeFormModal}
+                >
                   Cancel
                 </button>
-                <button type="submit" className="inv-btn inv-btn-primary">
-                  Save & Register Vendor
+                <button
+                  type="submit"
+                  className="employees-button employees-button-primary"
+                >
+                  {editingSupplier ? 'Save Changes' : 'Register Supplier'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal (Standardized) */}
+      {deleteConfirmTarget && (
+        <div
+          className="employees-delete-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !deleting) setDeleteConfirmTarget(null);
+          }}
+        >
+          <div
+            className="employees-delete-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-supplier-title"
+            aria-describedby="delete-supplier-description"
+          >
+            <div className="employees-delete-icon">
+              <Trash2 size={24} />
+            </div>
+
+            <h3 id="delete-supplier-title">Delete Supplier?</h3>
+
+            <p id="delete-supplier-description">
+              Are you sure you want to permanently delete supplier{' '}
+              <strong>{deleteConfirmTarget.name}</strong> ({deleteConfirmTarget.code})? This action cannot be undone.
+            </p>
+
+            <div className="employees-delete-actions">
+              <button
+                type="button"
+                className="employees-button employees-button-secondary"
+                onClick={() => setDeleteConfirmTarget(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="employees-button employees-button-danger"
+                onClick={() => handleDeleteSupplier(deleteConfirmTarget)}
+                disabled={deleting}
+              >
+                <Trash2 size={16} />
+                {deleting ? 'Deleting...' : 'Delete Supplier'}
+              </button>
+            </div>
           </div>
         </div>
       )}
