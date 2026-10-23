@@ -108,6 +108,26 @@ const ITEMS_PER_PAGE = 10
 
     return names;
   }, [branchOptions]);
+ 
+useEffect(() => {
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  setSearch("");
+  setCategoryFilter("All Categories");
+  setAvailabilityFilter("All Items");
+  setDietaryFilter("all");
+  setCurrentPage(1);
+}, [selectedBranchId]);
+useEffect(() => {
+  onBranchChange?.(ALL_BRANCHES);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  setSearch("");
+  setCategoryFilter("All Categories");
+  setAvailabilityFilter("All Items");
+  setDietaryFilter("all");
+  setCurrentPage(1);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   const getBranchName = useCallback(
     (item) => {
@@ -270,6 +290,7 @@ const ITEMS_PER_PAGE = 10
     });
   }, [menu, search, categoryFilter, availabilityFilter, dietaryFilter]);
   useEffect(() => {
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   setCurrentPage(1);
 }, [
   search,

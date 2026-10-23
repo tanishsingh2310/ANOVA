@@ -404,9 +404,8 @@
 }
 
 .menu-filter-card .menu-filter select:focus-visible {
-  outline: 3px solid rgb(108 137 123 / 24%);
-  outline-offset: 2px;
-  border-color: #91aa9b;
+  outline: 1px solid #e4eee8;
+  border-color: #15803d;
 }
 
 .menu-filter-card .menu-filter select:disabled {
@@ -661,7 +660,6 @@
   line-height: 1.6;
   overflow-wrap: anywhere;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 /* Category */

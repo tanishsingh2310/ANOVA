@@ -1,10 +1,22 @@
+
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search, Plus, Pencil, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  LoaderCircle,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
+
 import "../../../styles/table-management.css";
-import "../../../styles/menu-management.css";
 import { apiRequest } from "../../../services/api";
 
 const ALL_BRANCHES = "all";
+const ITEMS_PER_PAGE = 10;
 
 const emptyForm = {
   number: "",
@@ -17,7 +29,13 @@ const emptyForm = {
 const statuses = ["Available", "Occupied", "Reserved"];
 const locations = ["Indoor", "Outdoor", "Private Dining"];
 
-// Normalize MongoDB documents for consistent frontend usage.
+const capacityRanges = [
+  { label: "1–2 Seats", value: "1-2 Seats" },
+  { label: "3–4 Seats", value: "3-4 Seats" },
+  { label: "5–6 Seats", value: "5-6 Seats" },
+  { label: "7+ Seats", value: "7+ Seats" },
+];
+
 function normalizeTable(table, fallbackBranchId = "") {
   if (!table) return null;
 
@@ -39,12 +57,8 @@ function normalizeTable(table, fallbackBranchId = "") {
   };
 }
 
-function getBranchName(branches, branchId) {
-  const branch = branches.find(
-    (item) => String(item._id || item.id) === String(branchId)
-  );
-
-  return branch?.name || branch?.branchName || branch?.code || "Unknown Branch";
+function getErrorMessage(error, fallback) {
+  return error?.message || fallback;
 }
 
 function TableManagement({
@@ -57,18 +71,100 @@ function TableManagement({
   const [tables, setTables] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Statuses");
+  const [locationFilter, setLocationFilter] = useState("All Locations");
+  const [capacityFilter, setCapacityFilter] = useState("All Capacities");
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
 
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [loadError, setLoadError] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [updatingStatusId, setUpdatingStatusId] = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [formError, setFormError] = useState("");
 
-  // Load tables for the selected branch or all available branches.
+  const [saving, setSaving] = useState(false);
+  const [deletingItem, setDeletingItem] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [busyItemId, setBusyItemId] = useState(null);
+
+  const selectedBranchId = String(branchId || ALL_BRANCHES);
+
+  const branchOptions = useMemo(
+    () => (Array.isArray(branches) ? branches : []),
+    [branches]
+  );
+
+  const branchNames = useMemo(() => {
+    const names = new Map();
+
+    branchOptions.forEach((branch) => {
+      const id = branch?._id || branch?.id;
+
+      if (id) {
+        names.set(
+          String(id),
+          branch.name ||
+            branch.branchName ||
+            branch.code ||
+            "Unnamed Branch"
+        );
+      }
+    });
+
+    return names;
+  }, [branchOptions]);
+
+  const getBranchName = useCallback(
+    (table) => {
+      if (table.branchId && branchNames.has(table.branchId)) {
+        return branchNames.get(table.branchId);
+      }
+
+      const rawBranch = table.branch;
+
+      if (rawBranch && typeof rawBranch === "object") {
+        return (
+          rawBranch.name ||
+          rawBranch.branchName ||
+          "Unknown Branch"
+        );
+      }
+
+      return "Unknown Branch";
+    },
+    [branchNames]
+  );
+
+  const notify = useCallback((type, message) => {
+    setNotice({
+      type,
+      message,
+      id: `${Date.now()}-${Math.random()}`,
+    });
+  }, []);
+
+  // Reset filters when the selected branch changes.
+  useEffect(() => {
+    setSearch("");
+    setStatusFilter("All Statuses");
+    setLocationFilter("All Locations");
+    setCapacityFilter("All Capacities");
+    setCurrentPage(1);
+  }, [selectedBranchId]);
+
+  // Reset the branch and filters when this page mounts.
+  useEffect(() => {
+    onBranchChange?.(ALL_BRANCHES);
+    setSearch("");
+    setStatusFilter("All Statuses");
+    setLocationFilter("All Locations");
+    setCapacityFilter("All Capacities");
+    setCurrentPage(1);
+  }, []);
+
   const loadTables = useCallback(async () => {
     if (branchLoading) {
       setLoading(true);
@@ -88,11 +184,13 @@ function TableManagement({
     try {
       let data = [];
 
-      if (branchId === ALL_BRANCHES) {
-        if (branches.length > 0) {
+      if (selectedBranchId === ALL_BRANCHES) {
+        if (branchOptions.length > 0) {
           const results = await Promise.all(
-            branches.map(async (branch) => {
-              const currentBranchId = String(branch._id || branch.id || "");
+            branchOptions.map(async (branch) => {
+              const currentBranchId = String(
+                branch._id || branch.id || ""
+              );
 
               if (!currentBranchId) return [];
 
@@ -109,7 +207,9 @@ function TableManagement({
               }
 
               return response
-                .map((table) => normalizeTable(table, currentBranchId))
+                .map((table) =>
+                  normalizeTable(table, currentBranchId)
+                )
                 .filter(Boolean);
             })
           );
@@ -117,7 +217,8 @@ function TableManagement({
           const uniqueTables = new Map();
 
           results.flat().forEach((table) => {
-            const key = table.id || `${table.branchId}-${table.number}`;
+            const key =
+              table.id || `${table.branchId}-${table.number}`;
 
             if (key) {
               uniqueTables.set(key, table);
@@ -126,15 +227,21 @@ function TableManagement({
 
           data = Array.from(uniqueTables.values());
         }
-      } else if (branchId) {
-        const response = await apiRequest(`/api/tables/${branchId}`);
+      } else {
+        const response = await apiRequest(
+          `/api/tables/${selectedBranchId}`
+        );
 
         if (!Array.isArray(response)) {
-          throw new Error("Invalid table data received from the server.");
+          throw new Error(
+            "Invalid table data received from the server."
+          );
         }
 
         data = response
-          .map((table) => normalizeTable(table, branchId))
+          .map((table) =>
+            normalizeTable(table, selectedBranchId)
+          )
           .filter(Boolean);
       }
 
@@ -142,29 +249,110 @@ function TableManagement({
       setLoadError("");
     } catch (error) {
       setTables([]);
-      setLoadError(error.message || "Unable to load restaurant tables.");
+      setLoadError(
+        getErrorMessage(error, "Unable to load restaurant tables.")
+      );
     } finally {
       setLoading(false);
     }
-  }, [branchId, branches, branchLoading, branchError]);
+  }, [
+    selectedBranchId,
+    branchOptions,
+    branchLoading,
+    branchError,
+  ]);
 
   useEffect(() => {
     loadTables();
-  }, [loadTables]);
+  }, [loadTables, refreshKey]);
 
-  // Search and status filtering.
   const filteredTables = useMemo(() => {
-    const searchTerm = search.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
 
     return tables.filter((table) => {
-      const matchesSearch = table.number.toLowerCase().includes(searchTerm);
+      const matchesSearch = table.number
+        .toLowerCase()
+        .includes(query);
 
       const matchesStatus =
-        statusFilter === "All Statuses" || table.status === statusFilter;
+        statusFilter === "All Statuses" ||
+        table.status === statusFilter;
 
-      return matchesSearch && matchesStatus;
+      const matchesLocation =
+        locationFilter === "All Locations" ||
+        table.location === locationFilter;
+
+      const matchesCapacity =
+        capacityFilter === "All Capacities" ||
+        (capacityFilter === "1-2 Seats" &&
+          table.capacity >= 1 &&
+          table.capacity <= 2) ||
+        (capacityFilter === "3-4 Seats" &&
+          table.capacity >= 3 &&
+          table.capacity <= 4) ||
+        (capacityFilter === "5-6 Seats" &&
+          table.capacity >= 5 &&
+          table.capacity <= 6) ||
+        (capacityFilter === "7+ Seats" &&
+          table.capacity >= 7);
+
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesLocation &&
+        matchesCapacity
+      );
     });
-  }, [tables, search, statusFilter]);
+  }, [
+    tables,
+    search,
+    statusFilter,
+    locationFilter,
+    capacityFilter,
+  ]);
+
+  // Reset pagination whenever the search or any filter changes.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    search,
+    statusFilter,
+    locationFilter,
+    capacityFilter,
+    selectedBranchId,
+  ]);
+
+  const totalPages = Math.ceil(
+    filteredTables.length / ITEMS_PER_PAGE
+  );
+
+  const paginatedTables = filteredTables.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  const currentBranchLabel =
+    selectedBranchId === ALL_BRANCHES
+      ? "All Branches"
+      : branchNames.get(selectedBranchId) || "Selected Branch";
+
+  const formBranchName =
+    branchNames.get(String(form.branchId)) ||
+    (form.branchId ? "Current table branch" : "No branch selected");
+
+  function refreshTables() {
+    setNotice(null);
+    setRefreshKey((current) => current + 1);
+  }
+
+  function closeForm() {
+    if (saving) return;
+
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    setFormError("");
+  }
 
   function openAddForm() {
     setEditingId(null);
@@ -172,9 +360,13 @@ function TableManagement({
     setForm({
       ...emptyForm,
       branchId:
-        branchId && branchId !== ALL_BRANCHES ? String(branchId) : "",
+        selectedBranchId !== ALL_BRANCHES
+          ? selectedBranchId
+          : "",
     });
 
+    setFormError("");
+    setNotice(null);
     setShowForm(true);
   }
 
@@ -189,24 +381,22 @@ function TableManagement({
       branchId: table.branchId,
     });
 
+    setFormError("");
+    setNotice(null);
     setShowForm(true);
   }
 
-  function closeForm() {
-    if (saving) return;
-
-    setShowForm(false);
-    setEditingId(null);
-    setForm(emptyForm);
-  }
-
-  function handleChange(event) {
+  function handleFormChange(event) {
     const { name, value } = event.target;
 
     setForm((current) => ({
       ...current,
       [name]: value,
     }));
+
+    if (formError) {
+      setFormError("");
+    }
   }
 
   async function handleSubmit(event) {
@@ -221,33 +411,35 @@ function TableManagement({
     if (
       !targetBranchId ||
       targetBranchId === ALL_BRANCHES ||
-      !branches.some(
-        (branch) => String(branch._id || branch.id) === targetBranchId
+      !branchOptions.some(
+        (branch) =>
+          String(branch._id || branch.id) === targetBranchId
       )
     ) {
-      window.alert("Please select a valid branch.");
+      setFormError("Please select a valid branch.");
       return;
     }
 
     if (
       !number ||
+      number.length > 20 ||
       !Number.isInteger(capacity) ||
       capacity < 1 ||
       capacity > 100
     ) {
-      window.alert(
+      setFormError(
         "Enter a valid table number and a seating capacity between 1 and 100."
       );
       return;
     }
 
     if (!locations.includes(form.location)) {
-      window.alert("Please select a valid table location.");
+      setFormError("Please select a valid table location.");
       return;
     }
 
     if (!statuses.includes(form.status)) {
-      window.alert("Please select a valid table status.");
+      setFormError("Please select a valid table status.");
       return;
     }
 
@@ -256,13 +448,17 @@ function TableManagement({
       : null;
 
     if (editingId && !existingTable) {
-      window.alert("The table could not be found. Refresh and try again.");
+      setFormError(
+        "The table could not be found. Refresh and try again."
+      );
       return;
     }
 
-    // Editing does not transfer a table to another branch.
-    if (existingTable && existingTable.branchId !== targetBranchId) {
-      window.alert(
+    if (
+      existingTable &&
+      existingTable.branchId !== targetBranchId
+    ) {
+      setFormError(
         "A table cannot be moved to another branch while editing."
       );
       return;
@@ -276,7 +472,9 @@ function TableManagement({
     );
 
     if (duplicate) {
-      window.alert("This table number already exists in the selected branch.");
+      setFormError(
+        "This table number already exists in the selected branch."
+      );
       return;
     }
 
@@ -288,6 +486,8 @@ function TableManagement({
     };
 
     setSaving(true);
+    setFormError("");
+    setNotice(null);
 
     try {
       if (editingId) {
@@ -299,10 +499,15 @@ function TableManagement({
           }
         );
 
-        const updatedTable = normalizeTable(response, targetBranchId);
+        const updatedTable = normalizeTable(
+          response,
+          targetBranchId
+        );
 
         if (!updatedTable?.id) {
-          throw new Error("The server did not return the updated table.");
+          throw new Error(
+            "The server did not return the updated table."
+          );
         }
 
         setTables((current) =>
@@ -311,7 +516,10 @@ function TableManagement({
           )
         );
 
-        window.alert("Table updated successfully.");
+        setShowForm(false);
+        setEditingId(null);
+        setForm(emptyForm);
+        notify("success", "Table updated successfully.");
       } else {
         const response = await apiRequest("/api/tables", {
           method: "POST",
@@ -321,7 +529,10 @@ function TableManagement({
           }),
         });
 
-        const createdTable = normalizeTable(response, targetBranchId);
+        const createdTable = normalizeTable(
+          response,
+          targetBranchId
+        );
 
         if (!createdTable?.id) {
           throw new Error(
@@ -329,17 +540,23 @@ function TableManagement({
           );
         }
 
-        setTables((current) => [...current, createdTable]);
+        setShowForm(false);
+        setEditingId(null);
+        setForm(emptyForm);
 
-        window.alert("Table added successfully.");
+        setTables((current) => [
+          createdTable,
+          ...current.filter(
+            (table) => table.id !== createdTable.id
+          ),
+        ]);
+
+        notify("success", "Table added successfully.");
       }
-
-      setShowForm(false);
-      setEditingId(null);
-      setForm(emptyForm);
-      setLoadError("");
     } catch (error) {
-      window.alert(`Unable to save table: ${error.message}`);
+      setFormError(
+        getErrorMessage(error, "Unable to save the table.")
+      );
     } finally {
       setSaving(false);
     }
@@ -348,16 +565,23 @@ function TableManagement({
   async function updateStatus(id, status) {
     const table = tables.find((item) => item.id === id);
 
-    if (!table || table.status === status || updatingStatusId) {
+    if (
+      !table ||
+      table.status === status ||
+      busyItemId ||
+      deleting ||
+      saving
+    ) {
       return;
     }
 
     if (!table.branchId || table.branchId === ALL_BRANCHES) {
-      window.alert("Unable to identify this table's branch.");
+      notify("error", "Unable to identify this table's branch.");
       return;
     }
 
-    setUpdatingStatusId(id);
+    setBusyItemId(id);
+    setNotice(null);
 
     try {
       const response = await apiRequest(
@@ -368,54 +592,71 @@ function TableManagement({
         }
       );
 
-      const updatedTable = normalizeTable(response, table.branchId);
+      const updatedTable = normalizeTable(
+        response,
+        table.branchId
+      );
 
       if (!updatedTable?.id) {
-        throw new Error("The server did not return the updated table.");
+        throw new Error(
+          "The server did not return the updated table."
+        );
       }
 
       setTables((current) =>
-        current.map((item) => (item.id === id ? updatedTable : item))
+        current.map((item) =>
+          item.id === id ? updatedTable : item
+        )
       );
+
+      notify("success", `Table ${table.number} status updated.`);
     } catch (error) {
-      window.alert(`Unable to change table status: ${error.message}`);
+      notify(
+        "error",
+        getErrorMessage(error, "Unable to change table status.")
+      );
     } finally {
-      setUpdatingStatusId(null);
+      setBusyItemId(null);
     }
   }
 
-  async function deleteTable(table) {
-    if (deletingId) return;
+  async function confirmDelete() {
+    if (!deletingItem || deleting) return;
 
+    const table = deletingItem;
     const targetBranchId = table.branchId;
 
     if (!targetBranchId || targetBranchId === ALL_BRANCHES) {
-      window.alert("Unable to identify this table's branch.");
+      notify("error", "Unable to identify this table's branch.");
+      setDeletingItem(null);
       return;
     }
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete table ${table.number}?`
-    );
-
-    if (!confirmed) return;
-
-    setDeletingId(table.id);
+    setDeleting(true);
+    setNotice(null);
 
     try {
-      await apiRequest(`/api/tables/${targetBranchId}/${table.id}`, {
-        method: "DELETE",
-      });
+      await apiRequest(
+        `/api/tables/${targetBranchId}/${table.id}`,
+        { method: "DELETE" }
+      );
 
       setTables((current) =>
         current.filter((item) => item.id !== table.id)
       );
 
-      window.alert("Table deleted successfully.");
+      setDeletingItem(null);
+      notify(
+        "success",
+        `Table ${table.number} was deleted successfully.`
+      );
     } catch (error) {
-      window.alert(`Unable to delete table: ${error.message}`);
+      notify(
+        "error",
+        getErrorMessage(error, "Unable to delete the table.")
+      );
     } finally {
-      setDeletingId(null);
+      setDeleting(false);
     }
   }
 
@@ -424,94 +665,192 @@ function TableManagement({
       <div className="table-page-heading">
         <div className="table-page-heading-copy">
           <p>
-            Organise restaurant seating, monitor availability, and manage table
-            assignments.
+            Organise restaurant seating, monitor availability, and manage
+            table assignments.
           </p>
         </div>
 
-        <div className="table-heading-actions">
-          <button
-            type="button"
-            className="menu-secondary-button menu-refresh-button"
-            onClick={loadTables}
-            disabled={loading || branchLoading}
-            title="Refresh tables"
-            aria-label="Refresh tables"
-          >
-            <RefreshCw
-              size={15}
-              className={loading ? "menu-spin" : ""}
-            />
-            <span>Refresh</span>
-          </button>
-
+        <div className="table-header-actions">
           <button
             type="button"
             className="table-primary-button"
             onClick={openAddForm}
-            disabled={branchLoading || Boolean(branchError) || saving}
+            disabled={
+              branchLoading ||
+              Boolean(branchError) ||
+              branchOptions.length === 0 ||
+              saving
+            }
           >
-            <Plus size={16} />
-            <span>Add Table</span>
+            <Plus size={17} aria-hidden="true" />
+            Add Table
+          </button>
+
+          <button
+            type="button"
+            className="table-secondary-button table-refresh-button"
+            onClick={refreshTables}
+            disabled={loading || branchLoading}
+            title="Refresh tables"
+          >
+            <RefreshCw
+              size={15}
+              className={loading ? "table-spin" : ""}
+              aria-hidden="true"
+            />
+            Refresh
           </button>
         </div>
       </div>
 
-      <div className="table-toolbar">
-        <div className="table-search">
-          <Search size={16} aria-hidden="true" />
-
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by table number..."
-            aria-label="Search tables"
-          />
-        </div>
-
-        <div className="table-branch-filter">
-          <label htmlFor="table-branch-select">Branch</label>
-
-          <select
-            id="table-branch-select"
-            className="table-branch-select"
-            value={branchId || ALL_BRANCHES}
-            onChange={(event) => {
-              onBranchChange?.(event.target.value);
-              setShowForm(false);
-              setEditingId(null);
-            }}
-            disabled={branchLoading || Boolean(branchError)}
-            aria-label="Filter tables by branch"
-          >
-            <option value={ALL_BRANCHES}>All Branches</option>
-
-            {branches.map((branch) => (
-              <option
-                key={branch._id || branch.id}
-                value={branch._id || branch.id}
-              >
-                {branch.name || branch.branchName || branch._id || branch.id}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <select
-          className="table-status-filter"
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value)}
-          aria-label="Filter tables by status"
+      {notice && (
+        <div
+          className={`table-notice table-notice-${notice.type}`}
+          role={notice.type === "error" ? "alert" : "status"}
+          key={notice.id}
         >
-          <option value="All Statuses">All Statuses</option>
+          {notice.type === "success" ? (
+            <CheckCircle2 size={18} aria-hidden="true" />
+          ) : (
+            <AlertCircle size={18} aria-hidden="true" />
+          )}
 
-          {statuses.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
-        </select>
+          <span>{notice.message}</span>
+
+          <button
+            type="button"
+            className="table-notice-close"
+            onClick={() => setNotice(null)}
+            aria-label="Dismiss notification"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      <div className="table-filter-card">
+        <div className="table-toolbar">
+          <label className="table-search">
+            <Search size={17} aria-hidden="true" />
+
+            <input
+              type="search"
+              placeholder="Search by table number..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              aria-label="Search tables"
+            />
+
+            {search && (
+              <button
+                type="button"
+                className="table-search-clear"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </label>
+
+          <label className="table-filter">
+            <span>Branch</span>
+
+            <select
+              id="table-branch-selector"
+              value={selectedBranchId}
+              onChange={(event) => {
+                setNotice(null);
+                setShowForm(false);
+                setEditingId(null);
+                onBranchChange?.(event.target.value);
+              }}
+              disabled={branchLoading || Boolean(branchError)}
+              aria-label="Filter tables by branch"
+            >
+              <option value={ALL_BRANCHES}>All Branches</option>
+
+              {branchOptions.map((branch) => {
+                const id = String(branch._id || branch.id);
+
+                return (
+                  <option key={id} value={id}>
+                    {branch.name ||
+                      branch.branchName ||
+                      branch.code ||
+                      id}
+                  </option>
+                );
+              })}
+            </select>
+
+            {branchError && (
+              <small className="table-filter-error" role="alert">
+                {branchError}
+              </small>
+            )}
+          </label>
+
+          <label className="table-filter">
+            <span>Status</span>
+
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value)
+              }
+              aria-label="Filter by table status"
+            >
+              <option value="All Statuses">All statuses</option>
+
+              {statuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="table-filter">
+            <span>Location</span>
+
+            <select
+              value={locationFilter}
+              onChange={(event) =>
+                setLocationFilter(event.target.value)
+              }
+              aria-label="Filter by table location"
+            >
+              <option value="All Locations">All Locations</option>
+
+              {locations.map((location) => (
+                <option key={location} value={location}>
+                  {location}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="table-filter">
+            <span>Capacity</span>
+
+            <select
+              value={capacityFilter}
+              onChange={(event) =>
+                setCapacityFilter(event.target.value)
+              }
+              aria-label="Filter by seating capacity"
+            >
+              <option value="All Capacities">All Capacities</option>
+
+              {capacityRanges.map((range) => (
+                <option key={range.value} value={range.value}>
+                  {range.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       <div className="table-list-container">
@@ -521,66 +860,176 @@ function TableManagement({
             <p>
               {loading
                 ? "Loading tables..."
-                : `${filteredTables.length} ${
-                    filteredTables.length === 1 ? "table" : "tables"
-                  } found`}
+                : loadError
+                  ? "Tables could not be loaded"
+                  : `${filteredTables.length} ${
+                      filteredTables.length === 1 ? "table" : "tables"
+                    } found`}
             </p>
           </div>
+
+          <span className="table-current-branch">
+            {currentBranchLabel}
+          </span>
         </div>
 
-        {loadError && (
-          <div role="alert" className="table-load-error">
-            <strong>Unable to load restaurant tables.</strong>
-            <p>{loadError}</p>
-
-            <button
-              type="button"
-              className="menu-secondary-button"
-              onClick={loadTables}
-              disabled={loading}
-            >
-              Try Again
-            </button>
-          </div>
-        )}
-
         <div className="table-list-scroll">
-          <table className="restaurant-table">
+          <table className="table-grid">
+            <colgroup>
+              <col className="table-col-number" />
+              <col className="table-col-branch" />
+              <col className="table-col-capacity" />
+              <col className="table-col-location" />
+              <col className="table-col-status" />
+              <col className="table-col-change-status" />
+              <col className="table-col-actions" />
+            </colgroup>
+
             <thead>
               <tr>
-                <th>Table</th>
-                <th>Branch</th>
-                <th>Capacity</th>
-                <th>Location</th>
-                <th>Status</th>
-                <th>Change Status</th>
-                <th>Actions</th>
+                <th scope="col">Table</th>
+                <th scope="col">Branch</th>
+                <th scope="col">Capacity</th>
+                <th scope="col">Location</th>
+                <th scope="col">Status</th>
+                <th scope="col">Change Status</th>
+                <th scope="col" className="table-actions-heading">
+                  Actions
+                </th>
               </tr>
             </thead>
 
             <tbody>
-              {loading && (
+              {loading ? (
                 <tr>
-                  <td colSpan={7} className="table-empty-state">
-                    <RefreshCw size={18} className="menu-spin" />
-                    <p>Loading restaurant tables...</p>
+                  <td colSpan={7} className="table-state-cell">
+                    <div className="table-loading-state">
+                      <LoaderCircle
+                        size={24}
+                        className="table-spin"
+                        aria-hidden="true"
+                      />
+                      <strong>Loading restaurant tables</strong>
+                      <span>
+                        Please wait while we fetch your tables.
+                      </span>
+                    </div>
                   </td>
                 </tr>
-              )}
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={7} className="table-state-cell">
+                    <div className="table-error-state">
+                      <AlertCircle size={27} aria-hidden="true" />
+                      <strong>Unable to load tables</strong>
+                      <p>{loadError}</p>
 
-              {!loading &&
-                !loadError &&
-                filteredTables.map((table) => (
+                      <button
+                        type="button"
+                        className="table-secondary-button"
+                        onClick={refreshTables}
+                      >
+                        <RefreshCw size={14} />
+                        Try Again
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : branchLoading ? (
+                <tr>
+                  <td colSpan={7} className="table-state-cell">
+                    <div className="table-loading-state">
+                      <LoaderCircle
+                        size={24}
+                        className="table-spin"
+                        aria-hidden="true"
+                      />
+                      <strong>Loading branches</strong>
+                      <span>
+                        Please wait while we load your branches.
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              ) : branchOptions.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="table-state-cell">
+                    <div className="table-empty-state">
+                      <strong>No branches available</strong>
+                      <p>
+                        Branches must be available before tables can be
+                        displayed or created.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredTables.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="table-state-cell">
+                    <div className="table-empty-state">
+                      <div className="table-empty-icon">
+                        <Search size={23} aria-hidden="true" />
+                      </div>
+
+                      <strong>
+                        {tables.length === 0
+                          ? "No tables yet"
+                          : "No matching tables"}
+                      </strong>
+
+                      <p>
+                        {tables.length === 0
+                          ? selectedBranchId === ALL_BRANCHES
+                            ? "No tables were found across your branches. Add a table to get started."
+                            : "No tables were found for this branch. Add a table to get started."
+                          : "Try another search term or adjust your branch, status, location, or capacity filters."}
+                      </p>
+
+                      {tables.length === 0 && (
+                        <button
+                          type="button"
+                          className="table-primary-button"
+                          onClick={openAddForm}
+                        >
+                          <Plus size={16} />
+                          Add Table
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedTables.map((table) => (
                   <tr key={table.id}>
                     <td>
-                      <span className="restaurant-table-number">
-                        {table.number}
-                      </span>
+                      <div className="table-item-cell">
+                        <div
+                          className="table-item-avatar"
+                          aria-hidden="true"
+                        >
+                          {(table.number || "?")
+                            .trim()
+                            .charAt(0)
+                            .toUpperCase()}
+                        </div>
+
+                        <div className="table-item-copy">
+                          <div className="table-item-name">
+                            {table.number}
+                          </div>
+                          <div className="table-item-description">
+                            Restaurant table
+                          </div>
+                        </div>
+                      </div>
                     </td>
 
                     <td>
-                      <span className="table-branch-name">
-                        {getBranchName(branches, table.branchId)}
+                      <span
+                        className="table-branch-name"
+                        title={getBranchName(table)}
+                      >
+                        {getBranchName(table)}
                       </span>
                     </td>
 
@@ -589,11 +1038,15 @@ function TableManagement({
                       {table.capacity === 1 ? "seat" : "seats"}
                     </td>
 
-                    <td>{table.location}</td>
+                    <td>
+                      <span className="table-location-badge">
+                        {table.location}
+                      </span>
+                    </td>
 
                     <td>
                       <span
-                        className={`table-status status-${table.status
+                        className={`table-status-badge status-${table.status
                           .toLowerCase()
                           .replace(/\s+/g, "-")}`}
                       >
@@ -608,9 +1061,9 @@ function TableManagement({
                         aria-label={`Change status for ${table.number}`}
                         value={table.status}
                         disabled={
-                          updatingStatusId === table.id ||
-                          Boolean(deletingId) ||
-                          loading
+                          busyItemId === table.id ||
+                          Boolean(deletingItem) ||
+                          saving
                         }
                         onChange={(event) =>
                           updateStatus(table.id, event.target.value)
@@ -624,52 +1077,106 @@ function TableManagement({
                       </select>
                     </td>
 
-                    
-<td>
-  <div className="menu-row-actions">
-    <button
-      type="button"
-      className="menu-action-button"
-      onClick={() => openEditForm(table)}
-      disabled={Boolean(saving || deletingId)}
-      aria-label={`Edit table ${table.number}`}
-      title="Edit table"
-    >
-      <Pencil size={14} aria-hidden="true" />
-      <span>Edit</span>
-    </button>
+                    <td>
+                      <div className="table-row-actions">
+                        <button
+                          type="button"
+                          className="table-action-button"
+                          onClick={() => openEditForm(table)}
+                          disabled={
+                            Boolean(busyItemId) ||
+                            Boolean(deletingItem) ||
+                            saving
+                          }
+                          aria-label={`Edit table ${table.number}`}
+                          title="Edit table"
+                        >
+                          <Pencil size={14} aria-hidden="true" />
+                          <span>Edit</span>
+                        </button>
 
-    <button
-      type="button"
-      className="menu-action-button menu-delete-button"
-      onClick={() => deleteTable(table)}
-      disabled={Boolean(saving || deletingId)}
-      aria-label={`Delete table ${table.number}`}
-      title="Delete table"
-    >
-      <Trash2 size={14} aria-hidden="true" />
-      <span>
-        {deletingId === table.id ? "Deleting..." : "Delete"}
-      </span>
-    </button>
-  </div>
-</td>
-
+                        <button
+                          type="button"
+                          className="table-action-button table-delete-button"
+                          onClick={() => setDeletingItem(table)}
+                          disabled={
+                            Boolean(busyItemId) ||
+                            Boolean(deletingItem) ||
+                            saving
+                          }
+                          aria-label={`Delete table ${table.number}`}
+                          title="Delete table"
+                        >
+                          <Trash2 size={14} aria-hidden="true" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                ))}
-
-              {!loading && !loadError && filteredTables.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="table-empty-state">
-                    <strong>No tables found</strong>
-                    <p>Try changing the search term or status filter.</p>
-                  </td>
-                </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {totalPages > 1 && !loading && !loadError && (
+        <div className="table-pagination">
+          <span className="table-pagination-info">
+            Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
+            {Math.min(
+              currentPage * ITEMS_PER_PAGE,
+              filteredTables.length
+            )}{" "}
+            of {filteredTables.length} tables
+          </span>
+
+          <div className="table-pagination-buttons">
+            <button
+              type="button"
+              className="table-pagination-button"
+              disabled={currentPage === 1}
+              onClick={() =>
+                setCurrentPage((page) => Math.max(1, page - 1))
+              }
+            >
+              Previous
+            </button>
+
+            {Array.from(
+              { length: totalPages },
+              (_, index) => index + 1
+            ).map((page) => (
+              <button
+                key={page}
+                type="button"
+                className={`table-pagination-button ${
+                  currentPage === page ? "active" : ""
+                }`}
+                onClick={() => setCurrentPage(page)}
+                aria-current={
+                  currentPage === page ? "page" : undefined
+                }
+              >
+                {page}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              className="table-pagination-button"
+              disabled={currentPage === totalPages}
+              onClick={() =>
+                setCurrentPage((page) =>
+                  Math.min(totalPages, page + 1)
+                )
+              }
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div
@@ -681,122 +1188,167 @@ function TableManagement({
           }}
         >
           <section
-            className="table-modal"
+            className="table-modal table-form-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby="table-modal-title"
           >
             <div className="table-modal-heading">
               <div>
-                <span className="table-eyebrow">SEATING CONFIGURATION</span>
+                <span className="table-eyebrow">
+                  SEATING CONFIGURATION
+                </span>
+
                 <h2 id="table-modal-title">
                   {editingId ? "Edit Table" : "Add Table"}
                 </h2>
+
+                <p className="table-modal-subtitle">
+                  {editingId
+                    ? "Update the details of this restaurant table."
+                    : "Add a table to a specific restaurant branch."}
+                </p>
               </div>
 
               <button
                 type="button"
                 className="table-modal-close"
                 onClick={closeForm}
-                aria-label="Close form"
                 disabled={saving}
+                aria-label="Close form"
               >
-                ×
+                <X size={19} />
               </button>
             </div>
 
+            {formError && (
+              <div className="table-form-error" role="alert">
+                <AlertCircle size={17} aria-hidden="true" />
+                <span>{formError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit}>
-              <label>
-                Table Number
-                <input
-                  name="number"
-                  value={form.number}
-                  onChange={handleChange}
-                  placeholder="e.g. T-09"
-                  maxLength={20}
-                  required
-                />
-              </label>
+              <div className="table-form-grid">
+                <label className="table-form-field">
+                  <span>
+                    Table Number{" "}
+                    <span className="table-required">*</span>
+                  </span>
 
-              <label>
-                Branch
-                <select
-                  name="branchId"
-                  value={form.branchId}
-                  onChange={handleChange}
-                  required
-                  disabled={
-                    branchLoading || Boolean(branchError) || Boolean(editingId)
-                  }
-                >
-                  <option value="">Select Branch</option>
+                  <input
+                    name="number"
+                    value={form.number}
+                    onChange={handleFormChange}
+                    placeholder="e.g. T-09"
+                    maxLength={20}
+                    required
+                    autoFocus
+                  />
+                </label>
 
-                  {branches.map((branch) => (
-                    <option
-                      key={branch._id || branch.id}
-                      value={branch._id || branch.id}
+                <label className="table-form-field">
+                  <span>
+                    Seating Capacity{" "}
+                    <span className="table-required">*</span>
+                  </span>
+
+                  <input
+                    name="capacity"
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={form.capacity}
+                    onChange={handleFormChange}
+                    required
+                  />
+                </label>
+
+                <label className="table-form-field">
+                  <span>
+                    Location{" "}
+                    <span className="table-required">*</span>
+                  </span>
+
+                  <select
+                    name="location"
+                    value={form.location}
+                    onChange={handleFormChange}
+                    required
+                  >
+                    {locations.map((location) => (
+                      <option key={location} value={location}>
+                        {location}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="table-form-field">
+                  <span>
+                    Status{" "}
+                    <span className="table-required">*</span>
+                  </span>
+
+                  <select
+                    name="status"
+                    value={form.status}
+                    onChange={handleFormChange}
+                    required
+                  >
+                    {statuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="table-form-field table-form-field-full">
+                  <span>
+                    Branch{" "}
+                    <span className="table-required">*</span>
+                  </span>
+
+                  {editingId ? (
+                    <>
+                      <input
+                        value={formBranchName}
+                        readOnly
+                        aria-label="Table branch"
+                      />
+
+                      <small>
+                        A table remains assigned to its original branch
+                        when edited.
+                      </small>
+                    </>
+                  ) : (
+                    <select
+                      name="branchId"
+                      value={form.branchId}
+                      onChange={handleFormChange}
+                      required
                     >
-                      {branch.name ||
-                        branch.branchName ||
-                        branch._id ||
-                        branch.id}
-                    </option>
-                  ))}
-                </select>
+                      <option value="">Select a branch</option>
 
-                {editingId && (
-                  <small>
-                    A table remains assigned to its original branch when
-                    edited.
-                  </small>
-                )}
-              </label>
+                      {branchOptions.map((branch) => {
+                        const id = String(branch._id || branch.id);
 
-              <label>
-                Seating Capacity
-                <input
-                  name="capacity"
-                  type="number"
-                  min="1"
-                  max="100"
-                  step="1"
-                  value={form.capacity}
-                  onChange={handleChange}
-                  required
-                />
-              </label>
-
-              <label>
-                Location
-                <select
-                  name="location"
-                  value={form.location}
-                  onChange={handleChange}
-                  required
-                >
-                  {locations.map((location) => (
-                    <option key={location} value={location}>
-                      {location}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label>
-                Status
-                <select
-                  name="status"
-                  value={form.status}
-                  onChange={handleChange}
-                  required
-                >
-                  {statuses.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                        return (
+                          <option key={id} value={id}>
+                            {branch.name ||
+                              branch.branchName ||
+                              branch.code ||
+                              id}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                </label>
+              </div>
 
               <div className="table-modal-actions">
                 <button
@@ -813,14 +1365,97 @@ function TableManagement({
                   className="table-primary-button"
                   disabled={saving}
                 >
-                  {saving
-                    ? "Saving..."
-                    : editingId
-                      ? "Save Changes"
-                      : "Add Table"}
+                  {saving ? (
+                    <>
+                      <LoaderCircle
+                        size={16}
+                        className="table-spin"
+                        aria-hidden="true"
+                      />
+                      Saving...
+                    </>
+                  ) : editingId ? (
+                    <>
+                      <CheckCircle2 size={16} aria-hidden="true" />
+                      Save Changes
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={17} aria-hidden="true" />
+                      Add Table
+                    </>
+                  )}
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {deletingItem && (
+        <div
+          className="table-modal-backdrop table-confirm-backdrop"
+          onMouseDown={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              !deleting
+            ) {
+              setDeletingItem(null);
+            }
+          }}
+        >
+          <section
+            className="table-confirm-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="table-delete-title"
+            aria-describedby="table-delete-description"
+          >
+            <div className="table-confirm-icon">
+              <Trash2 size={23} aria-hidden="true" />
+            </div>
+
+            <h2 id="table-delete-title">Delete Table?</h2>
+
+            <p id="table-delete-description">
+              Are you sure you want to delete table{" "}
+              <strong>{deletingItem.number}</strong>? This action
+              cannot be undone.
+            </p>
+
+            <div className="table-confirm-actions">
+              <button
+                type="button"
+                className="table-secondary-button"
+                onClick={() => setDeletingItem(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="table-danger-button"
+                onClick={confirmDelete}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <>
+                    <LoaderCircle
+                      size={16}
+                      className="table-spin"
+                      aria-hidden="true"
+                    />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={15} aria-hidden="true" />
+                    Delete Table
+                  </>
+                )}
+              </button>
+            </div>
           </section>
         </div>
       )}
