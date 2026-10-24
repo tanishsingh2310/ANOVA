@@ -1055,7 +1055,6 @@
 .menu-form-field textarea:focus {
   border-color: #7d9a87;
   outline: none;
-  box-shadow: 0 0 0 3px rgb(108 137 123 / 11%);
 }
 
 .menu-form-field input:read-only {
@@ -1455,5 +1454,34 @@
   .menu-pagination {
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+.menu-branch-checkbox-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.menu-branch-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color, #dfe3e8);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.menu-branch-checkbox input {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  accent-color: var(--primary-color, #2563eb);
+}
+
+@media (max-width: 600px) {
+  .menu-branch-checkbox-list {
+    grid-template-columns: 1fr;
   }
 }

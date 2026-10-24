@@ -2,10 +2,23 @@ const mongoose = require("mongoose");
 
 const menuItemSchema = new mongoose.Schema(
   {
+    // Primary branch retained for backward compatibility.
     branchId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Branch",
       required: true,
+      index: true,
+    },
+
+    // All branches where this menu item is available.
+    branchIds: {
+      type: [
+        {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Branch",
+        },
+      ],
+      default: [],
       index: true,
     },
 
@@ -36,10 +49,10 @@ const menuItemSchema = new mongoose.Schema(
     },
 
     image: {
-     type: String,
-     trim: true,
-     default: "",
-     maxlength: 500,
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: 500,
     },
 
     price: {
@@ -53,21 +66,18 @@ const menuItemSchema = new mongoose.Schema(
       default: true,
     },
 
-    // Food Recommendations: Dietary classification
     dietary: {
       type: String,
       enum: ["Vegetarian", "Vegan", "Non-Vegetarian"],
       default: null,
     },
 
-    // Food Recommendations: Spice preference
     spice: {
       type: String,
       enum: ["Mild", "Medium", "Hot"],
       default: null,
     },
 
-    // Food Recommendations: Dish ingredients
     ingredients: {
       type: [
         {
