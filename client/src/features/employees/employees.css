@@ -950,3 +950,115 @@
     transform: rotate(360deg);
   }
 }
+
+
+/* =========================================
+   EMPLOYEE PAGINATION — MATCH TABLE MANAGEMENT
+========================================= */
+
+.employees-page .employees-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 12px 15px;
+  background: #ffffff;
+  border: 1px solid var(--emp-border, #e3e9e3);
+  border-radius: 13px;
+}
+
+.employees-page .employees-pagination-info {
+  color: var(--emp-muted, #748078);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.employees-page .employees-pagination-buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.employees-page .employees-pagination-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--emp-text, #26342f);
+  background: #ffffff;
+  border: 1px solid var(--emp-border, #e3e9e3);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+
+.employees-page .employees-pagination-button.active {
+  color: #ffffff;
+  background: var(--emp-primary, #183c34);
+  border-color: var(--emp-primary, #183c34);
+}
+
+.employees-page .employees-pagination-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.employees-page .employees-pagination-button:focus-visible {
+  outline: 3px solid rgb(108 137 123 / 25%);
+  outline-offset: 2px;
+}
+
+/* =========================================
+   RESPONSIVE PAGINATION
+========================================= */
+
+@media (max-width: 600px) {
+  .employees-page .employees-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 12px;
+  }
+
+  .employees-page .employees-pagination-buttons {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .employees-page .employees-pagination-button {
+    min-width: 32px;
+    padding: 0 8px;
+  }
+}
+
+/* =========================================
+   REDUCED MOTION
+========================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  .employees-page .employees-pagination-button {
+    transition: none;
+  }
+}
+.employees-pagination-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 34px;
+  color: #647067;
+  font-size: 14px;
+  font-weight: 600;
+  user-select: none;
+}

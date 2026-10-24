@@ -568,19 +568,15 @@
   width: 12%;
 }
 .menu-col-price {
-  width: 9%;
-}
-
-.menu-col-branch {
-  width: 14%;
-}
-
-.menu-col-availability {
   width: 12%;
 }
 
+.menu-col-availability {
+  width: 14%;
+}
+
 .menu-col-actions {
-  width: 18%;
+  width: 20%;
 }
 
 .menu-table th {
@@ -1432,8 +1428,8 @@
   border-radius: 6px;
   background: #fff;
   color: #26342f;
-  font-size: 12px;
-  font-weight: 400;
+  font-size: 12px !important;
+  font-weight: 650 !important;
   cursor: pointer;
 }
 
@@ -1484,4 +1480,15 @@
   .menu-branch-checkbox-list {
     grid-template-columns: 1fr;
   }
+}
+.menu-pagination-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 34px;
+  color: #647067;
+  font-size: 14px;
+  font-weight: 600;
+  user-select: none;
 }

@@ -9,6 +9,8 @@ import {
   Search,
   Trash2,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import "../../../styles/menu-management.css";
 import { apiRequest } from "../../../services/api";
@@ -93,6 +95,37 @@ function normalizeMenuItem(item, fallbackBranchId = "") {
 function getErrorMessage(error, fallback) {
   return error?.message || fallback;
 }
+function getPaginationPages(currentPage, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "...", totalPages];
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [
+      1,
+      "...",
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ];
+  }
+
+  return [
+    1,
+    "...",
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    "...",
+    totalPages,
+  ];
+}
 
 function MenuManagement({
   branchId = ALL_BRANCHES,
@@ -167,27 +200,7 @@ function MenuManagement({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const getBranchName = useCallback(
-    (item) => {
-      const ids = getBranchIds(item);
-
-      if (!ids.length) return "Unknown Branch";
-
-      return ids
-        .map(
-          (id) =>
-            branchNames.get(id) ||
-            (id === getBranchId(item) &&
-            item?.branch &&
-            typeof item.branch === "object"
-              ? item.branch.name
-              : null) ||
-            "Unknown Branch"
-        )
-        .join(", ");
-    },
-    [branchNames]
-  );
+  
 
   const notify = useCallback((type, message) => {
     setNotice({
@@ -776,6 +789,10 @@ function MenuManagement({
   const totalPages = Math.ceil(
     filteredMenu.length / ITEMS_PER_PAGE
   );
+  const paginationPages = getPaginationPages(
+  currentPage,
+  totalPages
+);
 
   const paginatedItems = filteredMenu.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
@@ -978,7 +995,6 @@ function MenuManagement({
               <col className="menu-col-category" />
               <col className="menu-col-dietary" />
               <col className="menu-col-price" />
-              <col className="menu-col-branch" />
               <col className="menu-col-availability" />
               <col className="menu-col-actions" />
             </colgroup>
@@ -989,7 +1005,6 @@ function MenuManagement({
                 <th scope="col">Category</th>
                 <th scope="col">Dietary</th>
                 <th scope="col">Price</th>
-                <th scope="col">Branch</th>
                 <th scope="col">Availability</th>
                 <th scope="col" className="menu-actions-heading">
                   Actions
@@ -1154,14 +1169,7 @@ function MenuManagement({
                       })}
                     </td>
 
-                    <td>
-                      <span
-                        className="menu-branch-name"
-                        title={getBranchName(item)}
-                      >
-                        {getBranchName(item)}
-                      </span>
-                    </td>
+                  
 
                     <td>
                       <span
@@ -1247,61 +1255,73 @@ function MenuManagement({
         </div>
       </div>
 
-      {totalPages > 1 && !loading && !loadError && (
-        <div className="menu-pagination">
-          <span className="menu-pagination-info">
-            Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
-            {Math.min(
-              currentPage * ITEMS_PER_PAGE,
-              filteredMenu.length
-            )}{" "}
-            of {filteredMenu.length} items
+      
+{totalPages > 1 && !loading && !loadError && (
+  <div className="menu-pagination">
+    <span className="menu-pagination-info">
+      Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
+      {Math.min(
+        currentPage * ITEMS_PER_PAGE,
+        filteredMenu.length
+      )}{" "}
+      of {filteredMenu.length} items
+    </span>
+
+    <div className="menu-pagination-buttons">
+      <button
+        type="button"
+        className="menu-pagination-button"
+        disabled={currentPage === 1}
+        onClick={() =>
+          setCurrentPage((page) => Math.max(1, page - 1))
+        }
+      >
+        <ChevronLeft size={16} />
+        Previous
+      </button>
+
+      {paginationPages.map((page, index) =>
+        page === "..." ? (
+          <span
+            key={`ellipsis-${index}`}
+            className="menu-pagination-ellipsis"
+            aria-hidden="true"
+          >
+            ...
           </span>
-
-          <div className="menu-pagination-buttons">
-            <button
-              type="button"
-              className="menu-pagination-button"
-              disabled={currentPage === 1}
-              onClick={() =>
-                setCurrentPage((page) => page - 1)
-              }
-            >
-              Previous
-            </button>
-
-            {Array.from(
-              { length: totalPages },
-              (_, index) => index + 1
-            ).map((page) => (
-              <button
-                key={page}
-                type="button"
-                className={`menu-pagination-button ${
-                  currentPage === page ? "active" : ""
-                }`}
-                onClick={() => setCurrentPage(page)}
-                aria-current={
-                  currentPage === page ? "page" : undefined
-                }
-              >
-                {page}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              className="menu-pagination-button"
-              disabled={currentPage === totalPages}
-              onClick={() =>
-                setCurrentPage((page) => page + 1)
-              }
-            >
-              Next
-            </button>
-          </div>
-        </div>
+        ) : (
+          <button
+            key={page}
+            type="button"
+            className={`menu-pagination-button ${
+              currentPage === page ? "active" : ""
+            }`}
+            onClick={() => setCurrentPage(page)}
+            aria-current={
+              currentPage === page ? "page" : undefined
+            }
+          >
+            {page}
+          </button>
+        )
       )}
+
+      <button
+        type="button"
+        className="menu-pagination-button"
+        disabled={currentPage === totalPages}
+        onClick={() =>
+          setCurrentPage((page) =>
+            Math.min(totalPages, page + 1)
+          )
+        }
+      >
+        Next
+        <ChevronRight size={16} />
+      </button>
+    </div>
+  </div>
+)}
 
       {showForm && (
         <div

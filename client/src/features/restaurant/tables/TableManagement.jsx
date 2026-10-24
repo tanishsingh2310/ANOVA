@@ -10,6 +10,8 @@ import {
   Search,
   Trash2,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 import "../../../styles/table-management.css";
@@ -60,7 +62,37 @@ function normalizeTable(table, fallbackBranchId = "") {
 function getErrorMessage(error, fallback) {
   return error?.message || fallback;
 }
+function getPaginationPages(currentPage, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
 
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "...", totalPages];
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [
+      1,
+      "...",
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ];
+  }
+
+  return [
+    1,
+    "...",
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    "...",
+    totalPages,
+  ];
+}
 function TableManagement({
   branchId = ALL_BRANCHES,
   branches = [],
@@ -148,6 +180,7 @@ function TableManagement({
 
   // Reset filters when the selected branch changes.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSearch("");
     setStatusFilter("All Statuses");
     setLocationFilter("All Locations");
@@ -158,11 +191,13 @@ function TableManagement({
   // Reset the branch and filters when this page mounts.
   useEffect(() => {
     onBranchChange?.(ALL_BRANCHES);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSearch("");
     setStatusFilter("All Statuses");
     setLocationFilter("All Locations");
     setCapacityFilter("All Capacities");
     setCurrentPage(1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadTables = useCallback(async () => {
@@ -263,6 +298,7 @@ function TableManagement({
   ]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadTables();
   }, [loadTables, refreshKey]);
 
@@ -313,6 +349,7 @@ function TableManagement({
 
   // Reset pagination whenever the search or any filter changes.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentPage(1);
   }, [
     search,
@@ -325,6 +362,10 @@ function TableManagement({
   const totalPages = Math.ceil(
     filteredTables.length / ITEMS_PER_PAGE
   );
+  const paginationPages = getPaginationPages(
+  currentPage,
+  totalPages
+);
 
   const paginatedTables = filteredTables.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
@@ -1120,63 +1161,74 @@ function TableManagement({
         </div>
       </div>
 
-      {totalPages > 1 && !loading && !loadError && (
-        <div className="table-pagination">
-          <span className="table-pagination-info">
-            Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
-            {Math.min(
-              currentPage * ITEMS_PER_PAGE,
-              filteredTables.length
-            )}{" "}
-            of {filteredTables.length} tables
+      
+{totalPages > 1 && !loading && !loadError && (
+  <div className="table-pagination">
+    <span className="table-pagination-info">
+      Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
+      {Math.min(
+        currentPage * ITEMS_PER_PAGE,
+        filteredTables.length
+      )}{" "}
+      of {filteredTables.length} tables
+    </span>
+
+    <div className="table-pagination-buttons">
+      <button
+        type="button"
+        className="table-pagination-button"
+        disabled={currentPage === 1}
+        onClick={() =>
+          setCurrentPage((page) => Math.max(1, page - 1))
+        }
+      >
+        <ChevronLeft size={16} />
+        Previous
+      </button>
+
+      {paginationPages.map((page, index) =>
+        page === "..." ? (
+          <span
+            key={`ellipsis-${index}`}
+            className="table-pagination-ellipsis"
+            aria-hidden="true"
+          >
+            ...
           </span>
-
-          <div className="table-pagination-buttons">
-            <button
-              type="button"
-              className="table-pagination-button"
-              disabled={currentPage === 1}
-              onClick={() =>
-                setCurrentPage((page) => Math.max(1, page - 1))
-              }
-            >
-              Previous
-            </button>
-
-            {Array.from(
-              { length: totalPages },
-              (_, index) => index + 1
-            ).map((page) => (
-              <button
-                key={page}
-                type="button"
-                className={`table-pagination-button ${
-                  currentPage === page ? "active" : ""
-                }`}
-                onClick={() => setCurrentPage(page)}
-                aria-current={
-                  currentPage === page ? "page" : undefined
-                }
-              >
-                {page}
-              </button>
-            ))}
-
-            <button
-              type="button"
-              className="table-pagination-button"
-              disabled={currentPage === totalPages}
-              onClick={() =>
-                setCurrentPage((page) =>
-                  Math.min(totalPages, page + 1)
-                )
-              }
-            >
-              Next
-            </button>
-          </div>
-        </div>
+        ) : (
+          <button
+            key={page}
+            type="button"
+            className={`table-pagination-button ${
+              currentPage === page ? "active" : ""
+            }`}
+            onClick={() => setCurrentPage(page)}
+            aria-current={
+              currentPage === page ? "page" : undefined
+            }
+          >
+            {page}
+          </button>
+        )
       )}
+
+      <button
+        type="button"
+        className="table-pagination-button"
+        disabled={currentPage === totalPages}
+        onClick={() =>
+          setCurrentPage((page) =>
+            Math.min(totalPages, page + 1)
+          )
+        }
+      >
+        Next
+        <ChevronRight size={16} />
+      </button>
+    </div>
+  </div>
+)}
+
 
       {showForm && (
         <div

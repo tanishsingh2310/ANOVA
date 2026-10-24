@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Search,
@@ -8,9 +9,44 @@ import {
   Pencil,
   Trash2,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { apiClient } from '../../api/client.js'
 import './employees.css'
+
+const ITEMS_PER_PAGE = 10
+function getPaginationPages(currentPage, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1)
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, '...', totalPages]
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [
+      1,
+      '...',
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ]
+  }
+
+  return [
+    1,
+    '...',
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    '...',
+    totalPages,
+  ]
+}
 
 const ROLE_LABELS = {
   owner: 'Owner',
@@ -88,6 +124,9 @@ export default function Employees({ user }) {
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [branchFilter, setBranchFilter] = useState('all')
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
 
   const [formOpen, setFormOpen] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState(null)
@@ -206,6 +245,35 @@ export default function Employees({ user }) {
     branches,
     branchFilter,
   ])
+
+  // Reset to page 1 when the search or any filter changes.
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [search, roleFilter, statusFilter, branchFilter])
+
+  const totalPages = Math.ceil(
+    filteredEmployees.length / ITEMS_PER_PAGE
+  )
+  const paginationPages = getPaginationPages(
+  currentPage,
+  totalPages
+)
+  // Keep the page valid when employees are deleted or results decrease.
+  useEffect(() => {
+    setCurrentPage((page) => {
+      const lastPage = Math.max(1, totalPages)
+      return Math.min(page, lastPage)
+    })
+  }, [totalPages])
+
+  const paginatedEmployees = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+
+    return filteredEmployees.slice(
+      startIndex,
+      startIndex + ITEMS_PER_PAGE
+    )
+  }, [filteredEmployees, currentPage])
 
   function openCreateForm() {
     setEditingEmployee(null)
@@ -400,6 +468,7 @@ export default function Employees({ user }) {
               Add Employee / Staff
             </button>
           )}
+
           <button
             type="button"
             className="employees-button employees-button-secondary"
@@ -412,8 +481,6 @@ export default function Employees({ user }) {
             />
             Refresh
           </button>
-
-          
         </div>
       </div>
 
@@ -696,11 +763,11 @@ export default function Employees({ user }) {
       )}
 
       {!error && loading ? (
-  <div className="employees-empty-state">
-    <RefreshCw size={22} className="employees-spin" />
-    <p>Loading employee records...</p>
-  </div>
-) : (
+        <div className="employees-empty-state">
+          <RefreshCw size={22} className="employees-spin" />
+          <p>Loading employee records...</p>
+        </div>
+      ) : (
         !error && (
           <div className="employees-table-card">
             <div className="employees-table-heading">
@@ -714,14 +781,14 @@ export default function Employees({ user }) {
             </div>
 
             {filteredEmployees.length === 0 ? (
-  <div className="employees-empty-state">
-    <CalendarDays size={26} />
-    <h3>No employee records found</h3>
-    <p>
-      Try changing the filters or add an employee record.
-    </p>
-  </div>
-) : (
+              <div className="employees-empty-state">
+                <CalendarDays size={26} />
+                <h3>No employee records found</h3>
+                <p>
+                  Try changing the filters or add an employee record.
+                </p>
+              </div>
+            ) : (
               <div className="employees-table-scroll">
                 <table className="employees-table">
                   <thead>
@@ -735,7 +802,7 @@ export default function Employees({ user }) {
                   </thead>
 
                   <tbody>
-                    {filteredEmployees.map((employee) => (
+                    {paginatedEmployees.map((employee) => (
                       <tr key={employee._id}>
                         <td>
                           <div className="employees-person">
@@ -818,7 +885,6 @@ export default function Employees({ user }) {
                                 aria-label={`Delete ${employee.name || 'employee'}`}
                               >
                                 <Trash2 size={15} />
-                                
                               </button>
                             </div>
                           )}
@@ -832,6 +898,79 @@ export default function Employees({ user }) {
           </div>
         )
       )}
+
+      {/* Pagination */}
+      {/* Pagination */}
+{!loading && !error && totalPages > 1 && (
+  <div className="employees-pagination">
+    <span className="employees-pagination-info">
+      Showing{' '}
+      {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
+      {Math.min(
+        currentPage * ITEMS_PER_PAGE,
+        filteredEmployees.length
+      )}{' '}
+      of {filteredEmployees.length} employees
+    </span>
+
+    <div className="employees-pagination-buttons">
+      <button
+        type="button"
+        className="employees-pagination-button"
+        onClick={() =>
+          setCurrentPage((page) => Math.max(1, page - 1))
+        }
+        disabled={currentPage === 1}
+        aria-label="Previous page"
+      >
+        <ChevronLeft size={16} />
+        Previous
+      </button>
+
+      {paginationPages.map((page, index) =>
+        page === '...' ? (
+          <span
+            key={`ellipsis-${index}`}
+            className="employees-pagination-ellipsis"
+            aria-hidden="true"
+          >
+            ...
+          </span>
+        ) : (
+          <button
+            key={page}
+            type="button"
+            className={`employees-pagination-button ${
+              currentPage === page ? 'active' : ''
+            }`}
+            onClick={() => setCurrentPage(page)}
+            aria-current={
+              currentPage === page ? 'page' : undefined
+            }
+            aria-label={`Page ${page}`}
+          >
+            {page}
+          </button>
+        )
+      )}
+
+      <button
+        type="button"
+        className="employees-pagination-button"
+        onClick={() =>
+          setCurrentPage((page) =>
+            Math.min(totalPages, page + 1)
+          )
+        }
+        disabled={currentPage === totalPages}
+        aria-label="Next page"
+      >
+        Next
+        <ChevronRight size={16} />
+      </button>
+    </div>
+  </div>
+)}
 
       {employeeToDelete && (
         <div

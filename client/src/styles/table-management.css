@@ -822,10 +822,7 @@
     color 0.15s ease;
 }
 
-.table-management .table-pagination-button:hover:not(:disabled) {
-  background: #f3f7f2;
-  border-color: #c5d2c7;
-}
+
 
 .table-management .table-pagination-button.active {
   color: #ffffff;
