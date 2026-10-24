@@ -10,6 +10,7 @@ import {
   Truck
 } from 'lucide-react';
 import { SupplierService } from '../services/supplierService';
+import InventoryPagination from '../components/InventoryPagination';
 import { InventoryService } from '../services/inventoryService';
 
 export default function SuppliersPage() {
@@ -18,6 +19,12 @@ export default function SuppliersPage() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, categoryFilter, statusFilter]);
 
   // Modals / Drawers
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -192,7 +199,6 @@ export default function SuppliersPage() {
       {/* Heading matching Images 1-4 */}
       <div className="employees-heading">
         <div>
-          <h2>Suppliers</h2>
           <p>Manage verified suppliers, lead times, payment terms, and vendor contacts.</p>
         </div>
 
@@ -203,7 +209,7 @@ export default function SuppliersPage() {
             onClick={openAddModal}
           >
             <Plus size={16} />
-            + Add Supplier
+            Add Supplier
           </button>
           <button
             type="button"
@@ -290,54 +296,48 @@ export default function SuppliersPage() {
             <table className="employees-table">
               <thead>
                 <tr>
-                  <th>Vendor</th>
-                  <th>Category</th>
-                  <th>Contact Person</th>
-                  <th>Location</th>
-                  <th>Lead Time</th>
-                  <th>Payment Terms</th>
-                  <th>Rating</th>
-                  <th>Status</th>
-                  <th style={{ width: '230px' }}>ACTIONS</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Vendor</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Code</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Category</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Contact Person</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Location</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Lead Time</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Payment Terms</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Rating</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Status</th>
+                  <th style={{ width: '240px', minWidth: '240px', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {suppliers.map((sup) => (
+                {suppliers
+                  .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+                  .map((sup) => (
                   <tr key={sup.id || sup._id}>
-                    <td>
-                      <div className="employees-person">
-                        <span className="employees-avatar">
-                          {(sup.name || 'S').trim().charAt(0).toUpperCase()}
-                        </span>
-                        <div className="employees-person-details">
-                          <strong>{sup.name}</strong>
-                          <span>Code: {sup.code}</span>
-                        </div>
-                      </div>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <strong style={{ color: '#183c34' }}>{sup.name}</strong>
                     </td>
-                    <td>{sup.category}</td>
-                    <td>
-                      <div>{sup.contactPerson}</div>
-                      <span style={{ fontSize: '11px', color: '#748078' }}>
-                        {sup.phone} • {sup.email}
-                      </span>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <code>{sup.code || '—'}</code>
                     </td>
-                    <td>
-                      <div>{sup.city}</div>
-                      <span style={{ fontSize: '11px', color: '#748078' }}>
-                        GST: {sup.taxId || 'N/A'}
-                      </span>
+                    <td style={{ whiteSpace: 'nowrap' }}>{sup.category}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span>{sup.contactPerson || '—'}</span>
+                      {sup.phone && <span style={{ fontSize: '11px', color: '#748078', marginLeft: '6px' }}>({sup.phone})</span>}
                     </td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span>{sup.city || '—'}</span>
+                      {sup.taxId && <span style={{ fontSize: '11px', color: '#748078', marginLeft: '6px' }}>• GST: {sup.taxId}</span>}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       <strong>{sup.leadTimeDays} days</strong>
                     </td>
-                    <td>{sup.paymentTerms}</td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{sup.paymentTerms}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       <span style={{ color: '#c48a36', fontWeight: 700 }}>
                         ★ {sup.rating || '4.5'}
                       </span>
                     </td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       <span
                         className={`employees-status ${
                           sup.status === 'ACTIVE' ? 'is-active' : 'is-inactive'
@@ -346,9 +346,9 @@ export default function SuppliersPage() {
                         {sup.status === 'ACTIVE' ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td>
-                      {/* Image 5: Edit | Deactivate/Activate | Delete Action Group */}
-                      <div className="employees-row-actions">
+                    <td style={{ width: '240px', minWidth: '240px', whiteSpace: 'nowrap' }}>
+                      {/* Edit | Deactivate/Activate | Delete Action Group */}
+                      <div className="employees-row-actions" style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'nowrap', whiteSpace: 'nowrap', gap: '8px' }}>
                         <button
                           type="button"
                           className="employees-button employees-button-secondary"
@@ -383,6 +383,13 @@ export default function SuppliersPage() {
             </table>
           </div>
         )}
+
+        <InventoryPagination
+          currentPage={currentPage}
+          totalItems={suppliers.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Catalog Modal */}

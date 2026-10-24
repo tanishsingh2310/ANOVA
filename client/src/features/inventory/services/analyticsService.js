@@ -14,10 +14,10 @@ import { apiClient } from '../../../api/client.js';
 
 export const AnalyticsService = {
   getDashboardKPIs(branchId = 'all') {
-    const ingredients = InventoryService.getIngredients();
+    const ingredients = Array.isArray(InventoryService.getIngredients()) ? InventoryService.getIngredients() : [];
     const purchaseOrders = PurchaseOrderService.getPurchaseOrders({ branchId });
     const transfers = MovementService.getTransfers({ branchId });
-    const wastage = MovementService.getWastage({ branchId });
+    const wastage = Array.isArray(MovementService.getWastage({ branchId })) ? MovementService.getWastage({ branchId }) : [];
     const expiringBatches = InventoryService.getExpiringBatches(7, branchId);
 
     // Stock calculations
@@ -46,7 +46,7 @@ export const AnalyticsService = {
     const inTransitTransfers = transfers.filter(t => t.status === 'IN_TRANSIT').length;
 
     // Wastage Stats
-    const totalWastageCost = wastage.reduce((sum, w) => sum + (Number(w.totalCost) || 0), 0);
+    const totalWastageCost = (Array.isArray(wastage) ? wastage : []).reduce((sum, w) => sum + (Number(w?.totalCost) || 0), 0);
 
     return {
       totalStockValue: Math.round(totalStockValue),
@@ -65,7 +65,7 @@ export const AnalyticsService = {
 
   // Valuation Model (FIFO vs Weighted Average)
   getInventoryValuation(branchId = 'all', method = 'FIFO') {
-    const ingredients = InventoryService.getIngredients();
+    const ingredients = Array.isArray(InventoryService.getIngredients()) ? InventoryService.getIngredients() : [];
     const branches = InventoryService.getBranches();
 
     const reportRows = ingredients.map(ing => {

@@ -34,6 +34,7 @@ router.post('/suppliers', authorize(PROCUREMENT_WRITE_ROLES), inventoryControlle
 router.patch('/suppliers/:id/status', authorize(SENSITIVE_ADMIN_ROLES), inventoryController.updateSupplierStatus);
 router.get('/suppliers/:id', inventoryController.getSupplierById);
 router.put('/suppliers/:id', authorize(PROCUREMENT_WRITE_ROLES), inventoryController.updateSupplier);
+router.delete('/suppliers/:id', authorize(PROCUREMENT_WRITE_ROLES), inventoryController.deleteSupplier);
 
 // ==========================================
 // 3. PURCHASE ORDERS & GOODS RECEIVING
@@ -53,9 +54,11 @@ router.get('/transfers', authorize(INVENTORY_READ_ROLES), inventoryController.ge
 router.post('/transfers/dispatch', authorize(INVENTORY_WRITE_ROLES), branchGuard, inventoryController.dispatchTransfer);
 router.post('/transfers/:id/receive', authorize(INVENTORY_WRITE_ROLES), inventoryController.receiveTransfer);
 router.get('/transfers/:id', authorize(INVENTORY_READ_ROLES), inventoryController.getTransferById);
+router.delete('/transfers/:id', authorize(INVENTORY_WRITE_ROLES), inventoryController.deleteTransfer);
 
 router.get('/wastage', authorize(INVENTORY_READ_ROLES), inventoryController.getWastage);
 router.post('/wastage', authorize(INVENTORY_WRITE_ROLES), branchGuard, inventoryController.recordWastage);
+router.delete('/wastage/:id', authorize(INVENTORY_WRITE_ROLES), inventoryController.deleteWastage);
 
 // ==========================================
 // 5. AUDIT MOVEMENTS

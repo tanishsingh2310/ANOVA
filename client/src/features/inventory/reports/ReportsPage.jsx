@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { AnalyticsService } from '../services/analyticsService';
 import { InventoryService } from '../services/inventoryService';
+import InventoryPagination from '../components/InventoryPagination';
 
 export default function ReportsPage({ branchId, branches = [] }) {
   const [reportType, setReportType] = useState('VALUATION'); // VALUATION, LOW_STOCK, EXPIRY, AUDIT_TRAIL
@@ -22,6 +23,12 @@ export default function ReportsPage({ branchId, branches = [] }) {
 
   const [notice, setNotice] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [reportType, search, selectedBranch, valuationMethod]);
 
   useEffect(() => {
     setSelectedBranch(branchId);
@@ -56,7 +63,7 @@ export default function ReportsPage({ branchId, branches = [] }) {
       ]);
 
       if (remoteVal) setValuationData(remoteVal);
-      if (remoteMovs) setMovements(remoteMovs);
+      setMovements(remoteMovs || []);
       if (remoteExp) setExpiringBatches(remoteExp);
       if (remoteIngs) {
         const freshLow = remoteIngs
@@ -159,7 +166,6 @@ export default function ReportsPage({ branchId, branches = [] }) {
       {/* Heading matching Images 1-4 */}
       <div className="employees-heading">
         <div>
-          <h2>Reports & Analytics</h2>
           <p>Generate valuation audits, movement ledgers, and export analytics.</p>
         </div>
 
@@ -170,7 +176,7 @@ export default function ReportsPage({ branchId, branches = [] }) {
             onClick={handleExport}
           >
             <Download size={16} />
-            + Export CSV
+            Export CSV
           </button>
           <button
             type="button"
@@ -263,38 +269,59 @@ export default function ReportsPage({ branchId, branches = [] }) {
                 <p>No inventory items registered in the active branch.</p>
               </div>
             ) : (
-              <div className="employees-table-scroll">
-                <table className="employees-table">
-                  <thead>
-                    <tr>
-                      <th>SKU</th>
-                      <th>Ingredient</th>
-                      <th>Category</th>
-                      <th>Branch Stock</th>
-                      <th>Unit</th>
-                      <th>Calculated Unit Cost</th>
-                      <th>Total Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(valuationData.items || [])
-                      .filter(row => !search || row.name.toLowerCase().includes(search.toLowerCase()) || row.sku.toLowerCase().includes(search.toLowerCase()))
-                      .map((row) => (
-                        <tr key={row.id}>
-                          <td><code>{row.sku}</code></td>
-                          <td><strong>{row.name}</strong></td>
-                          <td>{row.category}</td>
-                          <td><strong>{row.quantity}</strong></td>
-                          <td>{row.baseUnit}</td>
-                          <td>₹{row.unitCost}</td>
-                          <td>
-                            <strong>₹{((row.totalValue ?? row.valuation) || 0).toLocaleString()}</strong>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div className="employees-table-scroll">
+                  <table className="employees-table">
+                    <thead>
+                      <tr>
+                        <th>SKU</th>
+                        <th>Ingredient</th>
+                        <th>Category</th>
+                        <th>Branch Stock</th>
+                        <th>Unit</th>
+                        <th>Calculated Unit Cost</th>
+                        <th>Total Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const filtered = (valuationData.items || []).filter(
+                          row => !search || row.name.toLowerCase().includes(search.toLowerCase()) || row.sku.toLowerCase().includes(search.toLowerCase())
+                        );
+                        return filtered
+                          .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+                          .map((row) => (
+                            <tr key={row.id}>
+                              <td><code>{row.sku}</code></td>
+                              <td><strong>{row.name}</strong></td>
+                              <td>{row.category}</td>
+                              <td><strong>{row.quantity}</strong></td>
+                              <td>{row.baseUnit}</td>
+                              <td>₹{row.unitCost}</td>
+                              <td>
+                                <strong>₹{((row.totalValue ?? row.valuation) || 0).toLocaleString()}</strong>
+                              </td>
+                            </tr>
+                          ));
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+
+                {(() => {
+                  const total = (valuationData.items || []).filter(
+                    row => !search || row.name.toLowerCase().includes(search.toLowerCase()) || row.sku.toLowerCase().includes(search.toLowerCase())
+                  ).length;
+                  return (
+                    <InventoryPagination
+                      currentPage={currentPage}
+                      totalItems={total}
+                      pageSize={PAGE_SIZE}
+                      onPageChange={setCurrentPage}
+                    />
+                  );
+                })()}
+              </>
             )}
           </>
         )}
@@ -433,42 +460,63 @@ export default function ReportsPage({ branchId, branches = [] }) {
                 <p>No stock changes recorded yet for this branch.</p>
               </div>
             ) : (
-              <div className="employees-table-scroll">
-                <table className="employees-table">
-                  <thead>
-                    <tr>
-                      <th>Timestamp</th>
-                      <th>Event Type</th>
-                      <th>Reference</th>
-                      <th>Delta Qty</th>
-                      <th>Balance</th>
-                      <th>Auditor</th>
-                      <th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {movements
-                      .filter(m => !search || (m.reference || '').toLowerCase().includes(search.toLowerCase()) || (m.notes || '').toLowerCase().includes(search.toLowerCase()))
-                      .map((m) => (
-                        <tr key={m.id}>
-                          <td>{m.timestamp ? m.timestamp.replace('T', ' ').slice(0, 16) : '-'}</td>
-                          <td>
-                            <span className={`employees-status ${m.deltaQty >= 0 ? 'is-active' : 'is-warning'}`}>
-                              {m.type}
-                            </span>
-                          </td>
-                          <td><code>{m.reference}</code></td>
-                          <td style={{ color: m.deltaQty >= 0 ? '#287544' : '#b91c1c', fontWeight: 700 }}>
-                            {m.deltaQty >= 0 ? `+${m.deltaQty}` : m.deltaQty} {m.unit}
-                          </td>
-                          <td><strong>{m.resultingBalance} {m.unit}</strong></td>
-                          <td>{m.performedBy || m.user || 'Storekeeper'}</td>
-                          <td>{m.notes || '—'}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
+              <>
+                <div className="employees-table-scroll">
+                  <table className="employees-table">
+                    <thead>
+                      <tr>
+                        <th>Timestamp</th>
+                        <th>Event Type</th>
+                        <th>Reference</th>
+                        <th>Delta Qty</th>
+                        <th>Balance</th>
+                        <th>Auditor</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const filtered = movements.filter(
+                          m => !search || (m.reference || '').toLowerCase().includes(search.toLowerCase()) || (m.notes || '').toLowerCase().includes(search.toLowerCase())
+                        );
+                        return filtered
+                          .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+                          .map((m) => (
+                            <tr key={m.id}>
+                              <td>{m.timestamp ? m.timestamp.replace('T', ' ').slice(0, 16) : '-'}</td>
+                              <td>
+                                <span className={`employees-status ${m.deltaQty >= 0 ? 'is-active' : 'is-warning'}`}>
+                                  {m.type}
+                                </span>
+                              </td>
+                              <td><code>{m.reference}</code></td>
+                              <td style={{ color: m.deltaQty >= 0 ? '#287544' : '#b91c1c', fontWeight: 700 }}>
+                                {m.deltaQty >= 0 ? `+${m.deltaQty}` : m.deltaQty} {m.unit}
+                              </td>
+                              <td><strong>{m.resultingBalance} {m.unit}</strong></td>
+                              <td>{m.performedBy || m.user || 'Storekeeper'}</td>
+                              <td>{m.notes || '—'}</td>
+                            </tr>
+                          ));
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+
+                {(() => {
+                  const total = movements.filter(
+                    m => !search || (m.reference || '').toLowerCase().includes(search.toLowerCase()) || (m.notes || '').toLowerCase().includes(search.toLowerCase())
+                  ).length;
+                  return (
+                    <InventoryPagination
+                      currentPage={currentPage}
+                      totalItems={total}
+                      pageSize={PAGE_SIZE}
+                      onPageChange={setCurrentPage}
+                    />
+                  );
+                })()}
+              </>
             )}
           </>
         )}

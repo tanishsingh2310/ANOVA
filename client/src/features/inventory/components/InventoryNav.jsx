@@ -1,6 +1,6 @@
 export default function InventoryNav({ activeTab, onTabChange, alertsCount = 0 }) {
   const tabs = [
-    { id: 'inv-dashboard', label: 'Dashboard & KPIs' },
+    { id: 'inv-dashboard', label: 'Dashboard' },
     { id: 'inv-ingredients', label: 'Ingredients & Stock', badge: alertsCount > 0 ? alertsCount : null },
     { id: 'inv-suppliers', label: 'Suppliers' },
     { id: 'inv-orders', label: 'Purchase Orders & Receiving' },

@@ -6,23 +6,23 @@
 // 3. Duplicate receipt submission protection.
 // ============================================================
 
-import { SEED_PURCHASE_ORDERS, SEED_STOCK_MOVEMENTS, SEED_INGREDIENTS } from './mockData.js';
 import { apiClient } from '../../../api/client.js';
 
 export function normalizePurchaseOrder(doc) {
   if (!doc) return null;
   const poId = String(doc._id || doc.id);
   const supplierId = String(doc.supplier?._id || doc.supplier || doc.supplierId || '');
-  const branchId = doc.branch || doc.branchId;
+  const supplierName = doc.supplier?.name || doc.supplierName || '';
+  const branchId = doc.branch || doc.branchId || '';
 
   const items = (doc.items || []).map(it => ({
-    ingredientId: String(it.ingredient?._id || it.ingredient || it.ingredientId),
-    ingredientName: it.ingredient?.name || '',
+    ingredientId: String(it.ingredient?._id || it.ingredient || it.ingredientId || ''),
+    ingredientName: it.ingredient?.name || it.ingredientName || '',
     orderedQty: Number(it.orderedQty || 0),
     receivedQty: Number(it.receivedQty || 0),
     rejectedQty: Number(it.rejectedQty || 0),
     damagedQty: Number(it.damagedQty || 0),
-    unit: it.unit || 'kg',
+    unit: it.unit || it.ingredient?.baseUnit || 'kg',
     unitPrice: Number(it.unitPrice || 0)
   }));
 
@@ -32,11 +32,13 @@ export function normalizePurchaseOrder(doc) {
     _id: poId,
     poNumber: doc.poNumber,
     supplierId,
+    supplierName,
     supplier: doc.supplier,
     branchId,
     status: doc.status,
     createdAt: doc.createdAt,
-    expectedDate: doc.expectedDate,
+    expectedDate: doc.expectedDeliveryDate || doc.expectedDate,
+    expectedDeliveryDate: doc.expectedDeliveryDate || doc.expectedDate,
     approvedBy: doc.approvedBy,
     approvedAt: doc.approvedAt,
     createdBy: doc.createdBy,
@@ -45,6 +47,7 @@ export function normalizePurchaseOrder(doc) {
     subtotal: Number(doc.subtotal || 0),
     tax: Number(doc.tax || 0),
     totalAmount: Number(doc.totalAmount || 0),
+    grnHistory: doc.grnHistory || [],
     receiptHistory: doc.receiptHistory || []
   };
 }
@@ -52,17 +55,29 @@ export function normalizePurchaseOrder(doc) {
 const PO_KEY = 'anova_inventory_pos';
 const MOVEMENTS_KEY = 'anova_inventory_movements';
 const INGREDIENTS_KEY = 'anova_inventory_ingredients';
+const MOCK_ID_REGEX = /^(po)_\d{2,3}$/;
 
 function getPOsData() {
   try {
     const raw = localStorage.getItem(PO_KEY);
     if (!raw) {
-      localStorage.setItem(PO_KEY, JSON.stringify(SEED_PURCHASE_ORDERS));
-      return SEED_PURCHASE_ORDERS;
+      return [];
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const clean = parsed.filter(po => {
+        const id = String(po?.id || po?._id || '');
+        return !MOCK_ID_REGEX.test(id);
+      });
+      if (clean.length !== parsed.length) {
+        localStorage.setItem(PO_KEY, JSON.stringify(clean));
+      }
+      return clean;
+    }
+    localStorage.removeItem(PO_KEY);
+    return [];
   } catch {
-    return SEED_PURCHASE_ORDERS;
+    return [];
   }
 }
 
@@ -106,7 +121,7 @@ export const PurchaseOrderService = {
     const totalAmount = subtotal + tax;
 
     const newPO = {
-      id: `po_${Date.now()}`,
+      id: `po_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       poNumber: `PO-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
       supplierId,
       branchId,
@@ -135,6 +150,13 @@ export const PurchaseOrderService = {
     orders.unshift(newPO);
     savePOsData(orders);
     return newPO;
+  },
+
+  deletePO(id) {
+    const list = getPOsData();
+    const filtered = list.filter(o => o.id !== id && o._id !== id && o.poNumber !== id);
+    savePOsData(filtered);
+    return true;
   },
 
   updateStatus(poId, nextStatus, user = 'Enterprise Admin') {
@@ -171,7 +193,7 @@ export const PurchaseOrderService = {
     poId,
     grnNumber,
     receiverName = 'Receiving Officer',
-    receiptItems, // Array of { ingredientId, acceptedQty, rejectedQty, damagedQty, batchNumber, expiryDate, unitCost }
+    receiptItems,
     notes = ''
   }) {
     const orders = getPOsData();
@@ -193,18 +215,20 @@ export const PurchaseOrderService = {
     let ingredients = [];
     try {
       const raw = localStorage.getItem(INGREDIENTS_KEY);
-      ingredients = raw ? JSON.parse(raw) : SEED_INGREDIENTS;
+      ingredients = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(ingredients)) ingredients = [];
     } catch {
-      ingredients = SEED_INGREDIENTS;
+      ingredients = [];
     }
 
     // Read Movements for Audit Log
     let movements = [];
     try {
       const raw = localStorage.getItem(MOVEMENTS_KEY);
-      movements = raw ? JSON.parse(raw) : SEED_STOCK_MOVEMENTS;
+      movements = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(movements)) movements = [];
     } catch {
-      movements = SEED_STOCK_MOVEMENTS;
+      movements = [];
     }
 
     const receiptRecords = [];
@@ -300,26 +324,7 @@ export const PurchaseOrderService = {
       const res = await apiClient(`/api/inventory/purchase-orders${branchQuery}`);
       if (res && res.success && Array.isArray(res.data)) {
         const remotePOs = res.data.map(normalizePurchaseOrder);
-        const localPOs = getPOsData();
-
-        // Merge: remote POs take precedence, but preserve local-only POs (e.g., drafts or local offline POs)
-        const remoteMap = new Map();
-        remotePOs.forEach(r => {
-          remoteMap.set(r.id, r);
-          if (r.poNumber) remoteMap.set(r.poNumber, r);
-        });
-
-        const merged = [...remotePOs];
-        localPOs.forEach(local => {
-          const matchKey1 = local.id;
-          const matchKey2 = local.poNumber;
-          const matchKey3 = local._id;
-          if (!remoteMap.has(matchKey1) && !remoteMap.has(matchKey2) && (!matchKey3 || !remoteMap.has(matchKey3))) {
-            merged.push(local);
-          }
-        });
-
-        savePOsData(merged);
+        savePOsData(remotePOs);
         return this.getPurchaseOrders({ branchId });
       }
     } catch (err) {
@@ -344,26 +349,30 @@ export const PurchaseOrderService = {
       }))
     };
 
-    try {
-      const res = await apiClient('/api/inventory/purchase-orders', {
-        method: 'POST',
-        body: payload
-      });
-      if (res && res.success && res.data) {
-        const normalized = normalizePurchaseOrder(res.data);
-        const orders = getPOsData();
-        orders.unshift(normalized);
-        savePOsData(orders);
-        return normalized;
-      }
-    } catch (err) {
-      console.warn('[PurchaseOrderService] Remote PO creation failed, falling back:', err.message);
+    const res = await apiClient('/api/inventory/purchase-orders', {
+      method: 'POST',
+      body: payload
+    });
+    if (res && res.success && res.data) {
+      const normalized = normalizePurchaseOrder(res.data);
+      const orders = getPOsData();
+      orders.unshift(normalized);
+      savePOsData(orders);
+      return normalized;
     }
-    return this.createPO({ supplierId, branchId, expectedDate, items, notes, createdBy });
+    throw new Error(res?.message || 'Failed to create purchase order in database');
+  },
+
+  async deletePORemote(id) {
+    try {
+      await apiClient(`/api/inventory/purchase-orders/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('Backend PO delete note:', err.message);
+    }
+    return this.deletePO(id);
   },
 
   async updateStatusRemote(poId, nextStatus, user = 'Enterprise Admin') {
-    // 1. Always update local store immediately for instant UI response and persistence
     let updatedLocal = null;
     try {
       updatedLocal = this.updateStatus(poId, nextStatus, user);
@@ -371,7 +380,6 @@ export const PurchaseOrderService = {
       console.warn('[PurchaseOrderService] Local status update pre-check note:', localErr.message);
     }
 
-    // 2. Determine best ID for remote lookup
     const lookupId = updatedLocal?._id || updatedLocal?.poNumber || poId;
 
     try {
@@ -427,27 +435,23 @@ export const PurchaseOrderService = {
       }))
     };
 
-    try {
-      const res = await apiClient(`/api/inventory/purchase-orders/${lookupId}/receive`, {
-        method: 'POST',
-        body: payload
-      });
+    const res = await apiClient(`/api/inventory/purchase-orders/${lookupId}/receive`, {
+      method: 'POST',
+      body: payload
+    });
 
-      if (res && res.success && res.data) {
-        const normalized = normalizePurchaseOrder(res.data);
-        const list = getPOsData();
-        const idx = list.findIndex(o => o.id === normalized.id || o.poNumber === normalized.poNumber || o._id === normalized.id);
-        if (idx !== -1) {
-          list[idx] = normalized;
-        } else {
-          list.unshift(normalized);
-        }
-        savePOsData(list);
-        return { po: normalized, grnNumber };
+    if (res && res.success && res.data) {
+      const normalized = normalizePurchaseOrder(res.data);
+      const list = getPOsData();
+      const idx = list.findIndex(o => o.id === normalized.id || o.poNumber === normalized.poNumber || o._id === normalized.id);
+      if (idx !== -1) {
+        list[idx] = normalized;
+      } else {
+        list.unshift(normalized);
       }
-    } catch (err) {
-      console.warn('[PurchaseOrderService] Remote GRN receive failed, falling back:', err.message);
+      savePOsData(list);
+      return { po: normalized, grnNumber };
     }
-    return this.receiveGoods({ poId, grnNumber, receiverName, receiptItems, notes });
+    throw new Error(res?.message || 'Failed to receive goods in database');
   }
 };

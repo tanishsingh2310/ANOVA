@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { MovementService } from '../services/movementService';
 import { InventoryService } from '../services/inventoryService';
+import InventoryPagination from '../components/InventoryPagination';
 
 export default function WastagePage({ branchId, branches = [] }) {
   const [wastageList, setWastageList] = useState([]);
@@ -21,7 +22,11 @@ export default function WastagePage({ branchId, branches = [] }) {
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [targetBranch, setTargetBranch] = useState(branchId === 'all' ? (branches[0]?.id || branches[0]?._id || '') : branchId);
+  const [targetBranch, setTargetBranch] = useState(
+    branchId && branchId !== 'all'
+      ? branchId
+      : (Array.isArray(branches) && branches[0] ? (branches[0].id || branches[0]._id || '') : '')
+  );
   const [selectedIngId, setSelectedIngId] = useState('');
   const [wasteQty, setWasteQty] = useState('');
   const [reason, setReason] = useState('EXPIRED');
@@ -35,17 +40,27 @@ export default function WastagePage({ branchId, branches = [] }) {
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
-    setSelectedBranch(branchId);
-    if (branchId !== 'all') setTargetBranch(branchId);
-  }, [branchId]);
+    setSelectedBranch(branchId || 'all');
+    if (branchId && branchId !== 'all') {
+      setTargetBranch(branchId);
+    } else if (Array.isArray(branches) && branches.length > 0 && !targetBranch) {
+      setTargetBranch(branches[0].id || branches[0]._id || '');
+    }
+  }, [branchId, branches]);
 
   const loadData = async (refresh = false) => {
-    const list = MovementService.getWastage({
-      branchId: selectedBranch,
-      reason: reasonFilter
-    });
-    setWastageList(list);
-    setIngredients(InventoryService.getIngredients());
+    try {
+      const list = MovementService.getWastage({
+        branchId: selectedBranch,
+        reason: reasonFilter
+      });
+      setWastageList(Array.isArray(list) ? list : []);
+      const ings = InventoryService.getIngredients();
+      setIngredients(Array.isArray(ings) ? ings : []);
+    } catch (err) {
+      console.warn('Wastage initial read error:', err.message);
+      setWastageList([]);
+    }
 
     setIsSyncing(true);
     try {
@@ -57,8 +72,9 @@ export default function WastagePage({ branchId, branches = [] }) {
         branchId: selectedBranch,
         reason: reasonFilter
       });
-      setWastageList(fresh);
-      setIngredients(InventoryService.getIngredients());
+      setWastageList(Array.isArray(fresh) ? fresh : []);
+      const freshIngs = InventoryService.getIngredients();
+      setIngredients(Array.isArray(freshIngs) ? freshIngs : []);
       if (refresh) setNotice('Wastage log refreshed.');
     } catch (err) {
       console.warn('Wastage sync error:', err.message);
@@ -119,25 +135,107 @@ export default function WastagePage({ branchId, branches = [] }) {
   };
 
   const branchMap = {};
-  branches.forEach(b => { branchMap[b.id || b._id] = b.name; });
+  if (Array.isArray(branches)) {
+    branches.forEach(b => {
+      if (b) {
+        if (b.id) branchMap[String(b.id)] = b.name;
+        if (b._id) branchMap[String(b._id)] = b.name;
+        if (b.code) {
+          branchMap[String(b.code)] = b.name;
+          branchMap[String(b.code).toLowerCase()] = b.name;
+          branchMap[String(b.code).toUpperCase()] = b.name;
+        }
+      }
+    });
+  }
+
+  const formatBranch = (val) => {
+    if (!val) return '—';
+    const str = String(val);
+    if (branchMap[str]) return branchMap[str];
+    if (branchMap[str.toLowerCase()]) return branchMap[str.toLowerCase()];
+    if (str.startsWith('b_')) {
+      const clean = str.slice(2).replace(/_/g, ' ');
+      return clean.charAt(0).toUpperCase() + clean.slice(1) + ' Branch';
+    }
+    return str;
+  };
 
   const ingredientMap = {};
-  ingredients.forEach(i => { ingredientMap[i.id] = i.name; });
+  if (Array.isArray(ingredients)) {
+    ingredients.forEach(i => {
+      if (i) {
+        if (i.id) ingredientMap[String(i.id)] = i.name;
+        if (i._id) ingredientMap[String(i._id)] = i.name;
+        if (i.sku) ingredientMap[String(i.sku)] = i.name;
+        if (i.code) ingredientMap[String(i.code)] = i.name;
+      }
+    });
+  }
 
-  const filteredWastage = wastageList.filter((w) => {
+  const formatIngredient = (w) => {
+    if (!w) return 'General Inventory Item';
+    if (w.ingredientName && w.ingredientName.trim() && w.ingredientName !== 'Unknown Ingredient') {
+      return w.ingredientName;
+    }
+    if (typeof w.ingredient === 'object' && w.ingredient?.name) {
+      return w.ingredient.name;
+    }
+    const idKey = String(w.ingredientId || (typeof w.ingredient === 'string' ? w.ingredient : '') || '');
+    if (idKey && ingredientMap[idKey]) {
+      return ingredientMap[idKey];
+    }
+    if (idKey.startsWith('ing_') || idKey.startsWith('item_')) {
+      const clean = idKey.replace(/^(ing_|item_)/, '').replace(/_/g, ' ');
+      return clean.charAt(0).toUpperCase() + clean.slice(1);
+    }
+    return 'General Inventory Item';
+  };
+
+  const formatReportedBy = (val) => {
+    if (!val) return 'Kitchen Staff';
+    if (typeof val === 'string' && val.startsWith('usr_')) {
+      const withoutPrefix = val.replace('usr_', '');
+      const parts = withoutPrefix.split('_b_');
+      const role = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'Staff';
+      if (parts[1]) {
+        const bName = formatBranch('b_' + parts[1]);
+        return `${role} (${bName})`;
+      }
+      return role;
+    }
+    return val;
+  };
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedBranch, reasonFilter]);
+
+  const safeWastageList = Array.isArray(wastageList) ? wastageList : [];
+  const filteredWastage = safeWastageList.filter((w) => {
+    if (!w) return false;
     if (!search) return true;
     const q = search.toLowerCase();
-    const wNum = (w.wasteNumber || '').toLowerCase();
-    const ingName = (ingredientMap[w.ingredientId] || '').toLowerCase();
-    return wNum.includes(q) || ingName.includes(q);
+    const wNum = String(w.wasteNumber || '').toLowerCase();
+    const ingName = String(formatIngredient(w)).toLowerCase();
+    const bName = String(formatBranch(w.branchId || w.branch)).toLowerCase();
+    return wNum.includes(q) || ingName.includes(q) || bName.includes(q);
   });
+
+  const totalItems = filteredWastage.length;
+  const paginatedWastage = filteredWastage.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
 
   return (
     <div className="employees-page">
       {/* Heading matching Images 1-4 */}
       <div className="employees-heading">
         <div>
-          <h2>Wastage & Spoilage</h2>
           <p>Log discarded ingredients, kitchen prep losses, and track write-offs.</p>
         </div>
 
@@ -151,7 +249,7 @@ export default function WastagePage({ branchId, branches = [] }) {
             }}
           >
             <Plus size={16} />
-            + Record wastage
+            Record wastage
           </button>
           <button
             type="button"
@@ -240,67 +338,88 @@ export default function WastagePage({ branchId, branches = [] }) {
             <table className="employees-table">
               <thead>
                 <tr>
-                  <th>Log #</th>
-                  <th>Branch</th>
-                  <th>Ingredient</th>
-                  <th>Qty Discarded</th>
-                  <th>Unit Cost</th>
-                  <th>Financial Loss</th>
-                  <th>Reason</th>
-                  <th>Reported By</th>
-                  <th>Date & Time</th>
-                  <th style={{ width: '190px' }}>ACTIONS</th>
+                  <th style={{ whiteSpace: 'nowrap', minWidth: '150px' }}>Log</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Branch</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Ingredient</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Qty Discarded</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Unit Cost</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Financial Loss</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Reason</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Reported By</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Date & Time</th>
+                  <th style={{ width: '150px', minWidth: '150px', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredWastage.map((w) => (
-                  <tr key={w.id || w._id}>
-                    <td><code>{w.wasteNumber}</code></td>
-                    <td>{branchMap[w.branchId] || w.branchId}</td>
-                    <td><strong>{ingredientMap[w.ingredientId] || w.ingredientId}</strong></td>
-                    <td style={{ color: '#b91c1c', fontWeight: 700 }}>
-                      -{w.qty} {w.unit}
-                    </td>
-                    <td>₹{w.unitCost}</td>
-                    <td>
-                      <strong style={{ color: '#b91c1c' }}>₹{Number(w.totalCost || 0).toLocaleString()}</strong>
-                    </td>
-                    <td>
-                      <span className="employees-status is-danger">
-                        {String(w.reason || 'WASTE').replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td>{w.loggedBy || 'Kitchen Staff'}</td>
-                    <td>{w.date ? w.date.replace('T', ' ').slice(0, 16) : '-'}</td>
-                    <td>
-                      {/* Image 5: View Notes | Delete Action Group */}
-                      <div className="employees-row-actions">
-                        <button
-                          type="button"
-                          className="employees-button employees-button-secondary"
-                          onClick={() => setViewNotesTarget(w)}
-                        >
-                          <Pencil size={15} />
-                          Notes
-                        </button>
+                {paginatedWastage.map((w) => {
+                  if (!w) return null;
+                  const recordKey = w.id || w._id || Math.random().toString();
+                  const dateStr = w.date
+                    ? (typeof w.date === 'string'
+                        ? w.date.replace('T', ' ').slice(0, 16)
+                        : new Date(w.date).toISOString().replace('T', ' ').slice(0, 16))
+                    : '—';
+                  const ingName = formatIngredient(w);
+                  const branchName = formatBranch(w.branchId || w.branch);
 
-                        <button
-                          type="button"
-                          className="employees-button employees-button-danger"
-                          onClick={() => setDeleteConfirmTarget(w)}
-                          title={`Delete Log ${w.wasteNumber}`}
-                          aria-label={`Delete Log ${w.wasteNumber}`}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                  return (
+                    <tr key={recordKey}>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <code>{w.wasteNumber || `WST-${String(recordKey).slice(-6).toUpperCase()}`}</code>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{branchName}</td>
+                      <td><strong>{ingName}</strong></td>
+                      <td style={{ color: '#b91c1c', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        -{w.qty} {w.unit || 'kg'}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>₹{Number(w.unitCost || 0).toLocaleString()}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <strong style={{ color: '#b91c1c' }}>₹{Number(w.totalCost || 0).toLocaleString()}</strong>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <span className="employees-status is-danger">
+                          {String(w.reason || 'WASTE').replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{formatReportedBy(w.loggedBy)}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{dateStr}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {/* View Notes | Delete Action Group */}
+                        <div className="employees-row-actions" style={{ display: 'inline-flex', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
+                          <button
+                            type="button"
+                            className="employees-button employees-button-secondary"
+                            onClick={() => setViewNotesTarget(w)}
+                          >
+                            <Pencil size={15} />
+                            Notes
+                          </button>
+
+                          <button
+                            type="button"
+                            className="employees-button employees-button-danger"
+                            onClick={() => setDeleteConfirmTarget(w)}
+                            title={`Delete Log ${w.wasteNumber || recordKey}`}
+                            aria-label={`Delete Log ${w.wasteNumber || recordKey}`}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
+
+        <InventoryPagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* RECORD WASTAGE MODAL */}
@@ -342,7 +461,7 @@ export default function WastagePage({ branchId, branches = [] }) {
                     onChange={(e) => setTargetBranch(e.target.value)}
                     required
                   >
-                    {branches.map((b) => (
+                    {Array.isArray(branches) && branches.map((b) => (
                       <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
                     ))}
                   </select>
@@ -356,8 +475,8 @@ export default function WastagePage({ branchId, branches = [] }) {
                     required
                   >
                     <option value="">Select ingredient</option>
-                    {ingredients.map((ing) => (
-                      <option key={ing.id} value={ing.id}>{ing.name} ({ing.sku})</option>
+                    {Array.isArray(ingredients) && ingredients.map((ing) => (
+                      <option key={ing.id || ing._id} value={ing.id || ing._id}>{ing.name} ({ing.sku})</option>
                     ))}
                   </select>
                 </label>
@@ -442,10 +561,10 @@ export default function WastagePage({ branchId, branches = [] }) {
               </button>
             </div>
             <div style={{ fontSize: '13px', color: '#52645a', lineHeight: 1.6 }}>
-              <p><strong>Ingredient:</strong> {ingredientMap[viewNotesTarget.ingredientId] || viewNotesTarget.ingredientId}</p>
-              <p><strong>Quantity:</strong> -{viewNotesTarget.qty} {viewNotesTarget.unit}</p>
+              <p><strong>Ingredient:</strong> {ingredientMap[viewNotesTarget.ingredientId] || viewNotesTarget.ingredientName || viewNotesTarget.ingredientId || '-'}</p>
+              <p><strong>Quantity:</strong> -{viewNotesTarget.qty} {viewNotesTarget.unit || 'kg'}</p>
               <p><strong>Financial Impact:</strong> ₹{Number(viewNotesTarget.totalCost || 0).toLocaleString()}</p>
-              <p><strong>Reason:</strong> {viewNotesTarget.reason}</p>
+              <p><strong>Reason:</strong> {viewNotesTarget.reason || '-'}</p>
               <p><strong>Reported By:</strong> {viewNotesTarget.loggedBy || 'Staff'}</p>
               <p><strong>Notes:</strong> {viewNotesTarget.notes || 'No extra notes provided.'}</p>
             </div>
@@ -484,7 +603,7 @@ export default function WastagePage({ branchId, branches = [] }) {
             <h3 id="delete-wastage-title">Delete Wastage Log?</h3>
 
             <p id="delete-wastage-description">
-              Are you sure you want to permanently delete wastage record <strong>{deleteConfirmTarget.wasteNumber}</strong>? This action cannot be undone.
+              Are you sure you want to permanently delete wastage record <strong>{deleteConfirmTarget.wasteNumber || deleteConfirmTarget.id || deleteConfirmTarget._id}</strong>? This action cannot be undone.
             </p>
 
             <div className="employees-delete-actions">

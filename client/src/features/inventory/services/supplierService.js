@@ -3,7 +3,6 @@
 // Handles Supplier Profiles, Catalogs, Purchasing Stats & Status
 // ============================================================
 
-import { SEED_SUPPLIERS, SEED_INGREDIENTS } from './mockData.js';
 import { apiClient } from '../../../api/client.js';
 
 export function normalizeSupplier(doc) {
@@ -30,17 +29,29 @@ export function normalizeSupplier(doc) {
 }
 
 const SUPPLIERS_KEY = 'anova_inventory_suppliers';
+const MOCK_ID_REGEX = /^(sup)_\d{2,3}$/;
 
 function getSuppliersData() {
   try {
     const raw = localStorage.getItem(SUPPLIERS_KEY);
     if (!raw) {
-      localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(SEED_SUPPLIERS));
-      return SEED_SUPPLIERS;
+      return [];
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const clean = parsed.filter(s => {
+        const id = String(s?.id || s?._id || '');
+        return !MOCK_ID_REGEX.test(id);
+      });
+      if (clean.length !== parsed.length) {
+        localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(clean));
+      }
+      return clean;
+    }
+    localStorage.removeItem(SUPPLIERS_KEY);
+    return [];
   } catch {
-    return SEED_SUPPLIERS;
+    return [];
   }
 }
 
@@ -68,10 +79,10 @@ export const SupplierService = {
     if (search && search.trim() !== '') {
       const q = search.toLowerCase();
       suppliers = suppliers.filter(s =>
-        s.name.toLowerCase().includes(q) ||
-        s.code.toLowerCase().includes(q) ||
-        s.contactPerson.toLowerCase().includes(q) ||
-        s.city.toLowerCase().includes(q)
+        (s.name || '').toLowerCase().includes(q) ||
+        (s.code || '').toLowerCase().includes(q) ||
+        (s.contactPerson || '').toLowerCase().includes(q) ||
+        (s.city || '').toLowerCase().includes(q)
       );
     }
 
@@ -80,14 +91,14 @@ export const SupplierService = {
 
   getSupplierById(id) {
     const list = getSuppliersData();
-    return list.find(s => s.id === id) || null;
+    return list.find(s => s.id === id || s._id === id) || null;
   },
 
   getSuppliedIngredients(supplierId) {
     try {
       const raw = localStorage.getItem('anova_inventory_ingredients');
-      const items = raw ? JSON.parse(raw) : SEED_INGREDIENTS;
-      return items.filter(i => i.primarySupplierId === supplierId);
+      const items = raw ? JSON.parse(raw) : [];
+      return (Array.isArray(items) ? items : []).filter(i => i.primarySupplierId === supplierId);
     } catch {
       return [];
     }
@@ -96,7 +107,7 @@ export const SupplierService = {
   saveSupplier(supplierData) {
     const list = getSuppliersData();
     if (supplierData.id) {
-      const idx = list.findIndex(s => s.id === supplierData.id);
+      const idx = list.findIndex(s => s.id === supplierData.id || s._id === supplierData.id);
       if (idx !== -1) {
         list[idx] = { ...list[idx], ...supplierData };
         saveSuppliersData(list);
@@ -104,8 +115,8 @@ export const SupplierService = {
       }
     }
 
-    const newId = `sup_${Date.now().toString(36)}`;
-    const newCode = supplierData.code || supplierData.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 4);
+    const newId = `sup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const newCode = supplierData.code || (supplierData.name || 'SUP').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 4);
     const newSupplier = {
       ...supplierData,
       id: newId,
@@ -119,9 +130,16 @@ export const SupplierService = {
     return newSupplier;
   },
 
+  deleteSupplier(id) {
+    const list = getSuppliersData();
+    const filtered = list.filter(s => s.id !== id && s._id !== id);
+    saveSuppliersData(filtered);
+    return true;
+  },
+
   toggleStatus(id) {
     const list = getSuppliersData();
-    const supplier = list.find(s => s.id === id);
+    const supplier = list.find(s => s.id === id || s._id === id);
     if (!supplier) throw new Error('Supplier not found');
 
     supplier.status = supplier.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
@@ -151,12 +169,12 @@ export const SupplierService = {
     const targetId = supplierData._id || supplierData.id;
 
     const payload = {
-      name: supplierData.name,
-      code: supplierData.code,
+      name: supplierData.name?.trim(),
+      code: supplierData.code?.trim() || `SUP-${Math.floor(100 + Math.random() * 900)}`,
       category: supplierData.category,
-      contactPerson: supplierData.contactPerson,
-      email: supplierData.email,
-      phone: supplierData.phone,
+      contactPerson: supplierData.contactPerson?.trim(),
+      email: supplierData.email?.trim(),
+      phone: supplierData.phone?.trim(),
       city: supplierData.city || 'Mumbai',
       leadTimeDays: Number(supplierData.leadTimeDays || 2),
       paymentTerms: supplierData.paymentTerms || 'Net 30',
@@ -164,26 +182,27 @@ export const SupplierService = {
       rating: Number(supplierData.rating || 4.5)
     };
 
-    try {
-      const endpoint = isUpdate ? `/api/inventory/suppliers/${targetId}` : '/api/inventory/suppliers';
-      const method = isUpdate ? 'PUT' : 'POST';
-      const res = await apiClient(endpoint, { method, body: payload });
-      if (res && res.success && res.data) {
-        const normalized = normalizeSupplier(res.data);
-        const list = getSuppliersData();
-        const idx = list.findIndex(s => s.id === normalized.id);
-        if (idx !== -1) {
-          list[idx] = normalized;
-        } else {
-          list.unshift(normalized);
-        }
-        saveSuppliersData(list);
-        return normalized;
+    const endpoint = isUpdate ? `/api/inventory/suppliers/${targetId}` : '/api/inventory/suppliers';
+    const method = isUpdate ? 'PUT' : 'POST';
+    const res = await apiClient(endpoint, { method, body: payload });
+    if (res && res.success && res.data) {
+      const normalized = normalizeSupplier(res.data);
+      const list = getSuppliersData();
+      const idx = list.findIndex(s => s.id === normalized.id || s._id === normalized.id);
+      if (idx !== -1) {
+        list[idx] = normalized;
+      } else {
+        list.unshift(normalized);
       }
-    } catch (err) {
-      console.warn('[SupplierService] Remote save failed, falling back to local:', err.message);
+      saveSuppliersData(list);
+      return normalized;
     }
-    return this.saveSupplier(supplierData);
+    throw new Error(res?.message || 'Failed to save supplier in database');
+  },
+
+  async deleteSupplierRemote(id) {
+    await apiClient(`/api/inventory/suppliers/${id}`, { method: 'DELETE' });
+    return this.deleteSupplier(id);
   },
 
   async toggleStatusRemote(id) {
@@ -192,7 +211,7 @@ export const SupplierService = {
       if (res && res.success && res.data) {
         const normalized = normalizeSupplier(res.data);
         const list = getSuppliersData();
-        const idx = list.findIndex(s => s.id === normalized.id);
+        const idx = list.findIndex(s => s.id === normalized.id || s._id === normalized.id);
         if (idx !== -1) {
           list[idx] = normalized;
           saveSuppliersData(list);

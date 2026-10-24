@@ -6,7 +6,6 @@
 // 3. Batch-level and cost-accurate wastage logging
 // ============================================================
 
-import { SEED_TRANSFERS, SEED_WASTAGE, SEED_STOCK_MOVEMENTS, SEED_INGREDIENTS } from './mockData.js';
 import { apiClient } from '../../../api/client.js';
 
 export function normalizeTransfer(doc) {
@@ -39,23 +38,26 @@ export function normalizeTransfer(doc) {
 
 export function normalizeWastage(doc) {
   if (!doc) return null;
-  const wId = String(doc._id || doc.id);
+  const wId = String(doc._id || doc.id || '');
+  const ingObj = (typeof doc.ingredient === 'object' && doc.ingredient !== null) ? doc.ingredient : null;
+  const ingId = String(ingObj?._id || ingObj?.id || (typeof doc.ingredient === 'string' ? doc.ingredient : '') || doc.ingredientId || '');
+  const ingName = ingObj?.name || doc.ingredientName || doc.name || '';
   return {
     ...doc,
     id: wId,
     _id: wId,
-    wasteNumber: doc.wasteNumber,
-    branchId: doc.branch || doc.branchId,
-    ingredientId: String(doc.ingredient?._id || doc.ingredient || doc.ingredientId),
-    ingredientName: doc.ingredient?.name || '',
-    batchNumber: doc.batchNumber,
+    wasteNumber: doc.wasteNumber || `WST-${wId ? wId.slice(-6).toUpperCase() : Math.floor(Math.random() * 10000)}`,
+    branchId: typeof doc.branch === 'object' && doc.branch !== null ? String(doc.branch._id || doc.branch.id || doc.branch.code || '') : String(doc.branch || doc.branchId || ''),
+    ingredientId: ingId,
+    ingredientName: ingName,
+    batchNumber: doc.batchNumber || '',
     qty: Number(doc.quantity !== undefined ? doc.quantity : (doc.qty || 0)),
-    unit: doc.unit || 'kg',
+    unit: doc.unit || ingObj?.baseUnit || 'kg',
     unitCost: Number(doc.unitCost || 0),
     totalCost: Number(doc.totalCost || 0),
-    reason: doc.reason,
-    loggedBy: doc.loggedBy,
-    date: doc.date || doc.createdAt,
+    reason: doc.reason || 'EXPIRED',
+    loggedBy: doc.loggedBy || 'Kitchen Staff',
+    date: doc.date || doc.createdAt || new Date().toISOString(),
     notes: doc.notes || ''
   };
 }
@@ -65,22 +67,36 @@ const WASTAGE_KEY = 'anova_inventory_wastage';
 const INGREDIENTS_KEY = 'anova_inventory_ingredients';
 const MOVEMENTS_KEY = 'anova_inventory_movements';
 
+const MOCK_TRANSFER_REGEX = /^(tr)_\d{2,3}$/;
+const MOCK_WASTAGE_REGEX = /^(wst)_\d{2,3}$/;
+
 function getTransfersData() {
   try {
     const raw = localStorage.getItem(TRANSFERS_KEY);
     if (!raw) {
-      localStorage.setItem(TRANSFERS_KEY, JSON.stringify(SEED_TRANSFERS));
-      return SEED_TRANSFERS;
+      return [];
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const clean = parsed.filter(t => {
+        const id = String(t?.id || t?._id || '');
+        return !MOCK_TRANSFER_REGEX.test(id);
+      });
+      if (clean.length !== parsed.length) {
+        localStorage.setItem(TRANSFERS_KEY, JSON.stringify(clean));
+      }
+      return clean;
+    }
+    localStorage.removeItem(TRANSFERS_KEY);
+    return [];
   } catch {
-    return SEED_TRANSFERS;
+    return [];
   }
 }
 
 function saveTransfersData(data) {
   try {
-    localStorage.setItem(TRANSFERS_KEY, JSON.stringify(data));
+    localStorage.setItem(TRANSFERS_KEY, JSON.stringify(Array.isArray(data) ? data : []));
   } catch (err) {
     console.error('Error saving transfers:', err);
   }
@@ -90,18 +106,30 @@ function getWastageData() {
   try {
     const raw = localStorage.getItem(WASTAGE_KEY);
     if (!raw) {
-      localStorage.setItem(WASTAGE_KEY, JSON.stringify(SEED_WASTAGE));
-      return SEED_WASTAGE;
+      return [];
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const clean = parsed.filter(w => {
+        const id = String(w?.id || w?._id || '');
+        return !MOCK_WASTAGE_REGEX.test(id);
+      });
+      if (clean.length !== parsed.length) {
+        localStorage.setItem(WASTAGE_KEY, JSON.stringify(clean));
+      }
+      return clean;
+    }
+    // If corrupted or single object, clean localStorage and return empty array
+    localStorage.removeItem(WASTAGE_KEY);
+    return [];
   } catch {
-    return SEED_WASTAGE;
+    return [];
   }
 }
 
 function saveWastageData(data) {
   try {
-    localStorage.setItem(WASTAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(WASTAGE_KEY, JSON.stringify(Array.isArray(data) ? data : []));
   } catch (err) {
     console.error('Error saving wastage:', err);
   }
@@ -127,26 +155,26 @@ export const MovementService = {
     if (fromBranchId === toBranchId) throw new Error('Source and destination branches cannot be the same');
     if (!items || items.length === 0) throw new Error('At least one item must be transferred');
 
-    // Read Ingredients & Movements
     let ingredients = [];
     try {
       const raw = localStorage.getItem(INGREDIENTS_KEY);
-      ingredients = raw ? JSON.parse(raw) : SEED_INGREDIENTS;
+      ingredients = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(ingredients)) ingredients = [];
     } catch {
-      ingredients = SEED_INGREDIENTS;
+      ingredients = [];
     }
 
     let movements = [];
     try {
       const raw = localStorage.getItem(MOVEMENTS_KEY);
-      movements = raw ? JSON.parse(raw) : SEED_STOCK_MOVEMENTS;
+      movements = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(movements)) movements = [];
     } catch {
-      movements = SEED_STOCK_MOVEMENTS;
+      movements = [];
     }
 
     const transferNumber = `TR-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
 
-    // Verify stock availability at source branch
     items.forEach(it => {
       const ing = ingredients.find(i => i.id === it.ingredientId);
       if (!ing) throw new Error(`Ingredient ${it.ingredientId} not found`);
@@ -156,14 +184,12 @@ export const MovementService = {
       }
     });
 
-    // Deduct stock from source branch immediately (In-Transit)
     items.forEach(it => {
       const ing = ingredients.find(i => i.id === it.ingredientId);
-      const current = Number(ing.stockByBranch[fromBranchId]);
-      const newStock = current - Number(it.qty);
+      const current = Number(ing.stockByBranch[fromBranchId] || 0);
+      const newStock = Math.max(0, current - Number(it.qty));
       ing.stockByBranch[fromBranchId] = newStock;
 
-      // Deplete batches via FIFO from source branch
       if (ing.batches) {
         let remaining = Number(it.qty);
         if (it.batchNumber && it.batchNumber !== 'TR-BATCH') {
@@ -207,7 +233,7 @@ export const MovementService = {
     });
 
     const newTransfer = {
-      id: `tr_${Date.now()}`,
+      id: `tr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       transferNumber,
       fromBranchId,
       toBranchId,
@@ -236,6 +262,13 @@ export const MovementService = {
     return newTransfer;
   },
 
+  deleteTransfer(id) {
+    const list = getTransfersData();
+    const filtered = list.filter(t => t.id !== id && t._id !== id);
+    saveTransfersData(filtered);
+    return true;
+  },
+
   receiveTransfer({ transferId, receivedBy = 'Receiving Manager' }) {
     const transfers = getTransfersData();
     const transfer = transfers.find(t => t.id === transferId);
@@ -244,24 +277,24 @@ export const MovementService = {
       throw new Error(`Cannot receive transfer with status ${transfer.status}`);
     }
 
-    // Read Ingredients & Movements
     let ingredients = [];
     try {
       const raw = localStorage.getItem(INGREDIENTS_KEY);
-      ingredients = raw ? JSON.parse(raw) : SEED_INGREDIENTS;
+      ingredients = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(ingredients)) ingredients = [];
     } catch {
-      ingredients = SEED_INGREDIENTS;
+      ingredients = [];
     }
 
     let movements = [];
     try {
       const raw = localStorage.getItem(MOVEMENTS_KEY);
-      movements = raw ? JSON.parse(raw) : SEED_STOCK_MOVEMENTS;
+      movements = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(movements)) movements = [];
     } catch {
-      movements = SEED_STOCK_MOVEMENTS;
+      movements = [];
     }
 
-    // Add stock to destination branch
     transfer.items.forEach(it => {
       const ing = ingredients.find(i => i.id === it.ingredientId);
       if (ing) {
@@ -270,7 +303,6 @@ export const MovementService = {
         const newStock = destStock + Number(it.qty);
         ing.stockByBranch[transfer.toBranchId] = newStock;
 
-        // Add batch for destination
         if (!ing.batches) ing.batches = [];
         ing.batches.push({
           id: `bat_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
@@ -311,13 +343,14 @@ export const MovementService = {
   // Wastage Management
   getWastage(filter = {}) {
     let list = getWastageData();
+    if (!Array.isArray(list)) list = [];
     const { branchId, reason } = filter;
 
     if (branchId && branchId !== 'all') {
-      list = list.filter(w => w.branchId === branchId);
+      list = list.filter(w => w && (w.branchId === branchId || w.branch === branchId));
     }
     if (reason && reason !== 'ALL') {
-      list = list.filter(w => w.reason === reason);
+      list = list.filter(w => w && w.reason === reason);
     }
 
     return list;
@@ -327,21 +360,22 @@ export const MovementService = {
     const deductQty = Number(qty);
     if (deductQty <= 0) throw new Error('Wastage quantity must be greater than zero');
 
-    // Read Ingredients & Movements
-    let ingredients;
+    let ingredients = [];
     try {
       const raw = localStorage.getItem(INGREDIENTS_KEY);
-      ingredients = raw ? JSON.parse(raw) : SEED_INGREDIENTS;
+      ingredients = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(ingredients)) ingredients = [];
     } catch {
-      ingredients = SEED_INGREDIENTS;
+      ingredients = [];
     }
 
-    let movements;
+    let movements = [];
     try {
       const raw = localStorage.getItem(MOVEMENTS_KEY);
-      movements = raw ? JSON.parse(raw) : SEED_STOCK_MOVEMENTS;
+      movements = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(movements)) movements = [];
     } catch {
-      movements = SEED_STOCK_MOVEMENTS;
+      movements = [];
     }
 
     const ing = ingredients.find(i => i.id === ingredientId);
@@ -352,10 +386,9 @@ export const MovementService = {
       throw new Error(`Cannot write off ${deductQty} ${ing.baseUnit}. Only ${currentStock} available in branch.`);
     }
 
-    const newStock = currentStock - deductQty;
+    const newStock = Math.max(0, currentStock - deductQty);
     ing.stockByBranch[branchId] = newStock;
 
-    // Deduct from batches via FIFO (prioritizing specific batch if passed)
     if (ing.batches) {
       let remaining = deductQty;
       if (batchNumber && batchNumber !== 'GENERAL-STOCK') {
@@ -388,7 +421,7 @@ export const MovementService = {
     const wasteNumber = `WST-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
 
     const newWastage = {
-      id: `wst_${Date.now()}`,
+      id: `wst_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       wasteNumber,
       branchId,
       ingredientId,
@@ -427,6 +460,13 @@ export const MovementService = {
     return newWastage;
   },
 
+  deleteWastage(id) {
+    const list = getWastageData();
+    const filtered = list.filter(w => w.id !== id && w._id !== id);
+    saveWastageData(filtered);
+    return true;
+  },
+
   // ==========================================
   // REMOTE BACKEND / ATLAS SYNCHRONIZATION
   // ==========================================
@@ -455,48 +495,50 @@ export const MovementService = {
         ingredient: it.ingredientId,
         qty: Number(it.qty),
         unit: it.unit || 'kg',
-        unitCost: Number(it.unitCost || 0)
+        unitCost: Number(it.unitCost || 0),
+        batchNumber: it.batchNumber || undefined
       }))
     };
 
-    try {
-      const res = await apiClient('/api/inventory/transfers/dispatch', {
-        method: 'POST',
-        body: payload
-      });
-      if (res && res.success && res.data) {
-        const normalized = normalizeTransfer(res.data);
-        const list = getTransfersData();
-        list.unshift(normalized);
-        saveTransfersData(list);
-        return normalized;
-      }
-    } catch (err) {
-      console.warn('[MovementService] Remote transfer dispatch failed, falling back:', err.message);
+    const res = await apiClient('/api/inventory/transfers/dispatch', {
+      method: 'POST',
+      body: payload
+    });
+    if (res && res.success && res.data) {
+      const normalized = normalizeTransfer(res.data);
+      const list = getTransfersData();
+      list.unshift(normalized);
+      saveTransfersData(list);
+      return normalized;
     }
-    return this.dispatchTransfer({ fromBranchId, toBranchId, items, notes, dispatchedBy });
+    throw new Error(res?.message || 'Failed to dispatch transfer in database');
+  },
+
+  async deleteTransferRemote(id) {
+    try {
+      await apiClient(`/api/inventory/transfers/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('Backend transfer delete note:', err.message);
+    }
+    return this.deleteTransfer(id);
   },
 
   async receiveTransferRemote({ transferId, receivedBy = 'Receiver' }) {
-    try {
-      const res = await apiClient(`/api/inventory/transfers/${transferId}/receive`, {
-        method: 'POST',
-        body: { receivedBy }
-      });
-      if (res && res.success && res.data) {
-        const normalized = normalizeTransfer(res.data);
-        const list = getTransfersData();
-        const idx = list.findIndex(t => t.id === normalized.id);
-        if (idx !== -1) {
-          list[idx] = normalized;
-          saveTransfersData(list);
-        }
-        return normalized;
+    const res = await apiClient(`/api/inventory/transfers/${transferId}/receive`, {
+      method: 'POST',
+      body: { receivedBy }
+    });
+    if (res && res.success && res.data) {
+      const normalized = normalizeTransfer(res.data);
+      const list = getTransfersData();
+      const idx = list.findIndex(t => t.id === normalized.id);
+      if (idx !== -1) {
+        list[idx] = normalized;
+        saveTransfersData(list);
       }
-    } catch (err) {
-      console.warn('[MovementService] Remote transfer receive failed, falling back:', err.message);
+      return normalized;
     }
-    return this.receiveTransfer({ transferId, receivedBy });
+    throw new Error(res?.message || 'Failed to receive transfer in database');
   },
 
   async syncWastageFromBackend(branchId = 'all') {
@@ -504,7 +546,7 @@ export const MovementService = {
       const branchQuery = branchId && branchId !== 'all' ? `?branch=${branchId}` : '';
       const res = await apiClient(`/api/inventory/wastage${branchQuery}`);
       if (res && res.success && Array.isArray(res.data)) {
-        const normalized = res.data.map(normalizeWastage);
+        const normalized = res.data.map(normalizeWastage).filter(Boolean);
         saveWastageData(normalized);
         return normalized;
       }
@@ -525,21 +567,22 @@ export const MovementService = {
       loggedBy
     };
 
-    try {
-      const res = await apiClient('/api/inventory/wastage', {
-        method: 'POST',
-        body: payload
-      });
-      if (res && res.success && res.data) {
-        const normalized = normalizeWastage(res.data);
-        const list = getWastageData();
-        list.unshift(normalized);
-        saveWastageData(list);
-        return normalized;
-      }
-    } catch (err) {
-      console.warn('[MovementService] Remote wastage logging failed, falling back:', err.message);
+    const res = await apiClient('/api/inventory/wastage', {
+      method: 'POST',
+      body: payload
+    });
+    if (res && res.success && res.data) {
+      const normalized = normalizeWastage(res.data);
+      const list = getWastageData();
+      list.unshift(normalized);
+      saveWastageData(list);
+      return normalized;
     }
-    return this.logWastage({ branchId, ingredientId, batchNumber, qty, reason, notes, loggedBy });
+    throw new Error(res?.message || 'Failed to record wastage in database');
+  },
+
+  async deleteWastageRemote(id) {
+    await apiClient(`/api/inventory/wastage/${id}`, { method: 'DELETE' });
+    return this.deleteWastage(id);
   }
 };

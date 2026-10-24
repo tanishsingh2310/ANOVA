@@ -13,6 +13,7 @@ import { InventoryService } from '../services/inventoryService';
 import { SupplierService } from '../services/supplierService';
 import StockAdjustmentModal from './StockAdjustmentModal';
 import BatchTrackerModal from './BatchTrackerModal';
+import InventoryPagination from '../components/InventoryPagination';
 
 export default function IngredientsPage({ branchId, branches = [] }) {
   const [ingredients, setIngredients] = useState([]);
@@ -22,6 +23,12 @@ export default function IngredientsPage({ branchId, branches = [] }) {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, categoryFilter, statusFilter, selectedBranch]);
 
   // Modals state
   const [adjustTarget, setAdjustTarget] = useState(null);
@@ -202,7 +209,6 @@ export default function IngredientsPage({ branchId, branches = [] }) {
       {/* Heading matching Images 1-4 */}
       <div className="employees-heading">
         <div>
-          <h2>Ingredients</h2>
           <p>View your ingredients, stock levels, and branch assignments.</p>
         </div>
 
@@ -213,7 +219,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
             onClick={openAddModal}
           >
             <Plus size={16} />
-            + Add Ingredient
+            Add Ingredient
           </button>
           <button
             type="button"
@@ -317,19 +323,21 @@ export default function IngredientsPage({ branchId, branches = [] }) {
             <table className="employees-table">
               <thead>
                 <tr>
-                  <th>Ingredient</th>
-                  <th>SKU</th>
-                  <th>Category</th>
-                  <th>Stock Level</th>
-                  <th>Thresholds</th>
-                  <th>Unit Cost</th>
-                  <th>Total Value</th>
-                  <th>Status</th>
-                  <th style={{ width: '230px' }}>ACTIONS</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Ingredient</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>SKU</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Category</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Stock Level</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Thresholds</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Unit Cost</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Total Value</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Status</th>
+                  <th style={{ width: '230px', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {ingredients.map((ing) => {
+                {ingredients
+                  .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+                  .map((ing) => {
                   const qty = getBranchStock(ing);
                   const status = InventoryService.calculateStockStatus(ing, selectedBranch);
                   const totalVal = Math.round(qty * (Number(ing.unitCost) || 0));
@@ -337,15 +345,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
                   return (
                     <tr key={ing.id || ing._id}>
                       <td>
-                        <div className="employees-person">
-                          <span className="employees-avatar">
-                            {(ing.name || 'I').trim().charAt(0).toUpperCase()}
-                          </span>
-                          <div className="employees-person-details">
-                            <strong>{ing.name}</strong>
-                            <span>Base Unit: {ing.baseUnit}</span>
-                          </div>
-                        </div>
+                        <strong>{ing.name}</strong>
                       </td>
                       <td>
                         <code>{ing.sku}</code>
@@ -355,10 +355,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
                         <strong>{qty} {ing.baseUnit}</strong>
                       </td>
                       <td>
-                        <span>Min: {ing.minThreshold} {ing.baseUnit}</span>
-                        <span style={{ color: '#748078', fontSize: '11px', display: 'block' }}>
-                          Reorder: {ing.reorderLevel || '-'}
-                        </span>
+                        <span>Min: {ing.minThreshold} {ing.baseUnit} • Reorder: {ing.reorderLevel || '-'}</span>
                       </td>
                       <td>₹{ing.unitCost}</td>
                       <td>
@@ -370,7 +367,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
                         </span>
                       </td>
                       <td>
-                        {/* Image 5: Edit | Deactivate/Adjust | Delete Action Group */}
+                        {/* Edit | Deactivate/Adjust | Delete Action Group */}
                         <div className="employees-row-actions">
                           <button
                             type="button"
@@ -407,6 +404,13 @@ export default function IngredientsPage({ branchId, branches = [] }) {
             </table>
           </div>
         )}
+
+        <InventoryPagination
+          currentPage={currentPage}
+          totalItems={ingredients.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Stock Adjustment Modal */}

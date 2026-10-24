@@ -11,6 +11,19 @@ import { InventoryService } from './services/inventoryService';
 import { AnalyticsService } from './services/analyticsService';
 import '../../styles/inventory.css';
 
+// One-time cleanup of legacy frontend mock stores (transfers, movements, POs)
+const MOCK_PURGE_FLAG = 'anova_inv_mock_purged_v1';
+if (typeof window !== 'undefined' && !localStorage.getItem(MOCK_PURGE_FLAG)) {
+  try {
+    localStorage.removeItem('anova_inventory_transfers');
+    localStorage.removeItem('anova_inventory_movements');
+    localStorage.removeItem('anova_inventory_pos');
+    localStorage.setItem(MOCK_PURGE_FLAG, 'true');
+  } catch (err) {
+    console.warn('Error purging mock stores:', err);
+  }
+}
+
 export default function InventoryModule({
   activeSubpage = 'inv-dashboard',
   onSubpageChange = () => {},

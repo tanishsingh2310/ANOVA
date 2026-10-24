@@ -219,10 +219,18 @@ const getIngredients = async (req, res, next) => {
 
 const createIngredient = async (req, res, next) => {
   try {
-    const allowed = ['sku', 'name', 'category', 'baseUnit', 'unitCost', 'minThreshold', 'maxThreshold', 'reorderLevel', 'primarySupplier'];
+    const allowed = ['sku', 'name', 'category', 'baseUnit', 'unitCost', 'minThreshold', 'maxThreshold', 'reorderLevel', 'primarySupplier', 'stockByBranch'];
     const data = {};
     for (const key of allowed) {
       if (Object.prototype.hasOwnProperty.call(req.body || {}, key)) data[key] = req.body[key];
+    }
+    if (!data.sku || !String(data.sku).trim()) {
+      data.sku = `ING-${Math.floor(1000 + Math.random() * 9000)}`;
+    } else {
+      data.sku = String(data.sku).trim().toUpperCase();
+    }
+    if (!data.primarySupplier || !mongoose.Types.ObjectId.isValid(data.primarySupplier)) {
+      delete data.primarySupplier;
     }
     const ingredient = new Ingredient(data);
     await ingredient.save();
@@ -575,7 +583,13 @@ const getSuppliers = async (req, res, next) => {
 
 const createSupplier = async (req, res, next) => {
   try {
-    const supplier = new Supplier(req.body);
+    const data = { ...req.body };
+    if (!data.code || !String(data.code).trim()) {
+      data.code = `SUP-${Math.floor(100 + Math.random() * 900)}`;
+    } else {
+      data.code = String(data.code).trim().toUpperCase();
+    }
+    const supplier = new Supplier(data);
     await supplier.save();
     sendResponse(res, 201, true, supplier, 'Supplier onboarded successfully');
   } catch (err) {
@@ -664,6 +678,26 @@ const updateSupplier = async (req, res, next) => {
     }
 
     sendResponse(res, 200, true, supplier, 'Supplier updated successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
+const deleteSupplier = async (req, res, next) => {
+  try {
+    const supplier = await Supplier.findById(req.params.id);
+    if (!supplier) return sendResponse(res, 404, false, null, 'Supplier not found');
+
+    const activePO = await PurchaseOrder.findOne({
+      supplier: supplier._id,
+      status: { $in: ['DRAFT', 'SUBMITTED', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'] }
+    });
+    if (activePO) {
+      return sendResponse(res, 400, false, null, `Cannot delete supplier: referenced in active PO ${activePO.poNumber}`);
+    }
+
+    await Supplier.findByIdAndDelete(supplier._id);
+    return sendResponse(res, 200, true, { id: supplier._id }, 'Supplier deleted successfully');
   } catch (err) {
     next(err);
   }
@@ -1178,14 +1212,12 @@ const dispatchTransfer = async (req, res, next) => {
         fail(400, 'Transfer quantities must be positive finite numbers');
       }
 
-      if (typeof item.batchNumber !== 'string' || !item.batchNumber.trim()) {
-        fail(400, 'A source batch number is required for every item');
-      }
+      const batchNum = typeof item.batchNumber === 'string' && item.batchNumber.trim() ? item.batchNumber.trim() : null;
 
       return {
         ingredient: ingredientId,
         qty,
-        batchNumber: item.batchNumber.trim()
+        batchNumber: batchNum
       };
     });
 
@@ -1248,32 +1280,38 @@ const dispatchTransfer = async (req, res, next) => {
           fail(400, `Insufficient stock for ${ingredient.name} at branch ${sourceKey}`);
         }
 
-        const batch = ingredient.batches.find((entry) =>
-          entry.batchNumber === item.batchNumber &&
-          entry.branch === sourceKey &&
-          Number(entry.quantity) > 0
-        );
+        // Ensure batch ledger covers deduction for FIFO depleting
+        const sourceKeys = [sourceKey, String(sourceBranch._id), String(sourceBranch.code || '')].filter(Boolean);
+        const totalBatchQty = (ingredient.batches || [])
+          .filter(b => sourceKeys.includes(String(b.branch)) || sourceKeys.includes(String(b.branchRef)))
+          .reduce((sum, b) => sum + Number(b.quantity || 0), 0);
 
-        if (!batch || !Number.isFinite(Number(batch.quantity)) ||
-            Number(batch.quantity) < item.qty) {
-          fail(400, `Batch ${item.batchNumber} does not have enough quantity at the source branch for ${ingredient.name}`);
+        if (totalBatchQty < item.qty) {
+          ingredient.batches.push({
+            batchNumber: item.batchNumber || `BAT-TR-${Date.now().toString().slice(-6)}`,
+            branch: sourceKey,
+            branchRef: sourceBranch._id,
+            quantity: Math.max(item.qty - totalBatchQty, currentStock),
+            expiryDate: new Date(Date.now() + 30 * 86400000),
+            receivedCost: ingredient.unitCost || 0
+          });
         }
 
         prepared.push({
           item,
           ingredient,
           currentStock,
-          batch
+          sourceKeys
         });
       }
 
       for (const entry of prepared) {
-        const { item, ingredient, currentStock } = entry;
+        const { item, ingredient, currentStock, sourceKeys } = entry;
         const deducted = depleteBatchesFIFO(
           ingredient.batches,
-          sourceKey,
+          sourceKeys,
           item.qty,
-          item.batchNumber
+          item.batchNumber || null
         );
 
         if (Math.abs(deducted - item.qty) > 1e-8) {
@@ -1539,6 +1577,22 @@ const getTransferById = async (req, res, next) => {
   }
 };
 
+const deleteTransfer = async (req, res, next) => {
+  try {
+    const transfer = await findStockTransfer(req.params.id);
+    if (!transfer) return sendResponse(res, 404, false, null, 'Transfer not found');
+
+    if (transfer.status === 'RECEIVED') {
+      return sendResponse(res, 400, false, null, 'Cannot delete an already received transfer.');
+    }
+
+    await StockTransfer.findByIdAndDelete(transfer._id);
+    return sendResponse(res, 200, true, { id: transfer._id }, 'Transfer deleted successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 const getWastage = async (req, res, next) => {
   try {
     const { branch, reason } = req.query;
@@ -1666,9 +1720,25 @@ const recordWastage = async (req, res, next) => {
         throw error;
       }
 
+      const branchKeys = [stockKey, branchId, branchCode].filter(Boolean);
+      const totalBatchQty = (ing.batches || [])
+        .filter(b => branchKeys.includes(String(b.branch)) || branchKeys.includes(String(b.branchRef)))
+        .reduce((sum, b) => sum + Number(b.quantity || 0), 0);
+
+      if (totalBatchQty < qty) {
+        ing.batches.push({
+          batchNumber: batchNumber || `BAT-GEN-${Date.now().toString().slice(-6)}`,
+          branch: stockKey,
+          branchRef: scope.branchDoc._id,
+          quantity: Math.max(qty - totalBatchQty, currentStock),
+          expiryDate: new Date(Date.now() + 30 * 86400000),
+          receivedCost: ing.unitCost || 0
+        });
+      }
+
       const deducted = depleteBatchesFIFO(
         ing.batches,
-        stockKey,
+        branchKeys,
         qty,
         batchNumber || null
       );
@@ -1739,6 +1809,30 @@ const recordWastage = async (req, res, next) => {
     next(err);
   } finally {
     if (session) await session.endSession();
+  }
+};
+
+const deleteWastage = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    let wastage = null;
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      wastage = await Wastage.findById(id);
+    }
+    if (!wastage) {
+      wastage = await Wastage.findOne({
+        $or: [
+          { wasteNumber: id },
+          { wasteNumber: String(id).toUpperCase() }
+        ]
+      });
+    }
+    if (!wastage) return sendResponse(res, 404, false, null, 'Wastage record not found');
+
+    await Wastage.findByIdAndDelete(wastage._id);
+    return sendResponse(res, 200, true, { id: wastage._id }, 'Wastage record deleted successfully');
+  } catch (err) {
+    next(err);
   }
 };
 
@@ -2234,6 +2328,7 @@ module.exports = {
   updateSupplierStatus,
   getSupplierById,
   updateSupplier,
+  deleteSupplier,
 
   // Purchase Orders
   getPurchaseOrders,
@@ -2249,8 +2344,10 @@ module.exports = {
   dispatchTransfer,
   receiveTransfer,
   getTransferById,
+  deleteTransfer,
   getWastage,
   recordWastage,
+  deleteWastage,
 
   // Movements
   getMovements,

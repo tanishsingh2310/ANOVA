@@ -71,7 +71,6 @@ export default function InventoryDashboard({ branchId, onNavigate, branches = []
     <div className="inv-dashboard-container">
       <div className="employees-heading" style={{ marginBottom: '18px' }}>
         <div>
-          <h2>Inventory Dashboard</h2>
           <p>Real-time executive overview of stock levels, procurement alerts, and valuation.</p>
         </div>
         <div className="employees-heading-actions">
@@ -261,7 +260,7 @@ export default function InventoryDashboard({ branchId, onNavigate, branches = []
               className="inv-btn inv-btn-sm inv-btn-primary"
               onClick={() => onNavigate('inv-orders')}
             >
-              + Create PO
+              Create PO
             </button>
           </div>
           <div className="inv-card-body" style={{ padding: 0 }}>
@@ -311,11 +310,8 @@ export default function InventoryDashboard({ branchId, onNavigate, branches = []
                 <tbody>
                   {lowStockItems.map((item) => (
                     <tr key={item.id}>
-                      <td>
-                        <strong>{item.name}</strong>
-                        <div style={{ marginTop: '2px' }}>
-                          <code style={{ fontSize: '10.5px' }}>{item.sku}</code>
-                        </div>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <strong>{item.name}</strong> <code style={{ fontSize: '10px', marginLeft: '5px' }}>{item.sku}</code>
                       </td>
                       <td className="inv-cell-nowrap">
                         <strong style={{ color: item.status.qty <= 0 ? 'var(--color-error)' : 'inherit' }}>
@@ -419,7 +415,7 @@ export default function InventoryDashboard({ branchId, onNavigate, branches = []
               className="inv-btn inv-btn-primary inv-action-btn"
               onClick={() => onNavigate('inv-ingredients')}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e4c58e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
                 <path d="m3.3 7 8.7 5 8.7-5"/>
                 <path d="M12 22V12"/>
@@ -431,7 +427,7 @@ export default function InventoryDashboard({ branchId, onNavigate, branches = []
               className="inv-btn inv-btn-gold inv-action-btn"
               onClick={() => onNavigate('inv-orders')}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#183c34" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <polyline points="14 2 14 8 20 8"/>
                 <line x1="12" y1="18" x2="12" y2="12"/>
@@ -441,10 +437,10 @@ export default function InventoryDashboard({ branchId, onNavigate, branches = []
             </button>
             <button
               type="button"
-              className="inv-btn inv-btn-secondary inv-action-btn"
+              className="inv-btn inv-btn-transfer inv-action-btn"
               onClick={() => onNavigate('inv-transfers')}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#183c34" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="17 1 21 5 17 9"/>
                 <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
                 <polyline points="7 23 3 19 7 15"/>
@@ -454,10 +450,10 @@ export default function InventoryDashboard({ branchId, onNavigate, branches = []
             </button>
             <button
               type="button"
-              className="inv-btn inv-btn-secondary inv-action-btn"
+              className="inv-btn inv-btn-spoilage inv-action-btn"
               onClick={() => onNavigate('inv-wastage')}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="3 6 5 6 21 6"/>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
               </svg>
@@ -465,10 +461,10 @@ export default function InventoryDashboard({ branchId, onNavigate, branches = []
             </button>
             <button
               type="button"
-              className="inv-btn inv-btn-secondary inv-action-btn"
+              className="inv-btn inv-btn-analytics inv-action-btn"
               onClick={() => onNavigate('inv-reports')}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c49a5b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="20" x2="18" y2="10"/>
                 <line x1="12" y1="20" x2="12" y2="4"/>
                 <line x1="6" y1="20" x2="6" y2="14"/>

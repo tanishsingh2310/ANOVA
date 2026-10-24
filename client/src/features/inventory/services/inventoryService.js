@@ -4,12 +4,9 @@
 // ============================================================
 
 import {
-  SEED_BRANCHES,
-  SEED_INGREDIENTS,
-  SEED_STOCK_MOVEMENTS,
   CANONICAL_UNITS,
   INGREDIENT_CATEGORIES
-} from './mockData.js';
+} from '../constants/inventoryConstants.js';
 import { apiClient } from '../../../api/client.js';
 
 export function normalizeIngredient(doc) {
@@ -59,15 +56,33 @@ const STORAGE_KEYS = {
   BRANCHES: 'anova_inventory_branches'
 };
 
-// Safe storage initializers
-function getStored(key, fallback) {
+const MOCK_ID_REGEX = /^(ing|sup|po|tr|wst|mov)_\d{2,3}$/;
+const MOCK_BRANCH_IDS = new Set(['b_downtown', 'b_uptown', 'b_westside', 'b_waterfront']);
+
+function isMockRecord(item) {
+  if (!item) return false;
+  const id = String(item.id || item._id || '');
+  if (MOCK_BRANCH_IDS.has(id)) return true;
+  if (MOCK_ID_REGEX.test(id)) return true;
+  return false;
+}
+
+// Safe storage initializers with automatic mock data purging
+function getStored(key, fallback = []) {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) {
-      localStorage.setItem(key, JSON.stringify(fallback));
       return fallback;
     }
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const clean = parsed.filter(item => !isMockRecord(item));
+      if (clean.length !== parsed.length) {
+        localStorage.setItem(key, JSON.stringify(clean));
+      }
+      return clean;
+    }
+    return Array.isArray(fallback) ? fallback : parsed;
   } catch {
     return fallback;
   }
@@ -84,7 +99,28 @@ function setStored(key, data) {
 export const InventoryService = {
   // Branches
   getBranches() {
-    return getStored(STORAGE_KEYS.BRANCHES, SEED_BRANCHES);
+    return getStored(STORAGE_KEYS.BRANCHES, []);
+  },
+
+  async getBranchesRemote() {
+    try {
+      const res = await apiClient('/api/branches');
+      if (res && res.success && Array.isArray(res.data)) {
+        const branches = res.data.map(b => ({
+          id: String(b._id || b.id),
+          _id: String(b._id || b.id),
+          name: b.name,
+          code: b.code || b.name.substring(0, 3).toUpperCase(),
+          city: b.city || '',
+          address: b.address || ''
+        }));
+        setStored(STORAGE_KEYS.BRANCHES, branches);
+        return branches;
+      }
+    } catch (err) {
+      console.warn('[InventoryService] Remote branches fetch failed:', err.message);
+    }
+    return this.getBranches();
   },
 
   getCategories() {
@@ -97,7 +133,7 @@ export const InventoryService = {
 
   // Ingredients CRUD
   getIngredients(filter = {}) {
-    let items = getStored(STORAGE_KEYS.INGREDIENTS, SEED_INGREDIENTS);
+    let items = getStored(STORAGE_KEYS.INGREDIENTS, []);
     const { branchId, category, search, stockStatus } = filter;
 
     if (category && category !== 'ALL') {
@@ -123,12 +159,12 @@ export const InventoryService = {
   },
 
   getIngredientById(id) {
-    const items = getStored(STORAGE_KEYS.INGREDIENTS, SEED_INGREDIENTS);
+    const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
     return items.find(i => i.id === id) || null;
   },
 
   saveIngredient(ingredientData) {
-    const items = getStored(STORAGE_KEYS.INGREDIENTS, SEED_INGREDIENTS);
+    const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
     if (ingredientData.id) {
       // Update
       const index = items.findIndex(i => i.id === ingredientData.id);
@@ -140,18 +176,13 @@ export const InventoryService = {
     }
 
     // Create
-    const newId = `ing_${Date.now().toString(36)}`;
-    const newSku = ingredientData.sku || `ING-${ingredientData.category.slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+    const newId = `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const newSku = ingredientData.sku || `ING-${(ingredientData.category || 'GEN').slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
     const newItem = {
       ...ingredientData,
       id: newId,
       sku: newSku,
-      stockByBranch: ingredientData.stockByBranch || {
-        b_downtown: 0,
-        b_uptown: 0,
-        b_westside: 0,
-        b_waterfront: 0
-      },
+      stockByBranch: ingredientData.stockByBranch || {},
       batches: ingredientData.batches || []
     };
     items.unshift(newItem);
@@ -160,7 +191,7 @@ export const InventoryService = {
   },
 
   deleteIngredient(id) {
-    const items = getStored(STORAGE_KEYS.INGREDIENTS, SEED_INGREDIENTS);
+    const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
     const filtered = items.filter(i => i.id !== id);
     setStored(STORAGE_KEYS.INGREDIENTS, filtered);
     return true;
@@ -189,7 +220,7 @@ export const InventoryService = {
 
   // Expiry Checker
   getExpiringBatches(daysAhead = 7, branchId = 'all') {
-    const ingredients = getStored(STORAGE_KEYS.INGREDIENTS, SEED_INGREDIENTS);
+    const ingredients = getStored(STORAGE_KEYS.INGREDIENTS, []);
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() + daysAhead);
 
@@ -225,7 +256,7 @@ export const InventoryService = {
 
   // Stock Adjustment with Mandatory Audit Trail
   adjustStock({ ingredientId, branchId, newQty, reason, notes, user = 'Store Manager' }) {
-    const items = getStored(STORAGE_KEYS.INGREDIENTS, SEED_INGREDIENTS);
+    const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
     const index = items.findIndex(i => i.id === ingredientId);
     if (index === -1) throw new Error('Ingredient not found');
 
@@ -270,9 +301,9 @@ export const InventoryService = {
     }
 
     // Create Audit Log
-    const movements = getStored(STORAGE_KEYS.MOVEMENTS, SEED_STOCK_MOVEMENTS);
+    const movements = getStored(STORAGE_KEYS.MOVEMENTS, []);
     const movement = {
-      id: `mov_${Date.now()}`,
+      id: `mov_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       type: 'STOCK_ADJUSTMENT',
       reference: `ADJ-${reason || 'CORRECTION'}`,
       ingredientId,
@@ -294,7 +325,7 @@ export const InventoryService = {
 
   // Movements / Audit History
   getMovements(filter = {}) {
-    let movements = getStored(STORAGE_KEYS.MOVEMENTS, SEED_STOCK_MOVEMENTS);
+    let movements = getStored(STORAGE_KEYS.MOVEMENTS, []);
     const { branchId, ingredientId, type } = filter;
 
     if (branchId && branchId !== 'all') {
@@ -332,80 +363,63 @@ export const InventoryService = {
     const targetId = ingredientData._id || ingredientData.id;
 
     const payload = {
-      name: ingredientData.name,
-      sku: ingredientData.sku,
+      name: ingredientData.name?.trim(),
+      sku: ingredientData.sku?.trim() || `ING-${Math.floor(1000 + Math.random() * 9000)}`,
       category: ingredientData.category,
       baseUnit: ingredientData.baseUnit,
       unitCost: Number(ingredientData.unitCost),
       minThreshold: Number(ingredientData.minThreshold),
-      maxThreshold: Number(ingredientData.maxThreshold || ingredientData.minThreshold * 3),
-      reorderLevel: Number(ingredientData.reorderLevel || ingredientData.minThreshold * 1.3),
-      primarySupplier: ingredientData.primarySupplierId || undefined,
-      stockByBranch: ingredientData.stockByBranch || {
-        b_downtown: 0,
-        b_uptown: 0,
-        b_westside: 0,
-        b_waterfront: 0
-      }
+      maxThreshold: Number(ingredientData.maxThreshold || Number(ingredientData.minThreshold) * 3),
+      reorderLevel: Number(ingredientData.reorderLevel || Number(ingredientData.minThreshold) * 1.3),
+      primarySupplier: (ingredientData.primarySupplierId && ingredientData.primarySupplierId.length === 24) ? ingredientData.primarySupplierId : undefined,
+      stockByBranch: ingredientData.stockByBranch || {}
     };
 
-    try {
-      const endpoint = isUpdate ? `/api/inventory/ingredients/${targetId}` : '/api/inventory/ingredients';
-      const method = isUpdate ? 'PUT' : 'POST';
-      const res = await apiClient(endpoint, { method, body: payload });
-      if (res && res.success && res.data) {
-        const normalized = normalizeIngredient(res.data);
-        const items = getStored(STORAGE_KEYS.INGREDIENTS, SEED_INGREDIENTS);
-        const idx = items.findIndex(i => i.id === normalized.id);
-        if (idx !== -1) {
-          items[idx] = normalized;
-        } else {
-          items.unshift(normalized);
-        }
-        setStored(STORAGE_KEYS.INGREDIENTS, items);
-        return normalized;
+    const endpoint = isUpdate ? `/api/inventory/ingredients/${targetId}` : '/api/inventory/ingredients';
+    const method = isUpdate ? 'PUT' : 'POST';
+    const res = await apiClient(endpoint, { method, body: payload });
+    if (res && res.success && res.data) {
+      const normalized = normalizeIngredient(res.data);
+      const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
+      const idx = items.findIndex(i => i.id === normalized.id);
+      if (idx !== -1) {
+        items[idx] = normalized;
+      } else {
+        items.unshift(normalized);
       }
-    } catch (err) {
-      console.warn('[InventoryService] Remote save failed, falling back to local:', err.message);
+      setStored(STORAGE_KEYS.INGREDIENTS, items);
+      return normalized;
     }
-    return this.saveIngredient(ingredientData);
+    throw new Error(res?.message || 'Failed to save ingredient in database');
   },
 
   async deleteIngredientRemote(id) {
-    try {
-      await apiClient(`/api/inventory/ingredients/${id}`, { method: 'DELETE' });
-    } catch (err) {
-      console.warn('[InventoryService] Remote delete failed, falling back to local:', err.message);
-    }
+    await apiClient(`/api/inventory/ingredients/${id}`, { method: 'DELETE' });
     return this.deleteIngredient(id);
   },
 
   async adjustStockRemote({ ingredientId, branchId, newQty, reason, notes, user = 'Store Manager' }) {
-    try {
-      const res = await apiClient(`/api/inventory/ingredients/${ingredientId}/adjust`, {
-        method: 'POST',
-        body: {
-          branch: branchId,
-          newQuantity: Number(newQty),
-          reason,
-          notes,
-          user
-        }
-      });
-      if (res && res.success && res.data) {
-        const updatedIng = normalizeIngredient(res.data.ingredient);
-        const items = getStored(STORAGE_KEYS.INGREDIENTS, SEED_INGREDIENTS);
-        const idx = items.findIndex(i => i.id === updatedIng.id);
-        if (idx !== -1) {
-          items[idx] = updatedIng;
-          setStored(STORAGE_KEYS.INGREDIENTS, items);
-        }
-        return { item: updatedIng, movement: res.data.movement };
+    const res = await apiClient(`/api/inventory/ingredients/${ingredientId}/adjust`, {
+      method: 'POST',
+      body: {
+        branch: branchId,
+        newQuantity: Number(newQty),
+        reason,
+        notes,
+        user
       }
-    } catch (err) {
-      console.warn('[InventoryService] Remote adjust failed, falling back to local:', err.message);
+    });
+    if (res && res.success && res.data) {
+      const updatedIng = normalizeIngredient(res.data.ingredient);
+      const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
+      const idx = items.findIndex(i => i.id === updatedIng.id);
+      if (idx !== -1) {
+        items[idx] = updatedIng;
+        setStored(STORAGE_KEYS.INGREDIENTS, items);
+      }
+      return { item: updatedIng, movement: res.data.movement };
     }
-    return this.adjustStock({ ingredientId, branchId, newQty, reason, notes, user });
+    throw new Error(res?.message || 'Failed to adjust stock in database');
   },
 
   async getExpiringBatchesRemote(daysAhead = 7, branchId = 'all') {

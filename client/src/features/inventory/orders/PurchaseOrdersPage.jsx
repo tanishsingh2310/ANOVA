@@ -7,12 +7,12 @@ import {
   Trash2,
   X,
   AlertCircle,
-  ShoppingBag,
-  FileText
+  ShoppingBag
 } from 'lucide-react';
 import { PurchaseOrderService } from '../services/purchaseOrderService';
 import { SupplierService } from '../services/supplierService';
 import { InventoryService } from '../services/inventoryService';
+import InventoryPagination from '../components/InventoryPagination';
 
 export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   const [orders, setOrders] = useState([]);
@@ -57,23 +57,14 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   }, [branchId]);
 
   const loadData = async (refresh = false) => {
-    const list = PurchaseOrderService.getPurchaseOrders({
-      branchId: selectedBranch,
-      status: statusFilter,
-      supplierId: supplierFilter
-    });
-    setOrders(list);
-    setSuppliers(SupplierService.getSuppliers());
-    setIngredients(InventoryService.getIngredients());
-
     setIsSyncing(true);
     try {
-      await Promise.all([
+      const [remotePOs] = await Promise.all([
         PurchaseOrderService.syncFromBackend(selectedBranch),
         SupplierService.syncFromBackend(),
         InventoryService.syncFromBackend(selectedBranch)
       ]);
-      const fresh = PurchaseOrderService.getPurchaseOrders({
+      const fresh = remotePOs || PurchaseOrderService.getPurchaseOrders({
         branchId: selectedBranch,
         status: statusFilter,
         supplierId: supplierFilter
@@ -84,6 +75,12 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
       if (refresh) setNotice('Purchase orders refreshed.');
     } catch (err) {
       console.warn('PurchaseOrders sync error:', err.message);
+      const list = PurchaseOrderService.getPurchaseOrders({
+        branchId: selectedBranch,
+        status: statusFilter,
+        supplierId: supplierFilter
+      });
+      setOrders(list);
     } finally {
       setIsSyncing(false);
     }
@@ -213,13 +210,72 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   };
 
   const supplierMap = {};
-  suppliers.forEach(s => { supplierMap[s.id] = s.name; });
+  if (Array.isArray(suppliers)) {
+    suppliers.forEach(s => {
+      if (s) {
+        if (s.id) supplierMap[s.id] = s.name;
+        if (s._id) supplierMap[String(s._id)] = s.name;
+        if (s.code) supplierMap[s.code] = s.name;
+      }
+    });
+  }
 
   const branchMap = {};
-  branches.forEach(b => { branchMap[b.id || b._id] = b.name; });
+  if (Array.isArray(branches)) {
+    branches.forEach(b => {
+      if (b) {
+        if (b.id) branchMap[b.id] = b.name;
+        if (b._id) branchMap[String(b._id)] = b.name;
+        if (b.code) {
+          branchMap[b.code] = b.name;
+          branchMap[b.code.toLowerCase()] = b.name;
+          branchMap[b.code.toUpperCase()] = b.name;
+        }
+      }
+    });
+  }
+
+  const formatBranch = (val) => {
+    if (!val) return '—';
+    if (branchMap[val]) return branchMap[val];
+    if (typeof val === 'string' && val.startsWith('b_')) {
+      const clean = val.slice(2).replace(/_/g, ' ');
+      return clean.charAt(0).toUpperCase() + clean.slice(1) + ' Branch';
+    }
+    return val;
+  };
 
   const ingredientMap = {};
-  ingredients.forEach(i => { ingredientMap[i.id] = i.name; });
+  if (Array.isArray(ingredients)) {
+    ingredients.forEach(i => {
+      if (i) {
+        if (i.id) ingredientMap[i.id] = i.name;
+        if (i._id) ingredientMap[String(i._id)] = i.name;
+      }
+    });
+  }
+
+  const formatReportedBy = (val) => {
+    if (!val || val === 'undefined') return 'Staff';
+    if (typeof val === 'string' && val.startsWith('usr_')) {
+      const withoutPrefix = val.replace('usr_', '');
+      const parts = withoutPrefix.split('_b_');
+      const role = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'Staff';
+      if (parts[1]) {
+        const bName = formatBranch('b_' + parts[1]);
+        return `${role} (${bName})`;
+      }
+      return role;
+    }
+    return val;
+  };
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedBranch, statusFilter, supplierFilter]);
 
   // Filtered orders
   const filteredOrders = orders.filter((po) => {
@@ -229,6 +285,12 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     const supName = (supplierMap[po.supplierId] || '').toLowerCase();
     return poNum.includes(q) || supName.includes(q);
   });
+
+  const totalItems = filteredOrders.length;
+  const paginatedOrders = filteredOrders.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
 
   const getStatusClass = (status) => {
     if (status === 'RECEIVED') return 'is-received';
@@ -243,7 +305,6 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
       {/* Heading matching Images 1-4 */}
       <div className="employees-heading">
         <div>
-          <h2>Purchase Orders</h2>
           <p>Plan procurement, approve orders, and track goods receipts.</p>
         </div>
 
@@ -254,7 +315,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
             onClick={() => setIsCreateOpen(true)}
           >
             <Plus size={16} />
-            + Create purchase order
+            Create purchase order
           </button>
           <button
             type="button"
@@ -358,57 +419,55 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
             <table className="employees-table">
               <thead>
                 <tr>
-                  <th>PO Number</th>
-                  <th>Supplier</th>
-                  <th>Branch</th>
-                  <th>Order Date</th>
-                  <th>Expected</th>
-                  <th>Line Items</th>
-                  <th>Total Amount</th>
-                  <th>Status</th>
-                  <th style={{ width: '230px' }}>ACTIONS</th>
+                  <th style={{ whiteSpace: 'nowrap', minWidth: '130px' }}>PO Number</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Supplier</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Branch</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Order Date</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Expected Date</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Line Items</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Total Amount</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Status</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Reported By</th>
+                  <th style={{ width: '220px', minWidth: '220px', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((po) => {
-                  const supName = supplierMap[po.supplierId] || po.supplierId || 'Supplier';
-                  const bName = branchMap[po.branchId] || po.branchId || 'Branch';
+                {paginatedOrders.map((po) => {
+                  const supName = (typeof po.supplier === 'object' && po.supplier?.name)
+                    ? po.supplier.name
+                    : (po.supplierName || supplierMap[po.supplierId] || supplierMap[po.supplier] || (po.supplierId && po.supplierId !== 'Supplier' ? po.supplierId : '') || '—');
+                  const bName = formatBranch(po.branchId || po.branch);
+                  const expDate = po.expectedDate || po.expectedDeliveryDate;
+                  const expDateStr = expDate
+                    ? (typeof expDate === 'string' && expDate.includes('T') ? expDate.split('T')[0] : (typeof expDate === 'string' ? expDate : new Date(expDate).toISOString().split('T')[0]))
+                    : '—';
 
                   return (
                     <tr key={po.id || po._id || po.poNumber}>
-                      <td>
-                        <div className="employees-person">
-                          <span className="employees-avatar" style={{ fontSize: '11px' }}>
-                            <FileText size={16} />
-                          </span>
-                          <div className="employees-person-details">
-                            <strong>{po.poNumber}</strong>
-                            <span>{po.createdBy || 'Staff'}</span>
-                          </div>
-                        </div>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <code>{po.poNumber}</code>
                       </td>
-                      <td>{supName}</td>
-                      <td>{bName}</td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{supName}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{bName}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         {po.createdAt ? (typeof po.createdAt === 'string' && po.createdAt.includes('T') ? po.createdAt.split('T')[0] : new Date(po.createdAt).toISOString().split('T')[0]) : '—'}
                       </td>
-                      <td>
-                        {po.expectedDate ? (typeof po.expectedDate === 'string' && po.expectedDate.includes('T') ? po.expectedDate.split('T')[0] : String(po.expectedDate)) : '—'}
-                      </td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>{expDateStr}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         <strong>{(po.items || []).length} item{(po.items || []).length !== 1 ? 's' : ''}</strong>
                       </td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         <strong>₹{(po.totalAmount || 0).toLocaleString()}</strong>
                       </td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         <span className={`employees-status ${getStatusClass(po.status)}`}>
                           {po.status}
                         </span>
                       </td>
-                      <td>
-                        {/* Image 5: Edit/View | Transition | Delete Action Group */}
-                        <div className="employees-row-actions">
+                      <td style={{ whiteSpace: 'nowrap' }}>{formatReportedBy(po.createdBy)}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {/* Edit/View | Transition | Delete Action Group */}
+                        <div className="employees-row-actions" style={{ display: 'inline-flex', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
                           <button
                             type="button"
                             className="employees-button employees-button-secondary"
@@ -486,6 +545,13 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
             </table>
           </div>
         )}
+
+        <InventoryPagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* CREATE PURCHASE ORDER MODAL */}
@@ -566,7 +632,8 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
                     onClick={handleAddLineItem}
                     style={{ minHeight: '30px', height: '30px', padding: '4px 8px' }}
                   >
-                    + Add Item
+                    <Plus size={14} />
+                    Add Item
                   </button>
                 </div>
 

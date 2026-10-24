@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { MovementService } from '../services/movementService';
 import { InventoryService } from '../services/inventoryService';
+import InventoryPagination from '../components/InventoryPagination';
 
 export default function TransfersPage({ branchId, branches = [] }) {
   const [transfers, setTransfers] = useState([]);
@@ -39,20 +40,13 @@ export default function TransfersPage({ branchId, branches = [] }) {
   }, [branchId]);
 
   const loadData = async (refresh = false) => {
-    const list = MovementService.getTransfers({
-      branchId: selectedBranch,
-      status: statusFilter
-    });
-    setTransfers(list);
-    setIngredients(InventoryService.getIngredients());
-
     setIsSyncing(true);
     try {
-      await Promise.all([
+      const [remoteTransfers] = await Promise.all([
         MovementService.syncTransfersFromBackend(selectedBranch),
         InventoryService.syncFromBackend(selectedBranch)
       ]);
-      const fresh = MovementService.getTransfers({
+      const fresh = remoteTransfers || MovementService.getTransfers({
         branchId: selectedBranch,
         status: statusFilter
       });
@@ -61,6 +55,11 @@ export default function TransfersPage({ branchId, branches = [] }) {
       if (refresh) setNotice('Transfers refreshed.');
     } catch (err) {
       console.warn('Transfers sync error:', err.message);
+      const list = MovementService.getTransfers({
+        branchId: selectedBranch,
+        status: statusFilter
+      });
+      setTransfers(list);
     } finally {
       setIsSyncing(false);
     }
@@ -156,26 +155,100 @@ export default function TransfersPage({ branchId, branches = [] }) {
   };
 
   const branchMap = {};
-  branches.forEach(b => { branchMap[b.id || b._id] = b.name; });
+  if (Array.isArray(branches)) {
+    branches.forEach(b => {
+      if (b) {
+        if (b.id) branchMap[b.id] = b.name;
+        if (b._id) branchMap[String(b._id)] = b.name;
+        if (b.code) {
+          branchMap[b.code] = b.name;
+          branchMap[b.code.toLowerCase()] = b.name;
+          branchMap[b.code.toUpperCase()] = b.name;
+        }
+      }
+    });
+  }
+
+  const formatBranch = (val) => {
+    if (!val) return '—';
+    if (branchMap[val]) return branchMap[val];
+    if (typeof val === 'string' && val.startsWith('b_')) {
+      const clean = val.slice(2).replace(/_/g, ' ');
+      return clean.charAt(0).toUpperCase() + clean.slice(1) + ' Branch';
+    }
+    return val;
+  };
 
   const ingredientMap = {};
-  ingredients.forEach(i => { ingredientMap[i.id] = i.name; });
+  if (Array.isArray(ingredients)) {
+    ingredients.forEach(i => {
+      if (i) {
+        if (i.id) ingredientMap[String(i.id)] = i.name;
+        if (i._id) ingredientMap[String(i._id)] = i.name;
+        if (i.sku) ingredientMap[String(i.sku)] = i.name;
+      }
+    });
+  }
+
+  const formatItemName = (it) => {
+    if (!it) return 'Item';
+    if (it.ingredientName && it.ingredientName !== 'undefined') return it.ingredientName;
+    if (it.name && it.name !== 'undefined') return it.name;
+    if (typeof it.ingredient === 'object' && it.ingredient?.name) return it.ingredient.name;
+    const idKey = String(it.ingredientId || (typeof it.ingredient === 'string' ? it.ingredient : '') || '');
+    if (idKey && ingredientMap[idKey]) return ingredientMap[idKey];
+    if (idKey && idKey !== 'undefined') {
+      if (idKey.startsWith('ing_') || idKey.startsWith('item_')) {
+        const clean = idKey.replace(/^(ing_|item_)/, '').replace(/_/g, ' ');
+        return clean.charAt(0).toUpperCase() + clean.slice(1);
+      }
+      return idKey;
+    }
+    return 'Item';
+  };
+
+  const formatStaff = (val) => {
+    if (!val || val === 'undefined') return 'Staff';
+    if (typeof val === 'string' && val.startsWith('usr_')) {
+      const withoutPrefix = val.replace('usr_', '');
+      const parts = withoutPrefix.split('_b_');
+      const role = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'Staff';
+      if (parts[1]) {
+        const bName = formatBranch('b_' + parts[1]);
+        return `${role} (${bName})`;
+      }
+      return role;
+    }
+    return val;
+  };
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedBranch, statusFilter]);
 
   const filteredTransfers = transfers.filter((tr) => {
     if (!search) return true;
     const q = search.toLowerCase();
     const tNum = (tr.transferNumber || '').toLowerCase();
-    const fromB = (branchMap[tr.fromBranchId] || '').toLowerCase();
-    const toB = (branchMap[tr.toBranchId] || '').toLowerCase();
+    const fromB = (formatBranch(tr.fromBranchId || tr.fromBranch) || '').toLowerCase();
+    const toB = (formatBranch(tr.toBranchId || tr.toBranch) || '').toLowerCase();
     return tNum.includes(q) || fromB.includes(q) || toB.includes(q);
   });
+
+  const totalItems = filteredTransfers.length;
+  const paginatedTransfers = filteredTransfers.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
 
   return (
     <div className="employees-page">
       {/* Heading matching Images 1-4 */}
       <div className="employees-heading">
         <div>
-          <h2>Transfers</h2>
           <p>Track and dispatch inter-branch inventory stock transfers.</p>
         </div>
 
@@ -189,7 +262,7 @@ export default function TransfersPage({ branchId, branches = [] }) {
             }}
           >
             <Plus size={16} />
-            + Dispatch transfer
+            Dispatch transfer
           </button>
           <button
             type="button"
@@ -276,35 +349,33 @@ export default function TransfersPage({ branchId, branches = [] }) {
             <table className="employees-table">
               <thead>
                 <tr>
-                  <th>Transfer #</th>
-                  <th>Origin Branch</th>
-                  <th>Destination Branch</th>
-                  <th>Items Transferred</th>
-                  <th>Dispatched Time</th>
-                  <th>Status</th>
-                  <th style={{ width: '230px' }}>ACTIONS</th>
+                  <th style={{ whiteSpace: 'nowrap', minWidth: '130px' }}>Transfer</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Origin Branch</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Destination Branch</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Items Transferred</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Dispatched Time</th>
+                  <th style={{ whiteSpace: 'nowrap' }}>Status</th>
+                  <th style={{ width: '180px', minWidth: '180px', whiteSpace: 'nowrap' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredTransfers.map((tr) => (
+                {paginatedTransfers.map((tr) => (
                   <tr key={tr.id || tr._id}>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       <code>{tr.transferNumber}</code>
                     </td>
-                    <td>{branchMap[tr.fromBranchId] || tr.fromBranchId}</td>
-                    <td>{branchMap[tr.toBranchId] || tr.toBranchId}</td>
-                    <td>
-                      {(tr.items || []).map((it, idx) => (
-                        <div key={idx} style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>
-                          • <strong>{ingredientMap[it.ingredientId] || it.ingredientName || it.ingredientId}</strong>: {it.qty} {it.unit}
-                        </div>
-                      ))}
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatBranch(tr.fromBranchId || tr.fromBranch)}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatBranch(tr.toBranchId || tr.toBranch)}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {(tr.items || []).map((it) => `${formatItemName(it)}: ${it.qty} ${it.unit}`).join(' • ') || '—'}
                     </td>
-                    <td>
-                      <div>{tr.dispatchedAt ? tr.dispatchedAt.replace('T', ' ').slice(0, 16) : '-'}</div>
-                      <span style={{ fontSize: '11px', color: '#748078' }}>by {tr.dispatchedBy || 'Staff'}</span>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span>{tr.dispatchedAt ? tr.dispatchedAt.replace('T', ' ').slice(0, 16) : '—'}</span>
+                      <span style={{ fontSize: '10.5px', color: '#748078', marginLeft: '5px' }}>
+                        (by {formatStaff(tr.dispatchedBy)})
+                      </span>
                     </td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       <span
                         className={`employees-status ${
                           tr.status === 'RECEIVED' ? 'is-received' : 'is-in-transit'
@@ -313,9 +384,9 @@ export default function TransfersPage({ branchId, branches = [] }) {
                         {tr.status === 'RECEIVED' ? 'Received' : 'In-Transit'}
                       </span>
                     </td>
-                    <td>
-                      {/* Image 5: View | Receive | Delete Action Group */}
-                      <div className="employees-row-actions">
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {/* View | Receive | Delete Action Group */}
+                      <div className="employees-row-actions" style={{ display: 'inline-flex', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
                         <button
                           type="button"
                           className="employees-button employees-button-secondary"
@@ -325,21 +396,13 @@ export default function TransfersPage({ branchId, branches = [] }) {
                           View
                         </button>
 
-                        {tr.status === 'IN_TRANSIT' ? (
+                        {tr.status === 'IN_TRANSIT' && (
                           <button
                             type="button"
                             className="employees-button employees-button-secondary"
                             onClick={() => handleReceive(tr.id || tr._id)}
                           >
                             Receive
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="employees-button employees-button-secondary"
-                            disabled
-                          >
-                            Done
                           </button>
                         )}
 
@@ -360,6 +423,13 @@ export default function TransfersPage({ branchId, branches = [] }) {
             </table>
           </div>
         )}
+
+        <InventoryPagination
+          currentPage={currentPage}
+          totalItems={totalItems}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* DISPATCH NEW TRANSFER MODAL */}
@@ -440,7 +510,8 @@ export default function TransfersPage({ branchId, branches = [] }) {
                     onClick={handleAddLine}
                     style={{ minHeight: '30px', height: '30px', padding: '4px 8px' }}
                   >
-                    + Add Item
+                    <Plus size={14} />
+                    Add Item
                   </button>
                 </div>
 
@@ -523,11 +594,11 @@ export default function TransfersPage({ branchId, branches = [] }) {
             </div>
 
             <div style={{ marginBottom: '16px', fontSize: '13px', color: '#52645a' }}>
-              <p><strong>From:</strong> {branchMap[viewDetailsTarget.fromBranchId] || viewDetailsTarget.fromBranchId}</p>
-              <p><strong>To:</strong> {branchMap[viewDetailsTarget.toBranchId] || viewDetailsTarget.toBranchId}</p>
+              <p><strong>From:</strong> {formatBranch(viewDetailsTarget.fromBranchId || viewDetailsTarget.fromBranch)}</p>
+              <p><strong>To:</strong> {formatBranch(viewDetailsTarget.toBranchId || viewDetailsTarget.toBranch)}</p>
               <p><strong>Status:</strong> {viewDetailsTarget.status}</p>
-              <p><strong>Dispatched:</strong> {viewDetailsTarget.dispatchedAt || '—'}</p>
-              <p><strong>Received:</strong> {viewDetailsTarget.receivedAt || 'Pending in-transit'}</p>
+              <p><strong>Dispatched:</strong> {viewDetailsTarget.dispatchedAt ? viewDetailsTarget.dispatchedAt.replace('T', ' ').slice(0, 16) : '—'}</p>
+              <p><strong>Received:</strong> {viewDetailsTarget.receivedAt ? viewDetailsTarget.receivedAt.replace('T', ' ').slice(0, 16) : 'Pending in-transit'}</p>
             </div>
 
             <span style={{ fontSize: '12px', fontWeight: 700, color: '#52645b', display: 'block', marginBottom: '8px' }}>Transferred Ingredients</span>

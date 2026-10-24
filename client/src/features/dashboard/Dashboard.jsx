@@ -20,7 +20,7 @@ import Leave from '../leaves/Leaves.jsx'
 import Payroll from "../payroll/Payroll.jsx";
 
 const inventorySubpageMap = {
-  'inv-dashboard': 'Dashboard & KPIs',
+  'inv-dashboard': 'Dashboard',
   'inv-ingredients': 'Ingredients & Stock',
   'inv-suppliers': 'Suppliers',
   'inv-orders': 'Purchase Orders & Receiving',
@@ -112,7 +112,7 @@ const navigation = [
   },
 
   {
-    label: 'Dashboard & KPIs',
+    label: 'Dashboard',
     icon: '◫',
     group: 'Inventory & Supply Chain',
     roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
@@ -207,7 +207,7 @@ const modules = [
     tone: 'blue',
   },
   {
-  title: 'Dashboard & KPIs',
+  title: 'Dashboard',
   description: 'Track executive inventory metrics, stock valuation and urgent alerts.',
   icon: '◫',
   tone: 'green',
@@ -599,7 +599,7 @@ setSelectedBranchId((currentId) => {
     </section>
 
   </>
-) : activePage === 'Dashboard & KPIs' || activePage === 'Inventory' || activePage === 'Inventory & Supply Chain' ? (
+) : activePage === 'Dashboard' || activePage === 'Dashboard & KPIs' || activePage === 'Inventory' || activePage === 'Inventory & Supply Chain' ? (
   <InventoryModule
     activeSubpage="inv-dashboard"
     showSubnav={false}

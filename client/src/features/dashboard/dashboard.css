@@ -761,6 +761,7 @@ img {
   text-align: left;
   font-size: 13px;
   line-height: 1.4;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 150ms ease, color 150ms ease;
 }
@@ -1133,6 +1134,7 @@ img {
   font: inherit;
   font-size: 12px;
   line-height: 1.4;
+  white-space: nowrap;
   cursor: pointer;
 }
 
