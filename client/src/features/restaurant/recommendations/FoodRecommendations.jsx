@@ -282,8 +282,6 @@ function FoodRecommendations({ branchId }) {
   <main className="food-page">
     <header className="food-header">
       <div>
-        <p className="food-eyebrow">RESTAURANT OPERATIONS</p>
-        <h1>Food Recommendations</h1>
         <p className="food-subtitle">
           Discover popular dishes and suggest the right meal for every guest.
         </p>

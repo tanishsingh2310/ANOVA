@@ -524,6 +524,7 @@ export default function CustomerHome({ user, onLogout }) {
           ? myOrdersRes
           : []
         setOrders(list)
+      // eslint-disable-next-line no-empty
       } catch {}
     } catch (err) {
       setOrderError(err.message || 'Unable to place order. Please try again.')
@@ -735,15 +736,7 @@ export default function CustomerHome({ user, onLogout }) {
 
         {/* Sidebar Bottom / Concierge and Sign Out */}
         <div className="sidebar-bottom">
-          <div className="sidebar-help">
-            <span className="help-symbol" aria-hidden="true">
-              ✦
-            </span>
-            <div>
-              <strong>Anova Concierge</strong>
-              <p>Personalized dining & reservations</p>
-            </div>
-          </div>
+          
 
           <button
             className="sidebar-logout"
