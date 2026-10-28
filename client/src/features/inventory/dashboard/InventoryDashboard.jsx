@@ -19,17 +19,17 @@ export default function InventoryDashboard({ branchId, onNavigate, branches = []
 
   const loadData = async (targetBranch = selectedBranch) => {
     // Initial local compute for instant render
-    const metrics = AnalyticsService.getDashboardKPIs(targetBranch);
+    const metrics = AnalyticsService.getDashboardKPIs(targetBranch, branches);
     setKpis(metrics);
 
     const expiring = InventoryService.getExpiringBatches(7, targetBranch);
     setExpiringBatches(expiring.slice(0, 5));
 
-    const ingredients = InventoryService.getIngredients({ branchId: targetBranch });
+    const ingredients = InventoryService.getIngredients({ branchId: targetBranch }, branches);
     const low = ingredients
       .map(i => ({
         ...i,
-        status: InventoryService.calculateStockStatus(i, targetBranch)
+        status: InventoryService.calculateStockStatus(i, targetBranch, branches)
       }))
       .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
     setLowStockItems(low.slice(0, 6));
@@ -49,7 +49,7 @@ export default function InventoryDashboard({ branchId, onNavigate, branches = []
         const remoteLow = remoteIngs
           .map(i => ({
             ...i,
-            status: InventoryService.calculateStockStatus(i, targetBranch)
+            status: InventoryService.calculateStockStatus(i, targetBranch, branches)
           }))
           .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
         setLowStockItems(remoteLow.slice(0, 6));

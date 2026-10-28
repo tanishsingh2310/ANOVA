@@ -14,8 +14,8 @@ import { InventoryService } from '../services/inventoryService';
 import InventoryPagination from '../components/InventoryPagination';
 
 export default function TransfersPage({ branchId, branches = [] }) {
-  const [transfers, setTransfers] = useState([]);
-  const [ingredients, setIngredients] = useState([]);
+  const [transfers, setTransfers] = useState(() => MovementService.getTransfers({ branchId }, branches));
+  const [ingredients, setIngredients] = useState(() => InventoryService.getIngredients());
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
@@ -41,25 +41,20 @@ export default function TransfersPage({ branchId, branches = [] }) {
 
   const loadData = async (refresh = false) => {
     setIsSyncing(true);
+    setError('');
     try {
       const [remoteTransfers] = await Promise.all([
-        MovementService.syncTransfersFromBackend(selectedBranch),
+        MovementService.syncTransfersFromBackend(selectedBranch, branches),
         InventoryService.syncFromBackend(selectedBranch)
       ]);
-      const fresh = remoteTransfers || MovementService.getTransfers({
-        branchId: selectedBranch,
-        status: statusFilter
-      });
-      setTransfers(fresh);
+      setTransfers(Array.isArray(remoteTransfers) ? remoteTransfers : MovementService.getTransfers({ branchId: selectedBranch }, branches));
       setIngredients(InventoryService.getIngredients());
       if (refresh) setNotice('Transfers refreshed.');
     } catch (err) {
-      console.warn('Transfers sync error:', err.message);
-      const list = MovementService.getTransfers({
-        branchId: selectedBranch,
-        status: statusFilter
-      });
-      setTransfers(list);
+      console.error('Transfers sync error:', err.message);
+      setError(err.message || 'Failed to load transfers from database');
+      setTransfers(MovementService.getTransfers({ branchId: selectedBranch }, branches));
+      setIngredients(InventoryService.getIngredients());
     } finally {
       setIsSyncing(false);
     }
@@ -67,7 +62,7 @@ export default function TransfersPage({ branchId, branches = [] }) {
 
   useEffect(() => {
     loadData();
-  }, [selectedBranch, statusFilter]);
+  }, [selectedBranch, statusFilter, branches]);
 
   const handleReceive = async (transferId) => {
     try {
@@ -171,12 +166,16 @@ export default function TransfersPage({ branchId, branches = [] }) {
 
   const formatBranch = (val) => {
     if (!val) return '—';
-    if (branchMap[val]) return branchMap[val];
-    if (typeof val === 'string' && val.startsWith('b_')) {
-      const clean = val.slice(2).replace(/_/g, ' ');
+    const key = typeof val === 'object' && val !== null ? (val._id || val.id || val.name || val.code) : val;
+    if (branchMap[key]) return branchMap[key];
+    if (branchMap[String(key)]) return branchMap[String(key)];
+    const found = branches.find(b => b.id === key || b._id === key || b.code === key || b.name === key);
+    if (found) return found.name;
+    if (typeof key === 'string' && key.startsWith('b_')) {
+      const clean = key.slice(2).replace(/_/g, ' ');
       return clean.charAt(0).toUpperCase() + clean.slice(1) + ' Branch';
     }
-    return val;
+    return String(key);
   };
 
   const ingredientMap = {};
@@ -229,13 +228,44 @@ export default function TransfersPage({ branchId, branches = [] }) {
     setCurrentPage(1);
   }, [search, selectedBranch, statusFilter]);
 
+  const branchMatches = (branchVal, target) => {
+    if (!target || target === 'all') return true;
+    if (!branchVal) return false;
+    const bId = typeof branchVal === 'object' ? (branchVal.id || branchVal._id || branchVal.code) : branchVal;
+    const b = branches.find(item => item.id === target || item._id === target || item.code === target);
+    const candidates = [target, b?.id, b?._id, b?.code].filter(Boolean).map(String);
+    return candidates.includes(String(bId));
+  };
+
   const filteredTransfers = transfers.filter((tr) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    const tNum = (tr.transferNumber || '').toLowerCase();
-    const fromB = (formatBranch(tr.fromBranchId || tr.fromBranch) || '').toLowerCase();
-    const toB = (formatBranch(tr.toBranchId || tr.toBranch) || '').toLowerCase();
-    return tNum.includes(q) || fromB.includes(q) || toB.includes(q);
+    if (!tr) return false;
+
+    // Status filter
+    if (statusFilter && statusFilter !== 'ALL' && tr.status !== statusFilter) {
+      return false;
+    }
+
+    // Branch filter (matches either origin or destination branch)
+    if (selectedBranch && selectedBranch !== 'all') {
+      const fromMatch = branchMatches(tr.fromBranchId || tr.fromBranch, selectedBranch);
+      const toMatch = branchMatches(tr.toBranchId || tr.toBranch, selectedBranch);
+      if (!fromMatch && !toMatch) return false;
+    }
+
+    // Search query
+    if (search && search.trim() !== '') {
+      const q = search.toLowerCase();
+      const tNum = (tr.transferNumber || '').toLowerCase();
+      const fromB = (formatBranch(tr.fromBranchId || tr.fromBranch) || '').toLowerCase();
+      const toB = (formatBranch(tr.toBranchId || tr.toBranch) || '').toLowerCase();
+      const hasItemMatch = Array.isArray(tr.items) && tr.items.some(it => {
+        const name = (formatItemName(it) || '').toLowerCase();
+        return name.includes(q);
+      });
+      return tNum.includes(q) || fromB.includes(q) || toB.includes(q) || hasItemMatch;
+    }
+
+    return true;
   });
 
   const totalItems = filteredTransfers.length;

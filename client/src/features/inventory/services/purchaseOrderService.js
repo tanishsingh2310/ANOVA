@@ -8,12 +8,44 @@
 
 import { apiClient } from '../../../api/client.js';
 
+export function branchMatches(recordBranch, filterBranch, branches = []) {
+  if (!filterBranch || filterBranch === 'all') return true;
+  if (!recordBranch) return false;
+
+  const recStr = String(typeof recordBranch === 'object' && recordBranch !== null ? (recordBranch._id || recordBranch.id || recordBranch.code || '') : recordBranch).trim();
+  const filterStr = String(filterBranch).trim();
+
+  if (recStr === filterStr) return true;
+
+  const branchObj = Array.isArray(branches)
+    ? branches.find(b => String(b.id || b._id) === filterStr || String(b.code || '').toUpperCase() === filterStr.toUpperCase())
+    : null;
+
+  if (branchObj) {
+    const validKeys = [
+      String(branchObj.id || ''),
+      String(branchObj._id || ''),
+      String(branchObj.code || '').toUpperCase(),
+      String(branchObj.code || '').toLowerCase(),
+      String(branchObj.name || '').toLowerCase()
+    ].filter(Boolean);
+
+    if (validKeys.includes(recStr) || validKeys.includes(recStr.toUpperCase()) || validKeys.includes(recStr.toLowerCase())) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function normalizePurchaseOrder(doc) {
   if (!doc) return null;
   const poId = String(doc._id || doc.id);
   const supplierId = String(doc.supplier?._id || doc.supplier || doc.supplierId || '');
   const supplierName = doc.supplier?.name || doc.supplierName || '';
-  const branchId = doc.branch || doc.branchId || '';
+  const branchId = typeof doc.branch === 'object' && doc.branch !== null ? String(doc.branch._id || doc.branch.id || doc.branch.code || '') : String(doc.branch || doc.branchId || '');
+  const branchRef = doc.branchRef || (typeof doc.branch === 'object' && doc.branch !== null ? (doc.branch._id || doc.branch.id) : null);
+  const branchCode = doc.branchCode || (typeof doc.branch === 'object' ? doc.branch?.code : (typeof doc.branch === 'string' && doc.branch.length <= 10 && !doc.branch.startsWith('b_') ? doc.branch : ''));
 
   const items = (doc.items || []).map(it => ({
     ingredientId: String(it.ingredient?._id || it.ingredient || it.ingredientId || ''),
@@ -35,6 +67,9 @@ export function normalizePurchaseOrder(doc) {
     supplierName,
     supplier: doc.supplier,
     branchId,
+    branch: doc.branch || branchId,
+    branchRef,
+    branchCode,
     status: doc.status,
     createdAt: doc.createdAt,
     expectedDate: doc.expectedDeliveryDate || doc.expectedDate,
@@ -55,7 +90,15 @@ export function normalizePurchaseOrder(doc) {
 const PO_KEY = 'anova_inventory_pos';
 const MOVEMENTS_KEY = 'anova_inventory_movements';
 const INGREDIENTS_KEY = 'anova_inventory_ingredients';
-const MOCK_ID_REGEX = /^(po)_\d{2,3}$/;
+const MOCK_BRANCH_IDS = new Set(['b_downtown', 'b_uptown', 'b_westside', 'b_waterfront']);
+
+function isMockPO(po) {
+  if (!po) return true;
+  const id = String(po.id || po._id || '');
+  if (/^po_\d{1,4}$/.test(id)) return true;
+  if (MOCK_BRANCH_IDS.has(String(po.branch || po.branchId))) return true;
+  return false;
+}
 
 function getPOsData() {
   try {
@@ -65,10 +108,7 @@ function getPOsData() {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      const clean = parsed.filter(po => {
-        const id = String(po?.id || po?._id || '');
-        return !MOCK_ID_REGEX.test(id);
-      });
+      const clean = parsed.filter(po => !isMockPO(po));
       if (clean.length !== parsed.length) {
         localStorage.setItem(PO_KEY, JSON.stringify(clean));
       }
@@ -90,12 +130,15 @@ function savePOsData(data) {
 }
 
 export const PurchaseOrderService = {
-  getPurchaseOrders(filter = {}) {
+  getPurchaseOrders(filter = {}, branches = []) {
     let orders = getPOsData();
     const { branchId, status, supplierId } = filter;
 
     if (branchId && branchId !== 'all') {
-      orders = orders.filter(po => po.branchId === branchId);
+      orders = orders.filter(po => {
+        const poBranch = po.branchRef || po.branchId || po.branch;
+        return branchMatches(poBranch, branchId, branches);
+      });
     }
     if (status && status !== 'ALL') {
       orders = orders.filter(po => po.status === status);
@@ -154,7 +197,8 @@ export const PurchaseOrderService = {
 
   deletePO(id) {
     const list = getPOsData();
-    const filtered = list.filter(o => o.id !== id && o._id !== id && o.poNumber !== id);
+    const strId = String(id);
+    const filtered = list.filter(o => String(o.id) !== strId && String(o._id) !== strId && String(o.poNumber) !== strId);
     savePOsData(filtered);
     return true;
   },
@@ -318,22 +362,33 @@ export const PurchaseOrderService = {
   // ==========================================
   // REMOTE BACKEND / ATLAS SYNCHRONIZATION
   // ==========================================
-  async syncFromBackend(branchId = 'all') {
+  async syncFromBackend(branchId = 'all', branches = []) {
     try {
       const branchQuery = branchId && branchId !== 'all' ? `?branch=${branchId}` : '';
       const res = await apiClient(`/api/inventory/purchase-orders${branchQuery}`);
       if (res && res.success && Array.isArray(res.data)) {
         const remotePOs = res.data.map(normalizePurchaseOrder);
-        savePOsData(remotePOs);
-        return this.getPurchaseOrders({ branchId });
+        if (branchId === 'all') {
+          savePOsData(remotePOs);
+        } else {
+          const existing = getPOsData();
+          const remoteIds = new Set(remotePOs.map(p => String(p.id || p._id)));
+          const remainingOtherBranches = existing.filter(p => !branchMatches(p.branchRef || p.branchId || p.branch, branchId, branches) && !remoteIds.has(String(p.id || p._id)));
+          savePOsData([...remotePOs, ...remainingOtherBranches]);
+        }
+        return this.getPurchaseOrders({ branchId }, branches);
       }
     } catch (err) {
-      console.warn('[PurchaseOrderService] Backend sync failed, using cached store:', err.message);
+      console.warn('[PurchaseOrderService] Remote sync failed, using cached store:', err.message);
     }
-    return this.getPurchaseOrders({ branchId });
+    return this.getPurchaseOrders({ branchId }, branches);
   },
 
   async createPORemote({ supplierId, branchId, expectedDate, items, notes, createdBy = 'Store Manager' }) {
+    const subtotal = items.reduce((acc, it) => acc + (Number(it.orderedQty) * Number(it.unitPrice)), 0);
+    const tax = 0;
+    const totalAmount = subtotal + tax;
+
     const payload = {
       supplier: supplierId,
       branch: branchId,
@@ -341,6 +396,9 @@ export const PurchaseOrderService = {
       expectedDeliveryDate: expectedDate,
       notes,
       createdBy,
+      subtotal,
+      tax,
+      totalAmount,
       items: items.map(it => ({
         ingredient: it.ingredientId,
         orderedQty: Number(it.orderedQty),
@@ -349,27 +407,36 @@ export const PurchaseOrderService = {
       }))
     };
 
-    const res = await apiClient('/api/inventory/purchase-orders', {
-      method: 'POST',
-      body: payload
-    });
-    if (res && res.success && res.data) {
-      const normalized = normalizePurchaseOrder(res.data);
-      const orders = getPOsData();
-      orders.unshift(normalized);
-      savePOsData(orders);
-      return normalized;
+    try {
+      const res = await apiClient('/api/inventory/purchase-orders', {
+        method: 'POST',
+        body: payload
+      });
+      if (res && res.success && res.data) {
+        const normalized = normalizePurchaseOrder(res.data);
+        const orders = getPOsData();
+        orders.unshift(normalized);
+        savePOsData(orders);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[PurchaseOrderService] Remote PO creation failed, creating locally:', err.message);
+      return this.createPO({ supplierId, branchId, expectedDate, items, notes, createdBy });
     }
-    throw new Error(res?.message || 'Failed to create purchase order in database');
+    return this.createPO({ supplierId, branchId, expectedDate, items, notes, createdBy });
   },
 
   async deletePORemote(id) {
     try {
-      await apiClient(`/api/inventory/purchase-orders/${id}`, { method: 'DELETE' });
+      const res = await apiClient(`/api/inventory/purchase-orders/${id}`, { method: 'DELETE' });
+      if (res && res.success === false) {
+        throw new Error(res.message || 'Failed to delete purchase order from database');
+      }
     } catch (err) {
-      console.warn('Backend PO delete note:', err.message);
+      console.warn('[PurchaseOrderService] Remote delete failed, deleting locally:', err.message);
     }
-    return this.deletePO(id);
+    this.deletePO(id);
+    return true;
   },
 
   async updateStatusRemote(poId, nextStatus, user = 'Enterprise Admin') {

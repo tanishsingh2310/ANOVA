@@ -18,7 +18,19 @@ export default function StockAdjustmentModal({
 
   if (!isOpen || !ingredient) return null;
 
-  const currentQty = Number(ingredient.stockByBranch?.[selectedBranch] || 0);
+  const resolveCurrentQty = (ing, bId) => {
+    if (!ing || !ing.stockByBranch) return 0;
+    const b = branches.find(item => item.id === bId || item._id === bId || item.code === bId);
+    const candidates = [bId, b?.code, b?.id, b?._id].filter(Boolean);
+    for (const key of candidates) {
+      if (ing.stockByBranch[key] !== undefined) {
+        return Number(ing.stockByBranch[key]);
+      }
+    }
+    return 0;
+  };
+
+  const currentQty = resolveCurrentQty(ingredient, selectedBranch);
   const enteredQty = newCount === '' ? currentQty : Number(newCount);
   const delta = enteredQty - currentQty;
 

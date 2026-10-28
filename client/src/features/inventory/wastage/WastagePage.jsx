@@ -14,8 +14,11 @@ import { InventoryService } from '../services/inventoryService';
 import InventoryPagination from '../components/InventoryPagination';
 
 export default function WastagePage({ branchId, branches = [] }) {
-  const [wastageList, setWastageList] = useState([]);
-  const [ingredients, setIngredients] = useState([]);
+  const [wastageList, setWastageList] = useState(() => {
+    const list = MovementService.getWastage({ branchId });
+    return Array.isArray(list) ? list : [];
+  });
+  const [ingredients, setIngredients] = useState(() => InventoryService.getIngredients());
   const [search, setSearch] = useState('');
   const [reasonFilter, setReasonFilter] = useState('ALL');
   const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
@@ -49,35 +52,23 @@ export default function WastagePage({ branchId, branches = [] }) {
   }, [branchId, branches]);
 
   const loadData = async (refresh = false) => {
-    try {
-      const list = MovementService.getWastage({
-        branchId: selectedBranch,
-        reason: reasonFilter
-      });
-      setWastageList(Array.isArray(list) ? list : []);
-      const ings = InventoryService.getIngredients();
-      setIngredients(Array.isArray(ings) ? ings : []);
-    } catch (err) {
-      console.warn('Wastage initial read error:', err.message);
-      setWastageList([]);
-    }
-
     setIsSyncing(true);
+    setError('');
     try {
-      await Promise.all([
+      const [remoteWastage] = await Promise.all([
         MovementService.syncWastageFromBackend(selectedBranch),
         InventoryService.syncFromBackend(selectedBranch)
       ]);
-      const fresh = MovementService.getWastage({
-        branchId: selectedBranch,
-        reason: reasonFilter
-      });
-      setWastageList(Array.isArray(fresh) ? fresh : []);
+      setWastageList(Array.isArray(remoteWastage) ? remoteWastage : (Array.isArray(MovementService.getWastage({ branchId: selectedBranch })) ? MovementService.getWastage({ branchId: selectedBranch }) : []));
       const freshIngs = InventoryService.getIngredients();
       setIngredients(Array.isArray(freshIngs) ? freshIngs : []);
       if (refresh) setNotice('Wastage log refreshed.');
     } catch (err) {
-      console.warn('Wastage sync error:', err.message);
+      console.error('Wastage sync error:', err.message);
+      setError(err.message || 'Failed to load wastage records');
+      const fallback = MovementService.getWastage({ branchId: selectedBranch });
+      setWastageList(Array.isArray(fallback) ? fallback : []);
+      setIngredients(InventoryService.getIngredients());
     } finally {
       setIsSyncing(false);
     }
@@ -214,15 +205,41 @@ export default function WastagePage({ branchId, branches = [] }) {
     setCurrentPage(1);
   }, [search, selectedBranch, reasonFilter]);
 
+  const branchMatches = (branchVal, target) => {
+    if (!target || target === 'all') return true;
+    if (!branchVal) return false;
+    const bId = typeof branchVal === 'object' ? (branchVal.id || branchVal._id || branchVal.code) : branchVal;
+    const b = branches.find(item => item.id === target || item._id === target || item.code === target);
+    const candidates = [target, b?.id, b?._id, b?.code].filter(Boolean).map(String);
+    return candidates.includes(String(bId));
+  };
+
   const safeWastageList = Array.isArray(wastageList) ? wastageList : [];
   const filteredWastage = safeWastageList.filter((w) => {
     if (!w) return false;
-    if (!search) return true;
-    const q = search.toLowerCase();
-    const wNum = String(w.wasteNumber || '').toLowerCase();
-    const ingName = String(formatIngredient(w)).toLowerCase();
-    const bName = String(formatBranch(w.branchId || w.branch)).toLowerCase();
-    return wNum.includes(q) || ingName.includes(q) || bName.includes(q);
+
+    // Reason filter
+    if (reasonFilter && reasonFilter !== 'ALL' && w.reason !== reasonFilter) {
+      return false;
+    }
+
+    // Branch filter
+    if (selectedBranch && selectedBranch !== 'all' && !branchMatches(w.branchId || w.branch, selectedBranch)) {
+      return false;
+    }
+
+    // Search query
+    if (search && search.trim() !== '') {
+      const q = search.toLowerCase();
+      const wNum = String(w.wasteNumber || '').toLowerCase();
+      const ingName = String(formatIngredient(w)).toLowerCase();
+      const bName = String(formatBranch(w.branchId || w.branch)).toLowerCase();
+      const rName = String(w.reason || '').toLowerCase();
+      const notes = String(w.notes || '').toLowerCase();
+      return wNum.includes(q) || ingName.includes(q) || bName.includes(q) || rName.includes(q) || notes.includes(q);
+    }
+
+    return true;
   });
 
   const totalItems = filteredWastage.length;

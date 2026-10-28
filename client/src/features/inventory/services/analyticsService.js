@@ -13,10 +13,10 @@ import { MovementService } from './movementService.js';
 import { apiClient } from '../../../api/client.js';
 
 export const AnalyticsService = {
-  getDashboardKPIs(branchId = 'all') {
+  getDashboardKPIs(branchId = 'all', branches = []) {
     const ingredients = Array.isArray(InventoryService.getIngredients()) ? InventoryService.getIngredients() : [];
-    const purchaseOrders = PurchaseOrderService.getPurchaseOrders({ branchId });
-    const transfers = MovementService.getTransfers({ branchId });
+    const purchaseOrders = PurchaseOrderService.getPurchaseOrders({ branchId }, branches);
+    const transfers = MovementService.getTransfers({ branchId }, branches);
     const wastage = Array.isArray(MovementService.getWastage({ branchId })) ? MovementService.getWastage({ branchId }) : [];
     const expiringBatches = InventoryService.getExpiringBatches(7, branchId);
 
@@ -28,7 +28,7 @@ export const AnalyticsService = {
     let totalItemsTracked = ingredients.length;
 
     ingredients.forEach(ing => {
-      const status = InventoryService.calculateStockStatus(ing, branchId);
+      const status = InventoryService.calculateStockStatus(ing, branchId, branches);
       if (status.level === 'OUT_OF_STOCK') outOfStockCount++;
       else if (status.level === 'CRITICAL') criticalLowCount++;
       else if (status.level === 'LOW_STOCK') lowStockCount++;
@@ -64,30 +64,54 @@ export const AnalyticsService = {
   },
 
   // Valuation Model (FIFO vs Weighted Average)
-  getInventoryValuation(branchId = 'all', method = 'FIFO') {
+  getInventoryValuation(branchId = 'all', method = 'FIFO', branches = []) {
     const ingredients = Array.isArray(InventoryService.getIngredients()) ? InventoryService.getIngredients() : [];
-    const branches = InventoryService.getBranches();
+    const branchList = Array.isArray(branches) && branches.length > 0 ? branches : InventoryService.getBranches();
 
     const reportRows = ingredients.map(ing => {
-      const branchQty = branchId === 'all'
-        ? Object.values(ing.stockByBranch || {}).reduce((s, v) => s + (Number(v) || 0), 0)
-        : Number(ing.stockByBranch?.[branchId] || 0);
+      let branchQty = 0;
+      if (branchId === 'all') {
+        branchQty = Object.values(ing.stockByBranch || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+      } else {
+        const stockMap = ing.stockByBranch || {};
+        const bObj = branchList.find(b => b.id === branchId || b._id === branchId || b.code === branchId);
+        const candidates = [branchId, bObj?.code, bObj?.id, bObj?._id].filter(Boolean);
+        let found = false;
+        for (const k of candidates) {
+          if (stockMap[k] !== undefined) {
+            branchQty = Number(stockMap[k] || 0);
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          branchQty = Number(stockMap[branchId] || 0);
+        }
+      }
 
       const standardCost = Number(ing.unitCost || 0);
       let calculatedUnitCost = standardCost;
       let totalValue = 0;
 
-      const relevantBatches = (ing.batches || []).filter(b =>
-        (branchId === 'all' || b.branchId === branchId) && b.qty > 0
-      );
+      const bObj = branchList.find(b => b.id === branchId || b._id === branchId || b.code === branchId);
+      const candidates = [branchId, bObj?.code, bObj?.id, bObj?._id].filter(Boolean);
+
+      const relevantBatches = (ing.batches || []).filter(b => {
+        const bQty = Number(b.qty !== undefined ? b.qty : (b.quantity || 0));
+        if (bQty <= 0) return false;
+        if (branchId === 'all') return true;
+        const bBranch = String(b.branchId || b.branch || b.branchRef || '');
+        return candidates.some(c => String(c).toLowerCase() === bBranch.toLowerCase());
+      });
 
       if (relevantBatches.length > 0) {
         if (method === 'FIFO') {
           // Sort batches by earliest received/expiry
-          relevantBatches.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+          relevantBatches.sort((a, b) => new Date(a.expiryDate || 0) - new Date(b.expiryDate || 0));
           let remainingQty = branchQty;
           for (const b of relevantBatches) {
-            const take = Math.min(b.qty, remainingQty);
+            const bQty = Number(b.qty !== undefined ? b.qty : (b.quantity || 0));
+            const take = Math.min(bQty, remainingQty);
             totalValue += take * (b.receivedCost || standardCost);
             remainingQty -= take;
             if (remainingQty <= 0) break;
@@ -98,8 +122,11 @@ export const AnalyticsService = {
           calculatedUnitCost = branchQty > 0 ? Math.round((totalValue / branchQty) * 100) / 100 : standardCost;
         } else {
           // Weighted Average
-          const batchValueSum = relevantBatches.reduce((acc, b) => acc + (b.qty * (b.receivedCost || standardCost)), 0);
-          const batchQtySum = relevantBatches.reduce((acc, b) => acc + b.qty, 0);
+          const batchValueSum = relevantBatches.reduce((acc, b) => {
+            const bQty = Number(b.qty !== undefined ? b.qty : (b.quantity || 0));
+            return acc + (bQty * (b.receivedCost || standardCost));
+          }, 0);
+          const batchQtySum = relevantBatches.reduce((acc, b) => acc + Number(b.qty !== undefined ? b.qty : (b.quantity || 0)), 0);
           calculatedUnitCost = batchQtySum > 0 ? Math.round((batchValueSum / batchQtySum) * 100) / 100 : standardCost;
           totalValue = branchQty * calculatedUnitCost;
         }
@@ -108,7 +135,7 @@ export const AnalyticsService = {
       }
 
       return {
-        id: ing.id,
+        id: ing.id || ing._id,
         sku: ing.sku,
         name: ing.name,
         category: ing.category,
@@ -125,7 +152,7 @@ export const AnalyticsService = {
     return {
       method,
       branchId,
-      branchName: branchId === 'all' ? 'All Enterprise Branches' : (branches.find(b => b.id === branchId)?.name || branchId),
+      branchName: branchId === 'all' ? 'All Enterprise Branches' : (branchList.find(b => b.id === branchId || b._id === branchId || b.code === branchId)?.name || branchId),
       generatedAt: new Date().toISOString(),
       items: reportRows,
       totalPortfolioValue: Math.round(totalPortfolioValue)

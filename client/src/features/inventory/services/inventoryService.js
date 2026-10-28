@@ -63,7 +63,8 @@ function isMockRecord(item) {
   if (!item) return false;
   const id = String(item.id || item._id || '');
   if (MOCK_BRANCH_IDS.has(id)) return true;
-  if (MOCK_ID_REGEX.test(id)) return true;
+  if (MOCK_BRANCH_IDS.has(String(item.branch || item.branchId))) return true;
+  if (/^(ing|sup|po|tr|wst|mov)_/.test(id) && id.length < 24) return true;
   return false;
 }
 
@@ -105,14 +106,18 @@ export const InventoryService = {
   async getBranchesRemote() {
     try {
       const res = await apiClient('/api/branches');
-      if (res && res.success && Array.isArray(res.data)) {
-        const branches = res.data.map(b => ({
+      const rawList = Array.isArray(res)
+        ? res
+        : (Array.isArray(res?.branches) ? res.branches : (Array.isArray(res?.data) ? res.data : []));
+      if (rawList && rawList.length > 0) {
+        const branches = rawList.map(b => ({
           id: String(b._id || b.id),
           _id: String(b._id || b.id),
           name: b.name,
-          code: b.code || b.name.substring(0, 3).toUpperCase(),
-          city: b.city || '',
-          address: b.address || ''
+          code: b.code || (b.name ? b.name.substring(0, 3).toUpperCase() : ''),
+          city: b.address?.city || b.city || '',
+          address: b.address || '',
+          isActive: b.isActive !== false
         }));
         setStored(STORAGE_KEYS.BRANCHES, branches);
         return branches;
@@ -132,7 +137,7 @@ export const InventoryService = {
   },
 
   // Ingredients CRUD
-  getIngredients(filter = {}) {
+  getIngredients(filter = {}, branches = []) {
     let items = getStored(STORAGE_KEYS.INGREDIENTS, []);
     const { branchId, category, search, stockStatus } = filter;
 
@@ -143,14 +148,15 @@ export const InventoryService = {
     if (search && search.trim() !== '') {
       const q = search.toLowerCase();
       items = items.filter(i =>
-        i.name.toLowerCase().includes(q) ||
-        i.sku.toLowerCase().includes(q)
+        (i.name || '').toLowerCase().includes(q) ||
+        (i.sku || '').toLowerCase().includes(q) ||
+        (i.category || '').toLowerCase().includes(q)
       );
     }
 
     if (stockStatus && stockStatus !== 'ALL') {
       items = items.filter(i => {
-        const status = this.calculateStockStatus(i, branchId);
+        const status = this.calculateStockStatus(i, branchId, branches);
         return status.level === stockStatus;
       });
     }
@@ -198,10 +204,28 @@ export const InventoryService = {
   },
 
   // Stock Status Evaluation
-  calculateStockStatus(ingredient, branchId = 'all') {
-    const stock = branchId === 'all'
-      ? Object.values(ingredient.stockByBranch || {}).reduce((sum, val) => sum + (Number(val) || 0), 0)
-      : Number(ingredient.stockByBranch?.[branchId] || 0);
+  calculateStockStatus(ingredient, branchId = 'all', branches = []) {
+    let stock = 0;
+    if (branchId === 'all') {
+      stock = Object.values(ingredient.stockByBranch || {}).reduce((sum, val) => sum + (Number(val) || 0), 0);
+    } else {
+      const stockMap = ingredient.stockByBranch || {};
+      const branchObj = Array.isArray(branches)
+        ? branches.find(b => b.id === branchId || b._id === branchId || b.code === branchId)
+        : null;
+      const candidates = [branchId, branchObj?.code, branchObj?.id, branchObj?._id].filter(Boolean);
+      let found = false;
+      for (const k of candidates) {
+        if (stockMap[k] !== undefined) {
+          stock = Number(stockMap[k] || 0);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        stock = Number(stockMap[branchId] || 0);
+      }
+    }
 
     const min = Number(ingredient.minThreshold || 0);
     const reorder = Number(ingredient.reorderLevel || min * 1.3);
@@ -346,7 +370,8 @@ export const InventoryService = {
   // ==========================================
   async syncFromBackend(branchId = 'all') {
     try {
-      const res = await apiClient('/api/inventory/ingredients');
+      const branchQuery = branchId && branchId !== 'all' ? `?branch=${branchId}` : '';
+      const res = await apiClient(`/api/inventory/ingredients${branchQuery}`);
       if (res && res.success && Array.isArray(res.data)) {
         const normalized = res.data.map(normalizeIngredient);
         setStored(STORAGE_KEYS.INGREDIENTS, normalized);
@@ -377,49 +402,63 @@ export const InventoryService = {
 
     const endpoint = isUpdate ? `/api/inventory/ingredients/${targetId}` : '/api/inventory/ingredients';
     const method = isUpdate ? 'PUT' : 'POST';
-    const res = await apiClient(endpoint, { method, body: payload });
-    if (res && res.success && res.data) {
-      const normalized = normalizeIngredient(res.data);
-      const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
-      const idx = items.findIndex(i => i.id === normalized.id);
-      if (idx !== -1) {
-        items[idx] = normalized;
-      } else {
-        items.unshift(normalized);
+    try {
+      const res = await apiClient(endpoint, { method, body: payload });
+      if (res && res.success && res.data) {
+        const normalized = normalizeIngredient(res.data);
+        const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
+        const idx = items.findIndex(i => i.id === normalized.id);
+        if (idx !== -1) {
+          items[idx] = normalized;
+        } else {
+          items.unshift(normalized);
+        }
+        setStored(STORAGE_KEYS.INGREDIENTS, items);
+        return normalized;
       }
-      setStored(STORAGE_KEYS.INGREDIENTS, items);
-      return normalized;
+    } catch (err) {
+      console.warn('[InventoryService] Remote save ingredient failed, saving locally:', err.message);
+      return this.saveIngredient(ingredientData);
     }
-    throw new Error(res?.message || 'Failed to save ingredient in database');
+    return this.saveIngredient(ingredientData);
   },
 
   async deleteIngredientRemote(id) {
-    await apiClient(`/api/inventory/ingredients/${id}`, { method: 'DELETE' });
+    try {
+      await apiClient(`/api/inventory/ingredients/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('[InventoryService] Remote delete ingredient failed, deleting locally:', err.message);
+    }
     return this.deleteIngredient(id);
   },
 
   async adjustStockRemote({ ingredientId, branchId, newQty, reason, notes, user = 'Store Manager' }) {
-    const res = await apiClient(`/api/inventory/ingredients/${ingredientId}/adjust`, {
-      method: 'POST',
-      body: {
-        branch: branchId,
-        newQuantity: Number(newQty),
-        reason,
-        notes,
-        user
+    try {
+      const res = await apiClient(`/api/inventory/ingredients/${ingredientId}/adjust`, {
+        method: 'POST',
+        body: {
+          branch: branchId,
+          newQuantity: Number(newQty),
+          reason,
+          notes,
+          user
+        }
+      });
+      if (res && res.success && res.data) {
+        const updatedIng = normalizeIngredient(res.data.ingredient);
+        const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
+        const idx = items.findIndex(i => i.id === updatedIng.id);
+        if (idx !== -1) {
+          items[idx] = updatedIng;
+          setStored(STORAGE_KEYS.INGREDIENTS, items);
+        }
+        return { item: updatedIng, movement: res.data.movement };
       }
-    });
-    if (res && res.success && res.data) {
-      const updatedIng = normalizeIngredient(res.data.ingredient);
-      const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
-      const idx = items.findIndex(i => i.id === updatedIng.id);
-      if (idx !== -1) {
-        items[idx] = updatedIng;
-        setStored(STORAGE_KEYS.INGREDIENTS, items);
-      }
-      return { item: updatedIng, movement: res.data.movement };
+    } catch (err) {
+      console.warn('[InventoryService] Remote adjust stock failed, adjusting locally:', err.message);
+      return this.adjustStock({ ingredientId, branchId, newQty, reason, notes, user });
     }
-    throw new Error(res?.message || 'Failed to adjust stock in database');
+    return this.adjustStock({ ingredientId, branchId, newQty, reason, notes, user });
   },
 
   async getExpiringBatchesRemote(daysAhead = 7, branchId = 'all') {
@@ -457,7 +496,7 @@ export const InventoryService = {
         return mapped;
       }
     } catch (err) {
-      console.warn('[InventoryService] Remote movements failed, falling back:', err.message);
+      console.warn('[InventoryService] Remote movements failed, using cached store:', err.message);
     }
     return this.getMovements(filter);
   }

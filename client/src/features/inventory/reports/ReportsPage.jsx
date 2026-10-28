@@ -16,10 +16,15 @@ export default function ReportsPage({ branchId, branches = [] }) {
   const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
   const [search, setSearch] = useState('');
 
-  const [valuationData, setValuationData] = useState(null);
+  const [valuationData, setValuationData] = useState(() => AnalyticsService.getInventoryValuation(branchId || 'all', 'FIFO', branches));
   const [movements, setMovements] = useState([]);
-  const [expiringBatches, setExpiringBatches] = useState([]);
-  const [lowStockList, setLowStockList] = useState([]);
+  const [expiringBatches, setExpiringBatches] = useState(() => InventoryService.getExpiringBatches(14, branchId || 'all'));
+  const [lowStockList, setLowStockList] = useState(() => {
+    const ings = InventoryService.getIngredients({ branchId: branchId || 'all' }, branches);
+    return (Array.isArray(ings) ? ings : [])
+      .map(i => ({ ...i, status: InventoryService.calculateStockStatus(i, branchId || 'all', branches) }))
+      .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
+  });
 
   const [notice, setNotice] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -35,48 +40,47 @@ export default function ReportsPage({ branchId, branches = [] }) {
   }, [branchId]);
 
   const loadData = async (refresh = false) => {
-    const val = AnalyticsService.getInventoryValuation(selectedBranch, valuationMethod);
-    setValuationData(val);
-
-    const movs = InventoryService.getMovements({ branchId: selectedBranch });
-    setMovements(movs);
-
-    const exp = InventoryService.getExpiringBatches(14, selectedBranch);
-    setExpiringBatches(exp);
-
-    const ings = InventoryService.getIngredients({ branchId: selectedBranch });
-    const low = ings
-      .map(i => ({
-        ...i,
-        status: InventoryService.calculateStockStatus(i, selectedBranch)
-      }))
-      .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
-    setLowStockList(low);
-
     setIsSyncing(true);
     try {
-      const [remoteVal, remoteMovs, remoteExp, remoteIngs] = await Promise.all([
+      const [valResult, movsResult, expResult, ingsResult] = await Promise.allSettled([
         AnalyticsService.fetchValuationRemote(selectedBranch, valuationMethod),
         InventoryService.getMovementsRemote({ branchId: selectedBranch }),
         InventoryService.getExpiringBatchesRemote(14, selectedBranch),
         InventoryService.syncFromBackend(selectedBranch)
       ]);
 
-      if (remoteVal) setValuationData(remoteVal);
-      setMovements(remoteMovs || []);
-      if (remoteExp) setExpiringBatches(remoteExp);
-      if (remoteIngs) {
-        const freshLow = remoteIngs
-          .map(i => ({
-            ...i,
-            status: InventoryService.calculateStockStatus(i, selectedBranch)
-          }))
-          .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
-        setLowStockList(freshLow);
+      if (valResult.status === 'fulfilled' && valResult.value) {
+        setValuationData(valResult.value);
+      } else {
+        setValuationData(AnalyticsService.getInventoryValuation(selectedBranch, valuationMethod, branches));
       }
+
+      if (movsResult.status === 'fulfilled' && Array.isArray(movsResult.value)) {
+        setMovements(movsResult.value);
+      }
+
+      if (expResult.status === 'fulfilled' && Array.isArray(expResult.value)) {
+        setExpiringBatches(expResult.value);
+      } else {
+        setExpiringBatches(InventoryService.getExpiringBatches(14, selectedBranch));
+      }
+
+      const freshIngs = (ingsResult.status === 'fulfilled' && Array.isArray(ingsResult.value))
+        ? ingsResult.value
+        : InventoryService.getIngredients({ branchId: selectedBranch }, branches);
+
+      const freshLow = (freshIngs || [])
+        .map(i => ({
+          ...i,
+          status: InventoryService.calculateStockStatus(i, selectedBranch, branches)
+        }))
+        .filter(i => i.status.level === 'CRITICAL' || i.status.level === 'LOW_STOCK' || i.status.level === 'OUT_OF_STOCK');
+      setLowStockList(freshLow);
+
       if (refresh) setNotice('Report data updated.');
     } catch (err) {
-      console.warn('Reports sync error:', err.message);
+      console.error('Reports sync error:', err.message);
+      setValuationData(AnalyticsService.getInventoryValuation(selectedBranch, valuationMethod, branches));
     } finally {
       setIsSyncing(false);
     }
@@ -87,7 +91,19 @@ export default function ReportsPage({ branchId, branches = [] }) {
   }, [selectedBranch, valuationMethod]);
 
   const handleExport = () => {
+    const q = (search || '').toLowerCase().trim();
+
     if (reportType === 'VALUATION' && valuationData) {
+      const items = (valuationData.items || []).filter(row =>
+        !q ||
+        (row.name || '').toLowerCase().includes(q) ||
+        (row.sku || '').toLowerCase().includes(q) ||
+        (row.category || '').toLowerCase().includes(q)
+      );
+      if (items.length === 0) {
+        setNotice('No matching valuation records to export.');
+        return;
+      }
       const headers = [
         { label: 'SKU', key: 'sku' },
         { label: 'Ingredient Name', key: 'name' },
@@ -98,10 +114,31 @@ export default function ReportsPage({ branchId, branches = [] }) {
         { label: 'Unit Cost (INR)', key: 'unitCost' },
         { label: 'Total Value (INR)', key: 'totalValue' }
       ];
-      const csv = AnalyticsService.generateCSV(headers, valuationData.items);
+      const csv = AnalyticsService.generateCSV(headers, items);
       AnalyticsService.downloadCSV(`ANOVA_Valuation_${valuationMethod}_${selectedBranch}`, csv);
       setNotice('Valuation report exported.');
     } else if (reportType === 'LOW_STOCK') {
+      const rows = lowStockList
+        .filter(item =>
+          !q ||
+          (item.name || '').toLowerCase().includes(q) ||
+          (item.sku || '').toLowerCase().includes(q) ||
+          (item.category || '').toLowerCase().includes(q)
+        )
+        .map(item => ({
+          sku: item.sku,
+          name: item.name,
+          category: item.category,
+          currentQty: item.status?.qty || 0,
+          baseUnit: item.baseUnit,
+          minThreshold: item.minThreshold,
+          reorderLevel: item.reorderLevel,
+          statusLevel: item.status?.level || 'LOW_STOCK'
+        }));
+      if (rows.length === 0) {
+        setNotice('No matching low stock records to export.');
+        return;
+      }
       const headers = [
         { label: 'SKU', key: 'sku' },
         { label: 'Ingredient', key: 'name' },
@@ -112,20 +149,20 @@ export default function ReportsPage({ branchId, branches = [] }) {
         { label: 'Reorder Level', key: 'reorderLevel' },
         { label: 'Stock Status', key: 'statusLevel' }
       ];
-      const rows = lowStockList.map(item => ({
-        sku: item.sku,
-        name: item.name,
-        category: item.category,
-        currentQty: item.status.qty,
-        baseUnit: item.baseUnit,
-        minThreshold: item.minThreshold,
-        reorderLevel: item.reorderLevel,
-        statusLevel: item.status.level
-      }));
       const csv = AnalyticsService.generateCSV(headers, rows);
       AnalyticsService.downloadCSV(`ANOVA_Low_Stock_Action_List_${selectedBranch}`, csv);
       setNotice('Low stock report exported.');
     } else if (reportType === 'EXPIRY') {
+      const rows = expiringBatches.filter(b =>
+        !q ||
+        (b.ingredientName || '').toLowerCase().includes(q) ||
+        (b.batchNumber || '').toLowerCase().includes(q) ||
+        (b.sku || '').toLowerCase().includes(q)
+      );
+      if (rows.length === 0) {
+        setNotice('No matching expiry records to export.');
+        return;
+      }
       const headers = [
         { label: 'Batch #', key: 'batchNumber' },
         { label: 'Ingredient', key: 'ingredientName' },
@@ -136,10 +173,21 @@ export default function ReportsPage({ branchId, branches = [] }) {
         { label: 'Expiry Date', key: 'expiryDate' },
         { label: 'Days Remaining', key: 'diffDays' }
       ];
-      const csv = AnalyticsService.generateCSV(headers, expiringBatches);
+      const csv = AnalyticsService.generateCSV(headers, rows);
       AnalyticsService.downloadCSV(`ANOVA_Expiry_Horizon_14Days_${selectedBranch}`, csv);
       setNotice('Expiry report exported.');
     } else if (reportType === 'AUDIT_TRAIL') {
+      const rows = movements.filter(m =>
+        !q ||
+        (m.reference || '').toLowerCase().includes(q) ||
+        (m.notes || '').toLowerCase().includes(q) ||
+        (m.type || '').toLowerCase().includes(q) ||
+        (m.performedBy || '').toLowerCase().includes(q)
+      );
+      if (rows.length === 0) {
+        setNotice('No matching movement records to export.');
+        return;
+      }
       const headers = [
         { label: 'Timestamp', key: 'timestamp' },
         { label: 'Movement Type', key: 'type' },
@@ -152,14 +200,25 @@ export default function ReportsPage({ branchId, branches = [] }) {
         { label: 'Auditor', key: 'performedBy' },
         { label: 'Notes', key: 'notes' }
       ];
-      const csv = AnalyticsService.generateCSV(headers, movements);
+      const csv = AnalyticsService.generateCSV(headers, rows);
       AnalyticsService.downloadCSV(`ANOVA_Stock_Movements_Audit_${selectedBranch}`, csv);
       setNotice('Movement audit trail exported.');
     }
   };
 
   const branchMap = {};
-  branches.forEach(b => { branchMap[b.id || b._id] = b.name; });
+  if (Array.isArray(branches)) {
+    branches.forEach(b => {
+      if (!b) return;
+      if (b.id) branchMap[b.id] = b.name;
+      if (b._id) branchMap[String(b._id)] = b.name;
+      if (b.code) {
+        branchMap[b.code] = b.name;
+        branchMap[b.code.toUpperCase()] = b.name;
+        branchMap[b.code.toLowerCase()] = b.name;
+      }
+    });
+  }
 
   return (
     <div className="employees-page">
@@ -285,13 +344,17 @@ export default function ReportsPage({ branchId, branches = [] }) {
                     </thead>
                     <tbody>
                       {(() => {
-                        const filtered = (valuationData.items || []).filter(
-                          row => !search || row.name.toLowerCase().includes(search.toLowerCase()) || row.sku.toLowerCase().includes(search.toLowerCase())
+                        const q = (search || '').toLowerCase().trim();
+                        const filtered = (valuationData.items || []).filter(row =>
+                          !q ||
+                          (row.name || '').toLowerCase().includes(q) ||
+                          (row.sku || '').toLowerCase().includes(q) ||
+                          (row.category || '').toLowerCase().includes(q)
                         );
                         return filtered
                           .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
                           .map((row) => (
-                            <tr key={row.id}>
+                            <tr key={row.id || row._id || row.sku}>
                               <td><code>{row.sku}</code></td>
                               <td><strong>{row.name}</strong></td>
                               <td>{row.category}</td>
@@ -309,8 +372,12 @@ export default function ReportsPage({ branchId, branches = [] }) {
                 </div>
 
                 {(() => {
-                  const total = (valuationData.items || []).filter(
-                    row => !search || row.name.toLowerCase().includes(search.toLowerCase()) || row.sku.toLowerCase().includes(search.toLowerCase())
+                  const q = (search || '').toLowerCase().trim();
+                  const total = (valuationData.items || []).filter(row =>
+                    !q ||
+                    (row.name || '').toLowerCase().includes(q) ||
+                    (row.sku || '').toLowerCase().includes(q) ||
+                    (row.category || '').toLowerCase().includes(q)
                   ).length;
                   return (
                     <InventoryPagination
@@ -336,55 +403,78 @@ export default function ReportsPage({ branchId, branches = [] }) {
               </div>
             </div>
 
-            {lowStockList.length === 0 ? (
-              <div className="employees-empty-state">
-                <BarChart3 size={26} />
-                <h3>No stock shortages detected</h3>
-                <p>All items are operating with adequate buffer inventory.</p>
-              </div>
-            ) : (
-              <div className="employees-table-scroll">
-                <table className="employees-table">
-                  <thead>
-                    <tr>
-                      <th>SKU</th>
-                      <th>Ingredient</th>
-                      <th>Current Stock</th>
-                      <th>Min Safety Buffer</th>
-                      <th>Reorder Level</th>
-                      <th>Shortage Deficit</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lowStockList
-                      .filter(item => !search || item.name.toLowerCase().includes(search.toLowerCase()) || item.sku.toLowerCase().includes(search.toLowerCase()))
-                      .map((item) => {
-                        const deficit = Math.max(0, item.minThreshold - item.status.qty);
-                        return (
-                          <tr key={item.id}>
-                            <td><code>{item.sku}</code></td>
-                            <td><strong>{item.name}</strong></td>
-                            <td style={{ color: '#b91c1c', fontWeight: 700 }}>
-                              {item.status.qty} {item.baseUnit}
-                            </td>
-                            <td>{item.minThreshold} {item.baseUnit}</td>
-                            <td>{item.reorderLevel} {item.baseUnit}</td>
-                            <td style={{ color: '#b91c1c', fontWeight: 700 }}>
-                              +{deficit} {item.baseUnit}
-                            </td>
-                            <td>
-                              <span className={`employees-status ${item.status.level === 'OUT_OF_STOCK' || item.status.level === 'CRITICAL' ? 'is-danger' : 'is-warning'}`}>
-                                {item.status.text}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {(() => {
+              const q = (search || '').toLowerCase().trim();
+              const filtered = lowStockList.filter(item =>
+                !q ||
+                (item.name || '').toLowerCase().includes(q) ||
+                (item.sku || '').toLowerCase().includes(q) ||
+                (item.category || '').toLowerCase().includes(q)
+              );
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="employees-empty-state">
+                    <BarChart3 size={26} />
+                    <h3>No stock shortages detected</h3>
+                    <p>{search ? 'No low stock items matching your search.' : 'All items are operating with adequate buffer inventory.'}</p>
+                  </div>
+                );
+              }
+
+              const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+              return (
+                <>
+                  <div className="employees-table-scroll">
+                    <table className="employees-table">
+                      <thead>
+                        <tr>
+                          <th>SKU</th>
+                          <th>Ingredient</th>
+                          <th>Current Stock</th>
+                          <th>Min Safety Buffer</th>
+                          <th>Reorder Level</th>
+                          <th>Shortage Deficit</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginated.map((item) => {
+                          const deficit = Math.max(0, item.minThreshold - (item.status?.qty || 0));
+                          return (
+                            <tr key={item.id || item._id || item.sku}>
+                              <td><code>{item.sku}</code></td>
+                              <td><strong>{item.name}</strong></td>
+                              <td style={{ color: '#b91c1c', fontWeight: 700 }}>
+                                {item.status?.qty ?? 0} {item.baseUnit}
+                              </td>
+                              <td>{item.minThreshold} {item.baseUnit}</td>
+                              <td>{item.reorderLevel} {item.baseUnit}</td>
+                              <td style={{ color: '#b91c1c', fontWeight: 700 }}>
+                                +{deficit} {item.baseUnit}
+                              </td>
+                              <td>
+                                <span className={`employees-status ${item.status?.level === 'OUT_OF_STOCK' || item.status?.level === 'CRITICAL' ? 'is-danger' : 'is-warning'}`}>
+                                  {item.status?.text || item.status?.level}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <InventoryPagination
+                    currentPage={currentPage}
+                    totalItems={filtered.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setCurrentPage}
+                  />
+                </>
+              );
+            })()}
           </>
         )}
 
@@ -398,48 +488,71 @@ export default function ReportsPage({ branchId, branches = [] }) {
               </div>
             </div>
 
-            {expiringBatches.length === 0 ? (
-              <div className="employees-empty-state">
-                <BarChart3 size={26} />
-                <h3>No expiring batches found</h3>
-                <p>No batches nearing expiration within the next 14 days.</p>
-              </div>
-            ) : (
-              <div className="employees-table-scroll">
-                <table className="employees-table">
-                  <thead>
-                    <tr>
-                      <th>Batch Code</th>
-                      <th>Ingredient</th>
-                      <th>Branch</th>
-                      <th>Quantity</th>
-                      <th>Expiry Date</th>
-                      <th>Days Left</th>
-                      <th>Priority</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expiringBatches
-                      .filter(b => !search || b.ingredientName.toLowerCase().includes(search.toLowerCase()) || b.batchNumber.toLowerCase().includes(search.toLowerCase()))
-                      .map((b) => (
-                        <tr key={b.batchNumber}>
-                          <td><code>{b.batchNumber}</code></td>
-                          <td><strong>{b.ingredientName}</strong></td>
-                          <td>{branchMap[b.branchId] || b.branchId}</td>
-                          <td><strong>{b.qty} {b.unit}</strong></td>
-                          <td>{b.expiryDate}</td>
-                          <td>{b.diffDays <= 0 ? 'Expired' : `${b.diffDays} day(s)`}</td>
-                          <td>
-                            <span className={`employees-status ${b.isExpired ? 'is-danger' : 'is-warning'}`}>
-                              {b.isExpired ? 'DISCARD REQUIRED' : 'USE FIRST (FIFO)'}
-                            </span>
-                          </td>
+            {(() => {
+              const q = (search || '').toLowerCase().trim();
+              const filtered = expiringBatches.filter(b =>
+                !q ||
+                (b.ingredientName || '').toLowerCase().includes(q) ||
+                (b.batchNumber || '').toLowerCase().includes(q) ||
+                (b.sku || '').toLowerCase().includes(q)
+              );
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="employees-empty-state">
+                    <BarChart3 size={26} />
+                    <h3>No expiring batches found</h3>
+                    <p>{search ? 'No expiring batches matching your search.' : 'No batches nearing expiration within the next 14 days.'}</p>
+                  </div>
+                );
+              }
+
+              const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+              return (
+                <>
+                  <div className="employees-table-scroll">
+                    <table className="employees-table">
+                      <thead>
+                        <tr>
+                          <th>Batch Code</th>
+                          <th>Ingredient</th>
+                          <th>Branch</th>
+                          <th>Quantity</th>
+                          <th>Expiry Date</th>
+                          <th>Days Left</th>
+                          <th>Priority</th>
                         </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                      </thead>
+                      <tbody>
+                        {paginated.map((b) => (
+                          <tr key={b.id || b._id || b.batchNumber}>
+                            <td><code>{b.batchNumber}</code></td>
+                            <td><strong>{b.ingredientName}</strong></td>
+                            <td>{branchMap[b.branchId] || b.branchId}</td>
+                            <td><strong>{b.qty} {b.unit}</strong></td>
+                            <td>{b.expiryDate}</td>
+                            <td>{b.diffDays <= 0 ? 'Expired' : `${b.diffDays} day(s)`}</td>
+                            <td>
+                              <span className={`employees-status ${b.isExpired ? 'is-danger' : 'is-warning'}`}>
+                                {b.isExpired ? 'DISCARD REQUIRED' : 'USE FIRST (FIFO)'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <InventoryPagination
+                    currentPage={currentPage}
+                    totalItems={filtered.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setCurrentPage}
+                  />
+                </>
+              );
+            })()}
           </>
         )}
 
@@ -476,13 +589,18 @@ export default function ReportsPage({ branchId, branches = [] }) {
                     </thead>
                     <tbody>
                       {(() => {
+                        const q = (search || '').toLowerCase().trim();
                         const filtered = movements.filter(
-                          m => !search || (m.reference || '').toLowerCase().includes(search.toLowerCase()) || (m.notes || '').toLowerCase().includes(search.toLowerCase())
+                          m => !q ||
+                            (m.reference || '').toLowerCase().includes(q) ||
+                            (m.notes || '').toLowerCase().includes(q) ||
+                            (m.type || '').toLowerCase().includes(q) ||
+                            (m.performedBy || m.user || '').toLowerCase().includes(q)
                         );
                         return filtered
                           .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
                           .map((m) => (
-                            <tr key={m.id}>
+                            <tr key={m.id || m._id || m.reference}>
                               <td>{m.timestamp ? m.timestamp.replace('T', ' ').slice(0, 16) : '-'}</td>
                               <td>
                                 <span className={`employees-status ${m.deltaQty >= 0 ? 'is-active' : 'is-warning'}`}>
@@ -504,8 +622,13 @@ export default function ReportsPage({ branchId, branches = [] }) {
                 </div>
 
                 {(() => {
+                  const q = (search || '').toLowerCase().trim();
                   const total = movements.filter(
-                    m => !search || (m.reference || '').toLowerCase().includes(search.toLowerCase()) || (m.notes || '').toLowerCase().includes(search.toLowerCase())
+                    m => !q ||
+                      (m.reference || '').toLowerCase().includes(q) ||
+                      (m.notes || '').toLowerCase().includes(q) ||
+                      (m.type || '').toLowerCase().includes(q) ||
+                      (m.performedBy || m.user || '').toLowerCase().includes(q)
                   ).length;
                   return (
                     <InventoryPagination

@@ -1,4 +1,4 @@
-﻿const express = require("express");
+const express = require("express");
 const {
   createBranch,
   getBranches,
@@ -6,6 +6,7 @@ const {
   getBranchById,
   updateBranch,
   updateBranchStatus,
+  deleteBranch,
 } = require("../controllers/branchController");
 const { protect, authorize } = require("../middleware/authMiddleware");
 
@@ -59,6 +60,12 @@ router.patch(
   "/:id/status",
   authorize("owner", "admin"),
   updateBranchStatus
+);
+
+router.delete(
+  "/:id",
+  authorize("owner", "admin"),
+  deleteBranch
 );
 
 module.exports = router;

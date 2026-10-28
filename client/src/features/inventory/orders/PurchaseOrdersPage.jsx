@@ -15,9 +15,9 @@ import { InventoryService } from '../services/inventoryService';
 import InventoryPagination from '../components/InventoryPagination';
 
 export default function PurchaseOrdersPage({ branchId, branches = [] }) {
-  const [orders, setOrders] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
-  const [ingredients, setIngredients] = useState([]);
+  const [orders, setOrders] = useState(() => PurchaseOrderService.getPurchaseOrders({ branchId }, branches));
+  const [suppliers, setSuppliers] = useState(() => SupplierService.getSuppliers());
+  const [ingredients, setIngredients] = useState(() => InventoryService.getIngredients());
 
   // Filters
   const [search, setSearch] = useState('');
@@ -58,29 +58,23 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
 
   const loadData = async (refresh = false) => {
     setIsSyncing(true);
+    setError('');
     try {
       const [remotePOs] = await Promise.all([
-        PurchaseOrderService.syncFromBackend(selectedBranch),
+        PurchaseOrderService.syncFromBackend(selectedBranch, branches),
         SupplierService.syncFromBackend(),
         InventoryService.syncFromBackend(selectedBranch)
       ]);
-      const fresh = remotePOs || PurchaseOrderService.getPurchaseOrders({
-        branchId: selectedBranch,
-        status: statusFilter,
-        supplierId: supplierFilter
-      });
-      setOrders(fresh);
+      setOrders(Array.isArray(remotePOs) ? remotePOs : PurchaseOrderService.getPurchaseOrders({ branchId: selectedBranch }, branches));
       setSuppliers(SupplierService.getSuppliers());
       setIngredients(InventoryService.getIngredients());
       if (refresh) setNotice('Purchase orders refreshed.');
     } catch (err) {
-      console.warn('PurchaseOrders sync error:', err.message);
-      const list = PurchaseOrderService.getPurchaseOrders({
-        branchId: selectedBranch,
-        status: statusFilter,
-        supplierId: supplierFilter
-      });
-      setOrders(list);
+      console.error('PurchaseOrders sync error:', err.message);
+      setError(err.message || 'Failed to load purchase orders from database');
+      setOrders(PurchaseOrderService.getPurchaseOrders({ branchId: selectedBranch }, branches));
+      setSuppliers(SupplierService.getSuppliers());
+      setIngredients(InventoryService.getIngredients());
     } finally {
       setIsSyncing(false);
     }
@@ -88,7 +82,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
 
   useEffect(() => {
     loadData();
-  }, [selectedBranch, statusFilter, supplierFilter]);
+  }, [selectedBranch, statusFilter, supplierFilter, branches]);
 
   const handleTransition = async (poId, nextStatus) => {
     try {
@@ -162,13 +156,32 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     setLineItems(updated);
   };
 
+  const handleOpenCreateModal = () => {
+    setError('');
+    setCreateError('');
+    const defaultBranch = (selectedBranch && selectedBranch !== 'all')
+      ? selectedBranch
+      : (branches[0]?.id || branches[0]?._id || branches[0]?.code || '');
+    setNewPoBranch(defaultBranch);
+    setExpectedDate(new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0]);
+    setLineItems([{ ingredientId: '', orderedQty: '', unitPrice: '', unit: 'kg' }]);
+    setIsCreateOpen(true);
+  };
+
   const handleCreatePO = async (e) => {
     e.preventDefault();
+    setCreateError('');
     if (!newPoSupplier) {
       setCreateError('Please select a supplier');
       return;
     }
-    if (!lineItems.some(i => i.ingredientId && Number(i.orderedQty) > 0)) {
+    const branchToUse = newPoBranch || (selectedBranch !== 'all' ? selectedBranch : (branches[0]?.id || branches[0]?._id || branches[0]?.code));
+    if (!branchToUse || branchToUse === 'all') {
+      setCreateError('Please select a specific receiving branch');
+      return;
+    }
+    const validItems = lineItems.filter(i => i.ingredientId && Number(i.orderedQty) > 0);
+    if (validItems.length === 0) {
       setCreateError('Please specify at least one valid line item with quantity');
       return;
     }
@@ -176,9 +189,9 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     try {
       await PurchaseOrderService.createPORemote({
         supplierId: newPoSupplier,
-        branchId: newPoBranch || (branches[0]?.id || branches[0]?._id),
+        branchId: branchToUse,
         expectedDate: expectedDate || new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
-        items: lineItems.filter(i => i.ingredientId && Number(i.orderedQty) > 0),
+        items: validItems,
         notes: 'Enterprise PO',
         createdBy: 'Procurement Specialist'
       });
@@ -186,7 +199,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
       setLineItems([{ ingredientId: '', orderedQty: '', unitPrice: '', unit: 'kg' }]);
       setCreateError('');
       setNotice('Purchase order created successfully.');
-      loadData();
+      await loadData(true);
     } catch (err) {
       setCreateError(err.message || 'PO creation failed');
     }
@@ -237,12 +250,16 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
 
   const formatBranch = (val) => {
     if (!val) return '—';
-    if (branchMap[val]) return branchMap[val];
-    if (typeof val === 'string' && val.startsWith('b_')) {
-      const clean = val.slice(2).replace(/_/g, ' ');
+    const key = typeof val === 'object' && val !== null ? (val._id || val.id || val.name || val.code) : val;
+    if (branchMap[key]) return branchMap[key];
+    if (branchMap[String(key)]) return branchMap[String(key)];
+    const found = branches.find(b => b.id === key || b._id === key || b.code === key || b.name === key);
+    if (found) return found.name;
+    if (typeof key === 'string' && key.startsWith('b_')) {
+      const clean = key.slice(2).replace(/_/g, ' ');
       return clean.charAt(0).toUpperCase() + clean.slice(1) + ' Branch';
     }
-    return val;
+    return String(key);
   };
 
   const ingredientMap = {};
@@ -277,13 +294,56 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     setCurrentPage(1);
   }, [search, selectedBranch, statusFilter, supplierFilter]);
 
+  // Helper to check branch match
+  const branchMatches = (poBranch, target) => {
+    if (!target || target === 'all') return true;
+    if (!poBranch) return false;
+    const poBId = typeof poBranch === 'object' ? (poBranch.id || poBranch._id || poBranch.code) : poBranch;
+    const b = branches.find(item => item.id === target || item._id === target || item.code === target);
+    const candidates = [target, b?.id, b?._id, b?.code].filter(Boolean).map(String);
+    return candidates.includes(String(poBId));
+  };
+
   // Filtered orders
   const filteredOrders = orders.filter((po) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    const poNum = (po.poNumber || '').toLowerCase();
-    const supName = (supplierMap[po.supplierId] || '').toLowerCase();
-    return poNum.includes(q) || supName.includes(q);
+    if (!po) return false;
+
+    // Status filter
+    if (statusFilter && statusFilter !== 'ALL' && po.status !== statusFilter) {
+      return false;
+    }
+
+    // Supplier filter
+    if (supplierFilter && supplierFilter !== 'ALL') {
+      const sId = String(po.supplierId || (typeof po.supplier === 'object' ? (po.supplier?._id || po.supplier?.id) : po.supplier) || '');
+      const filterId = String(supplierFilter);
+      const sObj = suppliers.find(s => s.id === supplierFilter || s._id === supplierFilter || s.code === supplierFilter || s.name === supplierFilter);
+      const supplierCandidates = [filterId, sObj?.id, sObj?._id, sObj?.code].filter(Boolean).map(String);
+      if (!supplierCandidates.includes(sId) && po.supplierName !== supplierFilter) {
+        return false;
+      }
+    }
+
+    // Branch filter
+    if (selectedBranch && selectedBranch !== 'all' && !branchMatches(po.branchId || po.branch, selectedBranch)) {
+      return false;
+    }
+
+    // Search query
+    if (search && search.trim() !== '') {
+      const q = search.toLowerCase();
+      const poNum = (po.poNumber || '').toLowerCase();
+      const supId = String(po.supplierId || (typeof po.supplier === 'object' ? (po.supplier?._id || po.supplier?.id) : po.supplier) || '');
+      const supName = (po.supplierName || supplierMap[supId] || supplierMap[po.supplierId] || '').toLowerCase();
+      const bName = (formatBranch(po.branchId || po.branch) || '').toLowerCase();
+      const hasItemMatch = Array.isArray(po.items) && po.items.some(it => {
+        const ingName = (ingredientMap[it.ingredientId] || it.name || '').toLowerCase();
+        return ingName.includes(q);
+      });
+      return poNum.includes(q) || supName.includes(q) || bName.includes(q) || hasItemMatch;
+    }
+
+    return true;
   });
 
   const totalItems = filteredOrders.length;
@@ -312,7 +372,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
           <button
             type="button"
             className="employees-button employees-button-primary"
-            onClick={() => setIsCreateOpen(true)}
+            onClick={handleOpenCreateModal}
           >
             <Plus size={16} />
             Create purchase order
@@ -391,7 +451,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
           >
             <option value="ALL">All suppliers</option>
             {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>{s.name}</option>
+              <option key={s.id || s._id} value={s.id || s._id}>{s.name}</option>
             ))}
           </select>
         </label>
@@ -607,6 +667,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
                     onChange={(e) => setNewPoBranch(e.target.value)}
                     required
                   >
+                    <option value="">Select a branch</option>
                     {branches.map((b) => (
                       <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
                     ))}

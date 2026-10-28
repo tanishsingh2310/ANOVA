@@ -4,7 +4,18 @@ export default function BatchTrackerModal({ isOpen, onClose, ingredient, branche
   if (!isOpen || !ingredient) return null;
 
   const branchMap = {};
-  branches.forEach(b => { branchMap[b.id || b._id] = b.name; });
+  if (Array.isArray(branches)) {
+    branches.forEach(b => {
+      if (!b) return;
+      if (b.id) branchMap[b.id] = b.name;
+      if (b._id) branchMap[String(b._id)] = b.name;
+      if (b.code) {
+        branchMap[b.code] = b.name;
+        branchMap[b.code.toUpperCase()] = b.name;
+        branchMap[b.code.toLowerCase()] = b.name;
+      }
+    });
+  }
 
   const batches = ingredient.batches || [];
   const today = new Date();
