@@ -198,8 +198,10 @@ const getIngredients = async (req, res, next) => {
           ? branchCode
           : null;
 
+      const branchQty = stockKey ? Number(stockMap.get(stockKey) || 0) : 0;
       item.stockByBranch = {
-        [branchCode]: stockKey ? Number(stockMap.get(stockKey) || 0) : 0
+        [branchCode]: branchQty,
+        [branchId]: branchQty
       };
 
       item.batches = (item.batches || []).filter((batch) =>
@@ -824,10 +826,13 @@ const createPurchaseOrder = async (req, res, next) => {
         orderedQty,
         unit: item.unit || ingredientDoc.baseUnit,
         unitPrice,
-        totalCost: lineTotal,
         receivedQty: 0
       });
     }
+
+    const subtotal = Number(req.body.subtotal !== undefined ? req.body.subtotal : calculatedTotal);
+    const tax = Number(req.body.tax !== undefined ? req.body.tax : 0);
+    const totalAmount = Number(req.body.totalAmount !== undefined ? req.body.totalAmount : (subtotal + tax));
 
     const po = new PurchaseOrder({
       poNumber,
@@ -836,16 +841,24 @@ const createPurchaseOrder = async (req, res, next) => {
       branchRef: scope.branchDoc._id,
       status: req.body.status || 'SUBMITTED',
       items: poItems,
-      totalAmount: calculatedTotal,
+      subtotal,
+      tax,
+      totalAmount,
       expectedDeliveryDate: finalExpectedDate ? new Date(finalExpectedDate) : new Date(Date.now() + 86400000 * 3),
       notes: notes || '',
-      createdBy: String(req.user._id),
-      createdByUser: req.user._id
+      createdBy: req.user?.name || String(req.user?._id || 'Procurement Specialist'),
+      createdByUser: req.user?._id
     });
 
     await po.save();
+    await po.populate('supplier', 'name code');
+    await po.populate('items.ingredient', 'name sku baseUnit');
     return sendResponse(res, 201, true, po, 'Purchase order drafted and submitted successfully');
   } catch (err) {
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors || {}).map(e => e.message).join(', ');
+      return sendResponse(res, 400, false, null, messages || err.message);
+    }
     if (err.statusCode) {
       return sendResponse(res, err.statusCode, false, null, err.message);
     }
@@ -1123,13 +1136,40 @@ const deletePurchaseOrder = async (req, res, next) => {
   try {
     const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
-    if (!['DRAFT', 'SUBMITTED'].includes(po.status)) {
-      return sendResponse(res, 400, false, null, `Cannot delete PO in '${po.status}' status.`);
+
+    const allowedRoles = INVENTORY_WRITE_ROLES.includes(req.user.role) || ENTERPRISE_ROLES.includes(req.user.role);
+    if (!allowedRoles) {
+      return sendResponse(res, 403, false, null, 'You do not have permission to delete purchase orders');
+    }
+
+    if (!ENTERPRISE_ROLES.includes(req.user.role)) {
+      const scope = await resolveInventoryBranch(req, req.user.branchId);
+      if (!scope.all) {
+        const matches = scope.keys.includes(String(po.branch)) ||
+          String(po.branchRef || '') === String(scope.branchDoc?._id || '');
+        if (!matches) {
+          return sendResponse(res, 403, false, null, 'You cannot delete a purchase order from another branch');
+        }
+      }
+    }
+
+    // Do not allow deleting purchase orders where goods have already been received into stock
+    if (po.status === 'RECEIVED' || po.status === 'PARTIALLY_RECEIVED' || (po.receiptHistory && po.receiptHistory.length > 0)) {
+      return sendResponse(
+        res,
+        400,
+        false,
+        null,
+        'Cannot delete purchase order with received goods. Stock has already been recorded in inventory.'
+      );
     }
 
     await PurchaseOrder.findByIdAndDelete(po._id);
-    sendResponse(res, 200, true, { id: req.params.id }, 'Purchase order cancelled and removed');
+    return sendResponse(res, 200, true, { id: po._id, poNumber: po.poNumber }, 'Purchase order deleted successfully');
   } catch (err) {
+    if (err.statusCode) {
+      return sendResponse(res, err.statusCode, false, null, err.message);
+    }
     next(err);
   }
 };
@@ -1578,18 +1618,196 @@ const getTransferById = async (req, res, next) => {
 };
 
 const deleteTransfer = async (req, res, next) => {
+  let session;
   try {
     const transfer = await findStockTransfer(req.params.id);
     if (!transfer) return sendResponse(res, 404, false, null, 'Transfer not found');
 
-    if (transfer.status === 'RECEIVED') {
-      return sendResponse(res, 400, false, null, 'Cannot delete an already received transfer.');
+    const allowedRoles = INVENTORY_WRITE_ROLES.includes(req.user.role) || ENTERPRISE_ROLES.includes(req.user.role);
+    if (!allowedRoles) {
+      return sendResponse(res, 403, false, null, 'You do not have permission to delete transfers');
     }
 
-    await StockTransfer.findByIdAndDelete(transfer._id);
-    return sendResponse(res, 200, true, { id: transfer._id }, 'Transfer deleted successfully');
+    if (!ENTERPRISE_ROLES.includes(req.user.role)) {
+      const scope = await resolveInventoryBranch(req, req.user.branchId);
+      if (!scope.all) {
+        const id = String(scope.branchDoc?._id || '');
+        const keys = scope.keys || [];
+        const matches = keys.includes(String(transfer.fromBranch)) ||
+          String(transfer.fromBranchRef || '') === id ||
+          keys.includes(String(transfer.toBranch)) ||
+          String(transfer.toBranchRef || '') === id;
+        if (!matches) {
+          return sendResponse(res, 403, false, null, 'You cannot delete a transfer unrelated to your assigned branch');
+        }
+      }
+    }
+
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const Branch = mongoose.model('Branch');
+
+      async function resolveBranchDoc(val, ref) {
+        if (ref && mongoose.isValidObjectId(ref)) {
+          const doc = await Branch.findById(ref).session(session);
+          if (doc) return doc;
+        }
+        if (val && mongoose.isValidObjectId(val)) {
+          const doc = await Branch.findById(val).session(session);
+          if (doc) return doc;
+        }
+        if (val && typeof val === 'string') {
+          const doc = await Branch.findOne({ code: val.toUpperCase() }).session(session);
+          if (doc) return doc;
+        }
+        return null;
+      }
+
+      const sourceBranchDoc = await resolveBranchDoc(transfer.fromBranch, transfer.fromBranchRef);
+      const destBranchDoc = await resolveBranchDoc(transfer.toBranch, transfer.toBranchRef);
+      const sourceKey = sourceBranchDoc ? String(sourceBranchDoc.code) : String(transfer.fromBranch);
+      const destKey = destBranchDoc ? String(destBranchDoc.code) : String(transfer.toBranch);
+      const sourceRefId = sourceBranchDoc ? sourceBranchDoc._id : (mongoose.isValidObjectId(transfer.fromBranchRef) ? transfer.fromBranchRef : (mongoose.isValidObjectId(transfer.fromBranch) ? transfer.fromBranch : null));
+      const destRefId = destBranchDoc ? destBranchDoc._id : (mongoose.isValidObjectId(transfer.toBranchRef) ? transfer.toBranchRef : (mongoose.isValidObjectId(transfer.toBranch) ? transfer.toBranch : null));
+
+      if (transfer.status === 'RECEIVED') {
+        // Transfer was received. Destination has the stock; origin was deducted.
+        // Step 1: Verify destination has sufficient stock to reverse
+        for (const item of transfer.items) {
+          const ingredient = await Ingredient.findById(item.ingredient).session(session);
+          if (!ingredient) {
+            const err = new Error(`Ingredient ${item.ingredient} was not found to reverse transfer`);
+            err.statusCode = 404;
+            throw err;
+          }
+
+          const destStockKeys = [destKey, String(destRefId)].filter(Boolean);
+          const currentDestStock = destStockKeys.reduce((max, k) => Math.max(max, Number(ingredient.stockByBranch.get(k) || 0)), 0);
+          if (currentDestStock < item.qty) {
+            const err = new Error(`Cannot delete transfer: Insufficient stock at destination branch (${destKey}) for ${ingredient.name} to reverse transfer. Available: ${currentDestStock}, Required: ${item.qty}`);
+            err.statusCode = 400;
+            throw err;
+          }
+        }
+
+        // Step 2: Deduct from destination and restore to origin
+        for (const item of transfer.items) {
+          const ingredient = await Ingredient.findById(item.ingredient).session(session);
+          const destStockKeys = [destKey, String(destRefId)].filter(Boolean);
+          const currentDestStock = destStockKeys.reduce((max, k) => Math.max(max, Number(ingredient.stockByBranch.get(k) || 0)), 0);
+
+          depleteBatchesFIFO(
+            ingredient.batches,
+            destStockKeys,
+            item.qty,
+            item.batchNumber || null
+          );
+
+          const newDestStock = Math.max(0, currentDestStock - item.qty);
+          ingredient.stockByBranch.set(destKey, newDestStock);
+          if (destRefId) ingredient.stockByBranch.set(String(destRefId), newDestStock);
+
+          const sourceStockKeys = [sourceKey, String(sourceRefId)].filter(Boolean);
+          const currentSourceStock = sourceStockKeys.reduce((max, k) => Math.max(max, Number(ingredient.stockByBranch.get(k) || 0)), 0);
+          const newSourceStock = currentSourceStock + item.qty;
+          ingredient.stockByBranch.set(sourceKey, newSourceStock);
+          if (sourceRefId) ingredient.stockByBranch.set(String(sourceRefId), newSourceStock);
+
+          ingredient.batches.push({
+            batchNumber: item.batchNumber || `BAT-REV-${Date.now().toString().slice(-6)}`,
+            branch: sourceKey,
+            branchRef: sourceRefId || undefined,
+            quantity: item.qty,
+            expiryDate: new Date(Date.now() + 30 * 86400000),
+            receivedCost: Number(item.unitCost || ingredient.unitCost || 0)
+          });
+
+          await ingredient.save({ session });
+
+          await StockMovement.create([{
+            type: 'STOCK_ADJUSTMENT',
+            reference: `CANCEL-${transfer.transferNumber}`,
+            ingredient: ingredient._id,
+            branch: destKey,
+            branchRef: destRefId || undefined,
+            deltaQty: -item.qty,
+            unit: ingredient.baseUnit,
+            resultingBalance: newDestStock,
+            performedBy: String(req.user._id),
+            performedByUser: req.user._id,
+            notes: `Transfer ${transfer.transferNumber} deleted/reversed. Deducted from destination ${destKey}.`
+          }], { session });
+
+          await StockMovement.create([{
+            type: 'STOCK_ADJUSTMENT',
+            reference: `CANCEL-${transfer.transferNumber}`,
+            ingredient: ingredient._id,
+            branch: sourceKey,
+            branchRef: sourceRefId || undefined,
+            deltaQty: item.qty,
+            unit: ingredient.baseUnit,
+            resultingBalance: newSourceStock,
+            performedBy: String(req.user._id),
+            performedByUser: req.user._id,
+            notes: `Transfer ${transfer.transferNumber} deleted/reversed. Restored to origin ${sourceKey}.`
+          }], { session });
+        }
+      } else {
+        // Transfer was IN_TRANSIT (or other unreceived status). Stock was deducted from source upon dispatch. Restore it!
+        for (const item of transfer.items) {
+          const ingredient = await Ingredient.findById(item.ingredient).session(session);
+          if (!ingredient) continue;
+
+          const sourceStockKeys = [sourceKey, String(sourceRefId)].filter(Boolean);
+          const currentSourceStock = sourceStockKeys.reduce((max, k) => Math.max(max, Number(ingredient.stockByBranch.get(k) || 0)), 0);
+          const newSourceStock = currentSourceStock + item.qty;
+          ingredient.stockByBranch.set(sourceKey, newSourceStock);
+          if (sourceRefId) ingredient.stockByBranch.set(String(sourceRefId), newSourceStock);
+
+          ingredient.batches.push({
+            batchNumber: item.batchNumber || `BAT-REV-${Date.now().toString().slice(-6)}`,
+            branch: sourceKey,
+            branchRef: sourceRefId || undefined,
+            quantity: item.qty,
+            expiryDate: new Date(Date.now() + 30 * 86400000),
+            receivedCost: Number(item.unitCost || ingredient.unitCost || 0)
+          });
+
+          await ingredient.save({ session });
+
+          await StockMovement.create([{
+            type: 'STOCK_ADJUSTMENT',
+            reference: `CANCEL-${transfer.transferNumber}`,
+            ingredient: ingredient._id,
+            branch: sourceKey,
+            branchRef: sourceRefId || undefined,
+            deltaQty: item.qty,
+            unit: ingredient.baseUnit,
+            resultingBalance: newSourceStock,
+            performedBy: String(req.user._id),
+            performedByUser: req.user._id,
+            notes: `Transfer ${transfer.transferNumber} deleted while in transit. Stock restored to ${sourceKey}.`
+          }], { session });
+        }
+      }
+
+      await StockTransfer.findByIdAndDelete(transfer._id).session(session);
+    });
+
+    return sendResponse(
+      res,
+      200,
+      true,
+      { id: transfer._id, transferNumber: transfer.transferNumber },
+      'Transfer deleted and inventory movements reversed successfully'
+    );
   } catch (err) {
-    next(err);
+    if (err.statusCode) {
+      return sendResponse(res, err.statusCode, false, null, err.message);
+    }
+    return next(err);
+  } finally {
+    if (session) await session.endSession();
   }
 };
 
@@ -1875,6 +2093,8 @@ const getMovements = async (req, res, next) => {
 const getDashboardKPIs = async (req, res, next) => {
   try {
     const { branch = 'all' } = req.query;
+    const scope = await resolveInventoryBranch(req, branch);
+
     const ingredients = await Ingredient.find();
     const pos = await PurchaseOrder.find();
     const transfers = await StockTransfer.find();
@@ -1886,16 +2106,9 @@ const getDashboardKPIs = async (req, res, next) => {
     let outOfStockAlerts = 0;
 
     for (const ing of ingredients) {
-      let branchStock = 0;
-      if (branch === 'all') {
-        for (const [_, qty] of ing.stockByBranch.entries()) {
-          branchStock += Number(qty || 0);
-        }
-      } else {
-        branchStock = Number(ing.stockByBranch.get(branch) || 0);
-      }
+      const branchStock = getScopedBranchStock(ing, scope);
 
-      totalStockValue += branchStock * ing.unitCost;
+      totalStockValue += branchStock * (ing.unitCost || 0);
 
       if (branchStock <= 0) {
         outOfStockAlerts++;
@@ -1904,10 +2117,18 @@ const getDashboardKPIs = async (req, res, next) => {
       }
     }
 
-    const activePOs = pos.filter(p => (branch === 'all' || p.branch === branch) && ['SUBMITTED', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(p.status)).length;
-    const inTransitTransfers = transfers.filter(t => (branch === 'all' || t.fromBranch === branch || t.toBranch === branch) && t.status === 'IN_TRANSIT').length;
+    const activePOs = pos.filter(p => {
+      if (!['SUBMITTED', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(p.status)) return false;
+      return inventoryRecordMatchesBranch(p, scope, ['branch', 'branchRef']);
+    }).length;
+
+    const inTransitTransfers = transfers.filter(t => {
+      if (t.status !== 'IN_TRANSIT') return false;
+      return inventoryRecordMatchesBranch(t, scope, ['fromBranch', 'toBranch', 'fromBranchRef', 'toBranchRef']);
+    }).length;
+
     const totalWastageCost = wastages
-      .filter(w => branch === 'all' || w.branch === branch)
+      .filter(w => inventoryRecordMatchesBranch(w, scope, ['branch', 'branchRef']))
       .reduce((sum, w) => sum + (w.totalCost || 0), 0);
 
     sendResponse(res, 200, true, {
@@ -1921,6 +2142,9 @@ const getDashboardKPIs = async (req, res, next) => {
       totalWastageCost: Math.round(totalWastageCost * 100) / 100
     }, 'Dashboard KPIs calculated');
   } catch (err) {
+    if (err.statusCode) {
+      return sendResponse(res, err.statusCode, false, null, err.message);
+    }
     next(err);
   }
 };
@@ -1928,24 +2152,21 @@ const getDashboardKPIs = async (req, res, next) => {
 const getValuation = async (req, res, next) => {
   try {
     const { branch = 'all', method = 'FIFO' } = req.query;
+    const scope = await resolveInventoryBranch(req, branch);
     const ingredients = await Ingredient.find().sort({ name: 1 });
 
     let totalPortfolioValue = 0;
     const items = [];
 
     for (const ing of ingredients) {
-      let branchStock = 0;
-      if (branch === 'all') {
-        for (const [_, qty] of ing.stockByBranch.entries()) {
-          branchStock += Number(qty || 0);
-        }
-      } else {
-        branchStock = Number(ing.stockByBranch.get(branch) || 0);
-      }
+      const branchStock = getScopedBranchStock(ing, scope);
 
-      let activeBatches = ing.batches.filter(b => b.quantity > 0);
-      if (branch !== 'all') {
-        activeBatches = activeBatches.filter(b => b.branch === branch);
+      let activeBatches = (ing.batches || []).filter(b => (b.quantity || 0) > 0);
+      if (!scope.all) {
+        activeBatches = activeBatches.filter(b =>
+          scope.keys.includes(String(b.branch)) ||
+          (b.branchRef && String(b.branchRef) === String(scope.branchDoc?._id))
+        );
       }
 
       let calculatedValue = 0;
@@ -1956,21 +2177,21 @@ const getValuation = async (req, res, next) => {
           let remainingQty = branchStock;
           for (const b of sorted) {
             const take = Math.min(b.quantity, remainingQty);
-            calculatedValue += take * (b.receivedCost || ing.unitCost);
+            calculatedValue += take * (b.receivedCost || ing.unitCost || 0);
             remainingQty -= take;
             if (remainingQty <= 0) break;
           }
           if (remainingQty > 0) {
-            calculatedValue += remainingQty * ing.unitCost;
+            calculatedValue += remainingQty * (ing.unitCost || 0);
           }
         } else {
-          const totalBatchCost = activeBatches.reduce((acc, b) => acc + (b.quantity * (b.receivedCost || ing.unitCost)), 0);
+          const totalBatchCost = activeBatches.reduce((acc, b) => acc + (b.quantity * (b.receivedCost || ing.unitCost || 0)), 0);
           const totalBatchQty = activeBatches.reduce((acc, b) => acc + b.quantity, 0);
-          const avgUnitCost = totalBatchQty > 0 ? (totalBatchCost / totalBatchQty) : ing.unitCost;
+          const avgUnitCost = totalBatchQty > 0 ? (totalBatchCost / totalBatchQty) : (ing.unitCost || 0);
           calculatedValue = branchStock * avgUnitCost;
         }
       } else {
-        calculatedValue = branchStock * ing.unitCost;
+        calculatedValue = branchStock * (ing.unitCost || 0);
       }
 
       totalPortfolioValue += calculatedValue;
@@ -1993,12 +2214,15 @@ const getValuation = async (req, res, next) => {
       method,
       branch,
       branchId: branch,
-      branchName: branch === 'all' ? 'All Enterprise Branches' : branch,
+      branchName: branch === 'all' ? 'All Enterprise Branches' : (scope.branchDoc?.name || branch),
       generatedAt: new Date().toISOString(),
       totalPortfolioValue: Math.round(totalPortfolioValue * 100) / 100,
       items
     }, `Inventory valuation using ${method}`);
   } catch (err) {
+    if (err.statusCode) {
+      return sendResponse(res, err.statusCode, false, null, err.message);
+    }
     next(err);
   }
 };

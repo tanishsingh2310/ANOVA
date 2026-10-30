@@ -65,7 +65,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
       category: categoryFilter,
       search,
       stockStatus: statusFilter
-    });
+    }, branches);
     setIngredients(ings);
     setCategories(InventoryService.getCategories());
     setSuppliers(SupplierService.getSuppliers());
@@ -81,7 +81,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
         category: categoryFilter,
         search,
         stockStatus: statusFilter
-      });
+      }, branches);
       setIngredients(freshIngs);
       setSuppliers(SupplierService.getSuppliers());
       if (refresh) setNotice('Ingredient catalog refreshed.');
@@ -190,10 +190,18 @@ export default function IngredientsPage({ branchId, branches = [] }) {
   };
 
   const getBranchStock = (ing) => {
+    if (!ing || !ing.stockByBranch) return 0;
     if (selectedBranch === 'all') {
-      return Object.values(ing.stockByBranch || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+      return Object.values(ing.stockByBranch).reduce((s, v) => s + (Number(v) || 0), 0);
     }
-    return Number(ing.stockByBranch?.[selectedBranch] || 0);
+    const b = branches.find(item => item.id === selectedBranch || item._id === selectedBranch || item.code === selectedBranch);
+    const candidates = [selectedBranch, b?.code, b?.id, b?._id].filter(Boolean);
+    for (const key of candidates) {
+      if (ing.stockByBranch[key] !== undefined) {
+        return Number(ing.stockByBranch[key]);
+      }
+    }
+    return 0;
   };
 
   const getStatusClass = (level) => {
@@ -339,7 +347,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
                   .slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
                   .map((ing) => {
                   const qty = getBranchStock(ing);
-                  const status = InventoryService.calculateStockStatus(ing, selectedBranch);
+                  const status = InventoryService.calculateStockStatus(ing, selectedBranch, branches);
                   const totalVal = Math.round(qty * (Number(ing.unitCost) || 0));
 
                   return (

@@ -98,7 +98,11 @@ export const SupplierService = {
     try {
       const raw = localStorage.getItem('anova_inventory_ingredients');
       const items = raw ? JSON.parse(raw) : [];
-      return (Array.isArray(items) ? items : []).filter(i => i.primarySupplierId === supplierId);
+      const sId = String(supplierId || '');
+      return (Array.isArray(items) ? items : []).filter(i => {
+        const primId = String(i.primarySupplierId || (typeof i.primarySupplier === 'object' ? (i.primarySupplier?._id || i.primarySupplier?.id) : i.primarySupplier) || '');
+        return primId === sId;
+      });
     } catch {
       return [];
     }
@@ -184,24 +188,33 @@ export const SupplierService = {
 
     const endpoint = isUpdate ? `/api/inventory/suppliers/${targetId}` : '/api/inventory/suppliers';
     const method = isUpdate ? 'PUT' : 'POST';
-    const res = await apiClient(endpoint, { method, body: payload });
-    if (res && res.success && res.data) {
-      const normalized = normalizeSupplier(res.data);
-      const list = getSuppliersData();
-      const idx = list.findIndex(s => s.id === normalized.id || s._id === normalized.id);
-      if (idx !== -1) {
-        list[idx] = normalized;
-      } else {
-        list.unshift(normalized);
+    try {
+      const res = await apiClient(endpoint, { method, body: payload });
+      if (res && res.success && res.data) {
+        const normalized = normalizeSupplier(res.data);
+        const list = getSuppliersData();
+        const idx = list.findIndex(s => s.id === normalized.id || s._id === normalized.id);
+        if (idx !== -1) {
+          list[idx] = normalized;
+        } else {
+          list.unshift(normalized);
+        }
+        saveSuppliersData(list);
+        return normalized;
       }
-      saveSuppliersData(list);
-      return normalized;
+    } catch (err) {
+      console.warn('[SupplierService] Remote save supplier failed, saving locally:', err.message);
+      return this.saveSupplier(supplierData);
     }
-    throw new Error(res?.message || 'Failed to save supplier in database');
+    return this.saveSupplier(supplierData);
   },
 
   async deleteSupplierRemote(id) {
-    await apiClient(`/api/inventory/suppliers/${id}`, { method: 'DELETE' });
+    try {
+      await apiClient(`/api/inventory/suppliers/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('[SupplierService] Remote delete supplier failed, deleting locally:', err.message);
+    }
     return this.deleteSupplier(id);
   },
 

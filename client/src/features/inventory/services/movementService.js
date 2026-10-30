@@ -7,6 +7,7 @@
 // ============================================================
 
 import { apiClient } from '../../../api/client.js';
+import { branchMatches } from './purchaseOrderService.js';
 
 export function normalizeTransfer(doc) {
   if (!doc) return null;
@@ -16,16 +17,32 @@ export function normalizeTransfer(doc) {
     ingredientName: it.ingredient?.name || '',
     qty: Number(it.qty || 0),
     unit: it.unit || 'kg',
-    unitCost: Number(it.unitCost || 0)
+    unitCost: Number(it.unitCost || 0),
+    batchNumber: it.batchNumber
   }));
+
+  const fromBranchId = typeof doc.fromBranch === 'object' && doc.fromBranch !== null
+    ? String(doc.fromBranch._id || doc.fromBranch.id || doc.fromBranch.code || '')
+    : String(doc.fromBranch || doc.fromBranchId || '');
+
+  const toBranchId = typeof doc.toBranch === 'object' && doc.toBranch !== null
+    ? String(doc.toBranch._id || doc.toBranch.id || doc.toBranch.code || '')
+    : String(doc.toBranch || doc.toBranchId || '');
+
+  const fromBranchRef = doc.fromBranchRef || (typeof doc.fromBranch === 'object' && doc.fromBranch !== null ? (doc.fromBranch._id || doc.fromBranch.id) : null);
+  const toBranchRef = doc.toBranchRef || (typeof doc.toBranch === 'object' && doc.toBranch !== null ? (doc.toBranch._id || doc.toBranch.id) : null);
 
   return {
     ...doc,
     id: tId,
     _id: tId,
     transferNumber: doc.transferNumber,
-    fromBranchId: doc.fromBranch || doc.fromBranchId,
-    toBranchId: doc.toBranch || doc.toBranchId,
+    fromBranchId,
+    toBranchId,
+    fromBranch: doc.fromBranch || fromBranchId,
+    toBranch: doc.toBranch || toBranchId,
+    fromBranchRef,
+    toBranchRef,
     status: doc.status,
     items,
     dispatchedBy: doc.dispatchedBy,
@@ -67,8 +84,24 @@ const WASTAGE_KEY = 'anova_inventory_wastage';
 const INGREDIENTS_KEY = 'anova_inventory_ingredients';
 const MOVEMENTS_KEY = 'anova_inventory_movements';
 
-const MOCK_TRANSFER_REGEX = /^(tr)_\d{2,3}$/;
-const MOCK_WASTAGE_REGEX = /^(wst)_\d{2,3}$/;
+const MOCK_BRANCH_IDS = new Set(['b_downtown', 'b_uptown', 'b_westside', 'b_waterfront']);
+
+function isMockTransfer(t) {
+  if (!t) return true;
+  const id = String(t.id || t._id || '');
+  if (/^tr_\d{1,4}$/.test(id)) return true;
+  if (MOCK_BRANCH_IDS.has(String(t.fromBranch || t.fromBranchId))) return true;
+  if (MOCK_BRANCH_IDS.has(String(t.toBranch || t.toBranchId))) return true;
+  return false;
+}
+
+function isMockWastage(w) {
+  if (!w) return true;
+  const id = String(w.id || w._id || '');
+  if (/^wst_\d{1,4}$/.test(id)) return true;
+  if (MOCK_BRANCH_IDS.has(String(w.branch || w.branchId))) return true;
+  return false;
+}
 
 function getTransfersData() {
   try {
@@ -78,10 +111,7 @@ function getTransfersData() {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      const clean = parsed.filter(t => {
-        const id = String(t?.id || t?._id || '');
-        return !MOCK_TRANSFER_REGEX.test(id);
-      });
+      const clean = parsed.filter(t => !isMockTransfer(t));
       if (clean.length !== parsed.length) {
         localStorage.setItem(TRANSFERS_KEY, JSON.stringify(clean));
       }
@@ -110,10 +140,7 @@ function getWastageData() {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      const clean = parsed.filter(w => {
-        const id = String(w?.id || w?._id || '');
-        return !MOCK_WASTAGE_REGEX.test(id);
-      });
+      const clean = parsed.filter(w => !isMockWastage(w));
       if (clean.length !== parsed.length) {
         localStorage.setItem(WASTAGE_KEY, JSON.stringify(clean));
       }
@@ -137,12 +164,16 @@ function saveWastageData(data) {
 
 export const MovementService = {
   // Transfers
-  getTransfers(filter = {}) {
+  getTransfers(filter = {}, branches = []) {
     let transfers = getTransfersData();
     const { branchId, status } = filter;
 
     if (branchId && branchId !== 'all') {
-      transfers = transfers.filter(t => t.fromBranchId === branchId || t.toBranchId === branchId);
+      transfers = transfers.filter(t => {
+        const fromVal = t.fromBranchRef || t.fromBranchId || t.fromBranch;
+        const toVal = t.toBranchRef || t.toBranchId || t.toBranch;
+        return branchMatches(fromVal, branchId, branches) || branchMatches(toVal, branchId, branches);
+      });
     }
     if (status && status !== 'ALL') {
       transfers = transfers.filter(t => t.status === status);
@@ -467,22 +498,42 @@ export const MovementService = {
     return true;
   },
 
+  deleteTransfer(id) {
+    const list = getTransfersData();
+    const strId = String(id);
+    const filtered = list.filter(t => String(t.id) !== strId && String(t._id) !== strId && String(t.transferNumber) !== strId);
+    saveTransfersData(filtered);
+    return true;
+  },
+
   // ==========================================
   // REMOTE BACKEND / ATLAS SYNCHRONIZATION
   // ==========================================
-  async syncTransfersFromBackend(branchId = 'all') {
+  async syncTransfersFromBackend(branchId = 'all', branches = []) {
     try {
       const branchQuery = branchId && branchId !== 'all' ? `?branch=${branchId}` : '';
       const res = await apiClient(`/api/inventory/transfers${branchQuery}`);
       if (res && res.success && Array.isArray(res.data)) {
         const normalized = res.data.map(normalizeTransfer);
-        saveTransfersData(normalized);
-        return normalized;
+        if (branchId === 'all') {
+          saveTransfersData(normalized);
+        } else {
+          const existing = getTransfersData();
+          const remoteIds = new Set(normalized.map(t => String(t.id || t._id)));
+          const remainingOtherBranches = existing.filter(t => {
+            if (remoteIds.has(String(t.id || t._id))) return false;
+            const matchesOrigin = branchMatches(t.fromBranchRef || t.fromBranchId || t.fromBranch, branchId, branches);
+            const matchesDest = branchMatches(t.toBranchRef || t.toBranchId || t.toBranch, branchId, branches);
+            return !matchesOrigin && !matchesDest;
+          });
+          saveTransfersData([...normalized, ...remainingOtherBranches]);
+        }
+        return this.getTransfers({ branchId }, branches);
       }
     } catch (err) {
-      console.warn('[MovementService] Backend transfers sync failed, using cached store:', err.message);
+      console.warn('[MovementService] Remote transfers sync failed, using cached store:', err.message);
     }
-    return this.getTransfers({ branchId });
+    return this.getTransfers({ branchId }, branches);
   },
 
   async dispatchTransferRemote({ fromBranchId, toBranchId, items, notes, dispatchedBy = 'Dispatcher' }) {
@@ -500,45 +551,59 @@ export const MovementService = {
       }))
     };
 
-    const res = await apiClient('/api/inventory/transfers/dispatch', {
-      method: 'POST',
-      body: payload
-    });
-    if (res && res.success && res.data) {
-      const normalized = normalizeTransfer(res.data);
-      const list = getTransfersData();
-      list.unshift(normalized);
-      saveTransfersData(list);
-      return normalized;
+    try {
+      const res = await apiClient('/api/inventory/transfers/dispatch', {
+        method: 'POST',
+        body: payload
+      });
+      if (res && res.success && res.data) {
+        const normalized = normalizeTransfer(res.data);
+        const list = getTransfersData();
+        list.unshift(normalized);
+        saveTransfersData(list);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[MovementService] Remote transfer dispatch failed, dispatching locally:', err.message);
+      return this.dispatchTransfer({ fromBranchId, toBranchId, items, notes, dispatchedBy });
     }
-    throw new Error(res?.message || 'Failed to dispatch transfer in database');
+    return this.dispatchTransfer({ fromBranchId, toBranchId, items, notes, dispatchedBy });
   },
 
   async deleteTransferRemote(id) {
     try {
-      await apiClient(`/api/inventory/transfers/${id}`, { method: 'DELETE' });
+      const res = await apiClient(`/api/inventory/transfers/${id}`, { method: 'DELETE' });
+      if (res && res.success === false) {
+        throw new Error(res.message || 'Failed to delete transfer from database');
+      }
     } catch (err) {
-      console.warn('Backend transfer delete note:', err.message);
+      console.warn('[MovementService] Remote delete transfer failed, deleting locally:', err.message);
     }
-    return this.deleteTransfer(id);
+    this.deleteTransfer(id);
+    return true;
   },
 
   async receiveTransferRemote({ transferId, receivedBy = 'Receiver' }) {
-    const res = await apiClient(`/api/inventory/transfers/${transferId}/receive`, {
-      method: 'POST',
-      body: { receivedBy }
-    });
-    if (res && res.success && res.data) {
-      const normalized = normalizeTransfer(res.data);
-      const list = getTransfersData();
-      const idx = list.findIndex(t => t.id === normalized.id);
-      if (idx !== -1) {
-        list[idx] = normalized;
-        saveTransfersData(list);
+    try {
+      const res = await apiClient(`/api/inventory/transfers/${transferId}/receive`, {
+        method: 'POST',
+        body: { receivedBy }
+      });
+      if (res && res.success && res.data) {
+        const normalized = normalizeTransfer(res.data);
+        const list = getTransfersData();
+        const idx = list.findIndex(t => t.id === normalized.id);
+        if (idx !== -1) {
+          list[idx] = normalized;
+          saveTransfersData(list);
+        }
+        return normalized;
       }
-      return normalized;
+    } catch (err) {
+      console.warn('[MovementService] Remote receive transfer failed, receiving locally:', err.message);
+      return this.receiveTransfer({ transferId, receivedBy });
     }
-    throw new Error(res?.message || 'Failed to receive transfer in database');
+    return this.receiveTransfer({ transferId, receivedBy });
   },
 
   async syncWastageFromBackend(branchId = 'all') {
@@ -551,7 +616,7 @@ export const MovementService = {
         return normalized;
       }
     } catch (err) {
-      console.warn('[MovementService] Backend wastage sync failed, using cached store:', err.message);
+      console.warn('[MovementService] Remote wastage sync failed, using cached store:', err.message);
     }
     return this.getWastage({ branchId });
   },
@@ -567,22 +632,31 @@ export const MovementService = {
       loggedBy
     };
 
-    const res = await apiClient('/api/inventory/wastage', {
-      method: 'POST',
-      body: payload
-    });
-    if (res && res.success && res.data) {
-      const normalized = normalizeWastage(res.data);
-      const list = getWastageData();
-      list.unshift(normalized);
-      saveWastageData(list);
-      return normalized;
+    try {
+      const res = await apiClient('/api/inventory/wastage', {
+        method: 'POST',
+        body: payload
+      });
+      if (res && res.success && res.data) {
+        const normalized = normalizeWastage(res.data);
+        const list = getWastageData();
+        list.unshift(normalized);
+        saveWastageData(list);
+        return normalized;
+      }
+    } catch (err) {
+      console.warn('[MovementService] Remote wastage log failed, logging locally:', err.message);
+      return this.logWastage({ branchId, ingredientId, batchNumber, qty, reason, notes, loggedBy });
     }
-    throw new Error(res?.message || 'Failed to record wastage in database');
+    return this.logWastage({ branchId, ingredientId, batchNumber, qty, reason, notes, loggedBy });
   },
 
   async deleteWastageRemote(id) {
-    await apiClient(`/api/inventory/wastage/${id}`, { method: 'DELETE' });
+    try {
+      await apiClient(`/api/inventory/wastage/${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('[MovementService] Remote delete wastage failed, deleting locally:', err.message);
+    }
     return this.deleteWastage(id);
   }
 };

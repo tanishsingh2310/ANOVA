@@ -1,4 +1,4 @@
-﻿const mongoose = require("mongoose");
+const mongoose = require("mongoose");
 const Branch = require("../models/Branch");
 const { writeAuditLog } = require("../utils/auditLogger");
 
@@ -156,8 +156,10 @@ exports.getBranches = async (req, res) => {
     const branches = await Branch.find(filter).sort({ name: 1 });
 
     return res.status(200).json({
+      success: true,
       count: branches.length,
       branches,
+      data: branches,
     });
   } catch (error) {
     return handleDatabaseError(error, res, "Branch listing error");
@@ -423,5 +425,66 @@ exports.updateBranchStatus = async (req, res) => {
     });
   } catch (error) {
     return handleDatabaseError(error, res, "Branch status update error");
+  }
+};
+
+exports.deleteBranch = async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({
+        message: "Invalid branch ID.",
+      });
+    }
+
+    const branch = await Branch.findById(id);
+    if (!branch) {
+      return res.status(404).json({
+        message: "Branch not found.",
+      });
+    }
+
+    // Safety check: Prevent deletion if there are active in-transit transfers involving this branch
+    try {
+      const StockTransfer = mongoose.model("StockTransfer");
+      const activeTransfer = await StockTransfer.findOne({
+        $or: [
+          { fromBranchRef: id, status: "IN_TRANSIT" },
+          { toBranchRef: id, status: "IN_TRANSIT" },
+          { fromBranch: branch.code, status: "IN_TRANSIT" },
+          { toBranch: branch.code, status: "IN_TRANSIT" }
+        ]
+      });
+      if (activeTransfer) {
+        return res.status(400).json({
+          message: `Cannot delete branch with active in-transit transfer (${activeTransfer.transferNumber}).`
+        });
+      }
+    } catch {
+      // In case StockTransfer model is not registered yet, proceed
+    }
+
+    await Branch.findByIdAndDelete(id);
+
+    await writeAuditLog({
+      actor: req.user,
+      action: "BRANCH_DELETED",
+      resource: "Branch",
+      resourceId: branch._id,
+      branch: branch._id,
+      details: {
+        branchName: branch.name,
+        branchCode: branch.code,
+      },
+      ipAddress: req.ip,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Branch "${branch.name}" deleted successfully.`,
+    });
+  } catch (error) {
+    return handleDatabaseError(error, res, "Branch deletion error");
   }
 };

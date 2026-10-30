@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import './dashboard.css'
 import InventoryModule from '../inventory/InventoryModule.jsx'
 import MenuManagement from '../restaurant/menu/MenuManagement.jsx'
@@ -259,10 +259,7 @@ const [selectedBranchId, setSelectedBranchId] = useState('all')
 const [branchLoading, setBranchLoading] = useState(true)
 const [branchError, setBranchError] = useState('')
 
-useEffect(() => {
-  const controller = new AbortController()
-
-  async function loadBranches() {
+  const loadBranches = useCallback(async () => {
     setBranchLoading(true)
     setBranchError('')
 
@@ -274,9 +271,8 @@ useEffect(() => {
 
       const response = await fetch(`${apiBase}/api/branches`, {
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        signal: controller.signal,
       })
 
       const data = await response.json()
@@ -287,42 +283,35 @@ useEffect(() => {
 
       const availableBranches = Array.isArray(data.branches)
         ? data.branches
-        : []
+        : (Array.isArray(data.data) ? data.data : [])
 
       setBranches(availableBranches)
 
-      
-setSelectedBranchId((currentId) => {
-  if (currentId === 'all') {
-    return 'all'
-  }
+      setSelectedBranchId((currentId) => {
+        if (currentId === 'all') {
+          return 'all'
+        }
 
-  if (availableBranches.some((branch) => branch._id === currentId)) {
-    return currentId
-  }
+        if (availableBranches.some((branch) => branch._id === currentId || branch.id === currentId)) {
+          return currentId
+        }
 
-  return 'all'
-})
-
+        return 'all'
+      })
 
       if (availableBranches.length === 0) {
         setBranchError('No active branches are available to your account.')
       }
     } catch (error) {
-      if (error.name !== 'AbortError') {
-        setBranchError(error.message || 'Unable to load branches.')
-      }
+      setBranchError(error.message || 'Unable to load branches.')
     } finally {
-      if (!controller.signal.aborted) {
-        setBranchLoading(false)
-      }
+      setBranchLoading(false)
     }
-  }
+  }, [])
 
-  loadBranches()
-
-  return () => controller.abort()
-}, [])
+  useEffect(() => {
+    loadBranches()
+  }, [loadBranches])
 
 
   const [expandedGroups, setExpandedGroups] = useState({
@@ -604,6 +593,7 @@ setSelectedBranchId((currentId) => {
     activeSubpage="inv-dashboard"
     showSubnav={false}
     selectedBranch={selectedBranchId || 'all'}
+    branches={branches}
     onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
   />
 ) : activePage === 'Ingredients & Stock' ? (
@@ -611,6 +601,7 @@ setSelectedBranchId((currentId) => {
     activeSubpage="inv-ingredients"
     showSubnav={false}
     selectedBranch={selectedBranchId || 'all'}
+    branches={branches}
     onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
   />
 ) : activePage === 'Suppliers' ? (
@@ -618,6 +609,7 @@ setSelectedBranchId((currentId) => {
     activeSubpage="inv-suppliers"
     showSubnav={false}
     selectedBranch={selectedBranchId || 'all'}
+    branches={branches}
     onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
   />
 ) : activePage === 'Purchase Orders & Receiving' ? (
@@ -625,6 +617,7 @@ setSelectedBranchId((currentId) => {
     activeSubpage="inv-orders"
     showSubnav={false}
     selectedBranch={selectedBranchId || 'all'}
+    branches={branches}
     onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
   />
 ) : activePage === 'Branch Transfers' ? (
@@ -632,6 +625,7 @@ setSelectedBranchId((currentId) => {
     activeSubpage="inv-transfers"
     showSubnav={false}
     selectedBranch={selectedBranchId || 'all'}
+    branches={branches}
     onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
   />
 ) : activePage === 'Wastage & Spoilage' ? (
@@ -639,6 +633,7 @@ setSelectedBranchId((currentId) => {
     activeSubpage="inv-wastage"
     showSubnav={false}
     selectedBranch={selectedBranchId || 'all'}
+    branches={branches}
     onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
   />
 ) : activePage === 'Valuation & Reports' ? (
@@ -646,6 +641,7 @@ setSelectedBranchId((currentId) => {
     activeSubpage="inv-reports"
     showSubnav={false}
     selectedBranch={selectedBranchId || 'all'}
+    branches={branches}
     onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
   />
 ) : activePage === 'Menu' ? (
@@ -690,7 +686,7 @@ setSelectedBranchId((currentId) => {
 ) : activePage === 'Food Recommendations' ? (
   <FoodRecommendations branchId={selectedBranchId} />
 ) : activePage === 'Branches' ? (
-  <Branches user={user} />
+  <Branches user={user} onBranchesChange={loadBranches} />
 ) : activePage === 'Employees' ? (
   <Employees user={user} />
 ) : activePage === 'Shifts' ? (
