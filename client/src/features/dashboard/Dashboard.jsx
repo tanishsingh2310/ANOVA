@@ -162,44 +162,6 @@ const navigationGroups = [
   { label: 'Customer Experience', icon: '♡' },
 ]
 
-const generalModules = [
-  {
-    title: 'Branches',
-    description: 'Manage restaurant locations and branch information.',
-    icon: '⌂',
-    tone: 'green',
-  },
-  {
-    title: 'Employees',
-    description: 'View team members, roles and employment details.',
-    icon: '♙',
-    tone: 'gold',
-  },
-  {
-    title: 'Shifts',
-    description: 'Organise staff schedules and shift assignments.',
-    icon: '◷',
-    tone: 'blue',
-  },
-  {
-    title: 'Attendance',
-    description: 'Review attendance records and working hours.',
-    icon: '✓',
-    tone: 'green',
-  },
-  {
-    title: 'Leave requests',
-    description: 'Review and manage employee leave requests.',
-    icon: '▤',
-    tone: 'gold',
-  },
-  {
-    title: 'Payroll',
-    description: 'Access payroll operations and salary records.',
-    icon: '₹',
-    tone: 'blue',
-  },
-]
 
 export default function Dashboard({ user, onLogout }) {
   const [activePage, setActivePage] = useState('Overview')
@@ -518,34 +480,7 @@ const [branchError, setBranchError] = useState('')
   branches={branches}
 />
 
-    <div className="section-heading" style={{ marginTop: '36px' }}>
-      <div>
-        <span className="statistics-eyebrow">OPERATIONS</span>
-        <h2>General Management</h2>
-      </div>
-    </div>
 
-    <section className="module-grid" aria-label="General Management">
-      {generalModules
-        .filter((module) =>
-          visibleNavigation.some((item) => item.label === module.title),
-        )
-        .map((module) => (
-          <button
-            type="button"
-            className="module-card"
-            key={module.title}
-            onClick={() => selectPage(module.title)}
-          >
-            <div className={`module-icon module-tone-${module.tone}`}>
-              {module.icon}
-            </div>
-            <div className="module-title">{module.title}</div>
-            <p className="module-description">{module.description}</p>
-            <div className="module-arrow" aria-hidden="true">↗</div>
-          </button>
-        ))}
-    </section>
   </>
 ) : activePage === 'Ingredients & Stock' || activePage === 'Inventory' || activePage === 'Inventory & Supply Chain' ? (
   <InventoryModule

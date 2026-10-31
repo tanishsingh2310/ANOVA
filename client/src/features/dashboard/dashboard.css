@@ -68,8 +68,8 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 a:focus-visible {
-  outline: 3px solid rgba(115, 145, 132, 0.55);
-  outline-offset: 3px;
+  outline: 1px solid rgba(115, 145, 132, 0.55);
+  outline-offset: 1px;
 }
 
 a {
@@ -1197,8 +1197,8 @@ img {
 
 .app-layout .nav-group-toggle:focus-visible,
 .app-layout .nav-subitem:focus-visible {
-  outline: 2px solid #c6ad78;
-  outline-offset: 2px;
+  outline: 1px solid #c6ad78;
+  outline-offset:1px;
 }
 
 /* Hide sidebar scrollbars */

@@ -8,8 +8,6 @@ import {
   Trash2,
   Eye,
   Boxes,
-  AlertTriangle,
-  CheckCircle,
 } from 'lucide-react'
 import { InventoryService } from '../inventory/services/inventoryService'
 import InventoryPagination from '../inventory/components/InventoryPagination'
@@ -460,7 +458,6 @@ export default function Branches({ user, onBranchesChange }) {
           <>
             <div className="branches-grid">
               {paginatedBranches.map((branch) => {
-                const stats = getBranchInventoryStats(branch)
 
                 return (
                   <article className="branch-card" key={branch._id || branch.id}>
@@ -489,26 +486,7 @@ export default function Branches({ user, onBranchesChange }) {
                       <p className="branch-contact">📞 {branch.phone}</p>
                     )}
 
-                    {/* Branch Inventory Mini Summary */}
-                    <div className="branch-inv-box">
-                      <div className="branch-inv-header">
-                        <span className="branch-inv-title">Inventory Overview</span>
-                        {stats.lowStockCount > 0 ? (
-                          <span className="branch-health-pill branch-health-warn">
-                            <AlertTriangle size={11} /> {stats.lowStockCount} Alert{stats.lowStockCount > 1 ? 's' : ''}
-                          </span>
-                        ) : (
-                          <span className="branch-health-pill branch-health-ok">
-                            <CheckCircle size={11} /> Optimal
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="branch-inv-stats">
-                        <span>Items Tracked: <strong>{stats.trackedItems}</strong></span>
-                        <span>Stock Valuation: <strong>₹{stats.totalValuation.toLocaleString()}</strong></span>
-                      </div>
-                    </div>
+                    
 
                     {/* Card Actions */}
                     <div className="branch-card-actions">
