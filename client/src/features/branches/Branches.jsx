@@ -97,6 +97,7 @@ export default function Branches({ user, onBranchesChange }) {
   }, [loadBranches, loadInventory])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentPage(1)
   }, [search, statusFilter, sortBy])
 
@@ -407,7 +408,6 @@ export default function Branches({ user, onBranchesChange }) {
         <div className="branches-list-heading">
           <div>
             <h3>Restaurant Locations ({filteredBranches.length})</h3>
-            <p>Branch-specific inventory summaries, valuation, and location details.</p>
           </div>
 
           <div className="branches-filters-bar">
