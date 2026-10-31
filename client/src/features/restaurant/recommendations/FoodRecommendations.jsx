@@ -1,11 +1,52 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import { apiRequest } from "../../../services/api";
 import "../../../styles/food-recommendations.css";
+
+const PAGE_SIZE = 6;
+
+function getPaginationPages(currentPage, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "...", totalPages];
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [
+      1,
+      "...",
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ];
+  }
+
+  return [
+    1,
+    "...",
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    "...",
+    totalPages,
+  ];
+}
 
 function DishPhoto({ dish, containerClass, photoClass }) {
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setImageFailed(false);
   }, [dish.image, dish.id, dish._id]);
 
@@ -28,9 +69,6 @@ function DishPhoto({ dish, containerClass, photoClass }) {
   );
 }
 
-
-
-
 const currency = (amount) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -49,12 +87,13 @@ function FoodRecommendations({ branchId }) {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [dietary, setDietary] = useState("All");
-  const [sortBy, setSortBy] = useState("recommended");
+  const [sortBy, setSortBy] = useState("price-low");
   const [maxPrice, setMaxPrice] = useState(1000);
   const [budget, setBudget] = useState("300");
   const [showPopularOnly, setShowPopularOnly] = useState(false);
   const [selectedDish, setSelectedDish] = useState(null);
   const [recommendationMode, setRecommendationMode] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Load public branches for branch selection and defaulting when branchId is 'all'
   useEffect(() => {
@@ -256,16 +295,38 @@ function FoodRecommendations({ branchId }) {
     });
 
     if (sortBy === "price-low") {
-      result.sort((a, b) => a.price - b.price);
+      result.sort(
+        (a, b) =>
+          Number(a.price) - Number(b.price) ||
+          (a.name || "").localeCompare(b.name || "")
+      );
     } else if (sortBy === "price-high") {
-      result.sort((a, b) => b.price - a.price);
+      result.sort(
+        (a, b) =>
+          Number(b.price) - Number(a.price) ||
+          (a.name || "").localeCompare(b.name || "")
+      );
     } else if (sortBy === "name-asc") {
       result.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-    } else if (sortBy === "popular" || sortBy === "recommended") {
+    } else if (sortBy === "popular") {
       result.sort(
         (a, b) =>
           b.salesCount - a.salesCount ||
-          a.price - b.price
+          Number(a.price) - Number(b.price) ||
+          (a.name || "").localeCompare(b.name || "")
+      );
+    } else if (sortBy === "recommended") {
+      result.sort(
+        (a, b) =>
+          b.salesCount - a.salesCount ||
+          Number(a.price) - Number(b.price) ||
+          (a.name || "").localeCompare(b.name || "")
+      );
+    } else {
+      result.sort(
+        (a, b) =>
+          Number(a.price) - Number(b.price) ||
+          (a.name || "").localeCompare(b.name || "")
       );
     }
 
@@ -321,15 +382,51 @@ function FoodRecommendations({ branchId }) {
     ? Math.min(...availableDishes.map((dish) => Number(dish.price)))
     : null;
 
-    const resetFilters = () => {
-  setSearch("");
-  setCategory("All");
-  setDietary("All");
-  setSortBy("recommended");
-  setMaxPrice(1000);
-  setShowPopularOnly(false);
-  setRecommendationMode(false);
-};
+  // Reset to page 1 whenever filters change
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCurrentPage(1);
+  }, [
+    search,
+    category,
+    dietary,
+    sortBy,
+    maxPrice,
+    showPopularOnly,
+    effectiveBranchId,
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredDishes.length / PAGE_SIZE));
+
+  // Keep the page valid when filtered results change
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCurrentPage((page) => {
+      const lastPage = Math.max(1, totalPages);
+      return Math.min(page, lastPage);
+    });
+  }, [totalPages]);
+
+  const paginationPages = useMemo(
+    () => getPaginationPages(currentPage, totalPages),
+    [currentPage, totalPages]
+  );
+
+  const paginatedDishes = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    return filteredDishes.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [filteredDishes, currentPage]);
+
+  const resetFilters = () => {
+    setSearch("");
+    setCategory("All");
+    setDietary("All");
+    setSortBy("price-low");
+    setMaxPrice(1000);
+    setShowPopularOnly(false);
+    setRecommendationMode(false);
+    setCurrentPage(1);
+  };
 
   return (
   <main className="food-page">
@@ -363,7 +460,7 @@ function FoodRecommendations({ branchId }) {
           className="food-recommend-button"
           onClick={() => setRecommendationMode((current) => !current)}
         >
-          <span aria-hidden="true">✦</span>
+          <Sparkles size={15} aria-hidden="true" />
           {recommendationMode ? "Browse Menu" : "Find Recommendations"}
         </button>
       </div>
@@ -515,7 +612,7 @@ function FoodRecommendations({ branchId }) {
 
         <div className="food-filter-panel">
           <div className="food-search">
-            <span aria-hidden="true">⌕</span>
+            <Search size={16} aria-hidden="true" className="food-search-icon" />
             <input
               type="search"
               placeholder="Search dishes or ingredients..."
@@ -562,9 +659,9 @@ function FoodRecommendations({ branchId }) {
                 value={sortBy}
                 onChange={(event) => setSortBy(event.target.value)}
               >
+                <option value="price-low">Price: Low to High</option>
                 <option value="recommended">Recommended</option>
                 <option value="popular">Most Popular</option>
-                <option value="price-low">Price: Low to High</option>
                 <option value="price-high">Price: High to Low</option>
                 <option value="name-asc">Name: A to Z</option>
               </select>
@@ -609,70 +706,129 @@ function FoodRecommendations({ branchId }) {
         </div>
 
         {filteredDishes.length > 0 ? (
-          <div className="food-dish-grid">
-            {filteredDishes.map((dish) => (
-              <article className="food-dish-card" key={dish.id}>
-                <div className="food-dish-visual">
-                  <DishPhoto
-                      dish={dish}
-                      containerClass="food-dish-emoji"
-                      photoClass="food-dish-photo"
-                   />
+          <>
+            <div className="food-dish-grid">
+              {paginatedDishes.map((dish) => (
+                <article className="food-dish-card" key={dish.id}>
+                  <div className="food-dish-visual">
+                    <DishPhoto
+                        dish={dish}
+                        containerClass="food-dish-emoji"
+                        photoClass="food-dish-photo"
+                     />
 
-                  {dish.popular && (
-                    <span className="food-popular-badge">Popular choice</span>
-                  )}
+                    {dish.popular && (
+                      <span className="food-popular-badge">Popular choice</span>
+                    )}
 
-                  <span className="food-dietary-badge">
-                    <span
-    className={`food-dietary-dot food-dietary-${(dish.dietary || "unspecified")
-      .toLowerCase()
-      .replace(/[^a-z]+/g, "-")}`}
-  />
-  {dish.dietary || "Not specified"}
-                  </span>
-                </div>
-
-                <div className="food-dish-content">
-                  <div className="food-dish-title-row">
-                    <h3>{dish.name}</h3>
-                    <strong>{currency(dish.price)}</strong>
-                  </div>
-
-                  <p className="food-dish-description">{dish.description}</p>
-
-                  <div className="food-dish-meta">
-  <span className="food-rating">
-    {dish.salesCount} ordered
-  </span>
-  <span>{dish.category}</span>
-</div>
-
-                  <div className="food-dish-footer">
-                    <span className="food-spice-level">
-                      <span aria-hidden="true">♨</span>
-                      {dish.spice || "Not specified"}
+                    <span className="food-dietary-badge">
+                      <span
+                        className={`food-dietary-dot food-dietary-${(dish.dietary || "unspecified")
+                          .toLowerCase()
+                          .replace(/[^a-z]+/g, "-")}`}
+                      />
+                      {dish.dietary || "Not specified"}
                     </span>
-
-                    <button
-                      type="button"
-                      className="food-details-button"
-                      onClick={() => setSelectedDish(dish)}
-                    >
-                      View Details <span aria-hidden="true">→</span>
-                    </button>
                   </div>
-                </div>
-              </article>
-            ))}
-          </div>
-         ) : dishes.length === 0 && !loading && !error ? (
+
+                  <div className="food-dish-content">
+                    <div className="food-dish-title-row">
+                      <h3>{dish.name}</h3>
+                      <strong>{currency(dish.price)}</strong>
+                    </div>
+
+                    <p className="food-dish-description">{dish.description}</p>
+
+                    <div className="food-dish-meta">
+                      <span className="food-rating">
+                        {dish.salesCount} ordered
+                      </span>
+                      <span>{dish.category}</span>
+                    </div>
+
+                    <div className="food-dish-footer">
+                      <span className="food-spice-level">
+                        <span aria-hidden="true">♨</span>
+                        {dish.spice || "Not specified"}
+                      </span>
+
+                      <button
+                        type="button"
+                        className="food-details-button"
+                        onClick={() => setSelectedDish(dish)}
+                      >
+                        View Details <span aria-hidden="true">→</span>
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div className="food-pagination" aria-label="Menu pagination">
+              <span className="food-pagination-info">
+                Showing <strong>{(currentPage - 1) * PAGE_SIZE + 1}</strong>–
+                <strong>{Math.min(currentPage * PAGE_SIZE, filteredDishes.length)}</strong> of{" "}
+                <strong>{filteredDishes.length}</strong> dishes · Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong>
+              </span>
+
+              <div className="food-pagination-buttons">
+                <button
+                  type="button"
+                  className="food-pagination-button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage <= 1}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft size={16} aria-hidden="true" />
+                  Previous
+                </button>
+
+                {paginationPages.map((page, index) =>
+                  page === "..." ? (
+                    <span
+                      key={`ellipsis-${index}`}
+                      className="food-pagination-ellipsis"
+                      aria-hidden="true"
+                    >
+                      ...
+                    </span>
+                  ) : (
+                    <button
+                      key={page}
+                      type="button"
+                      className={`food-pagination-button ${
+                        currentPage === page ? "active" : ""
+                      }`}
+                      onClick={() => setCurrentPage(page)}
+                      aria-current={currentPage === page ? "page" : undefined}
+                      aria-label={`Page ${page}`}
+                    >
+                      {page}
+                    </button>
+                  )
+                )}
+
+                <button
+                  type="button"
+                  className="food-pagination-button"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={currentPage >= totalPages}
+                  aria-label="Next page"
+                >
+                  Next
+                  <ChevronRight size={16} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          </>
+        ) : dishes.length === 0 && !loading && !error ? (
           <div className="food-empty-state">
             <span aria-hidden="true">🍽️</span>
             <h3>No dishes available</h3>
             <p>There are no menu items configured for this branch yet.</p>
           </div>
-         ) : !loading && !error ? (
+        ) : !loading && !error ? (
           <div className="food-empty-state">
             <span aria-hidden="true">⌕</span>
             <h3>No matching dishes</h3>
@@ -681,7 +837,7 @@ function FoodRecommendations({ branchId }) {
               Clear filters
             </button>
           </div>
-         ) : null}
+        ) : null}
       </section>
 
       {selectedDish && (

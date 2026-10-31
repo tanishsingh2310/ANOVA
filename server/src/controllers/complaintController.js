@@ -44,8 +44,10 @@ exports.create = async (req, res, next) => {
     }
 
     let order = null;
-    if (b.order) {
-      order = await gateway.findCustomerOrder(b.order, req.user.id);
+    const orderId = b.order || b.orderId;
+    if (orderId) {
+      if (!mongoose.isValidObjectId(orderId)) return fail(res, 400, 'Invalid order id');
+      order = await gateway.findCustomerOrder(orderId, req.user.id);
       if (!order) return fail(res, 404, 'Order not found');
     }
 

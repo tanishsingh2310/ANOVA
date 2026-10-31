@@ -209,6 +209,10 @@ export default function CustomerHome({ user, onLogout }) {
       if (data && typeof data === 'object' && !Array.isArray(data)) {
         setCustomerProfile(data)
         if (data.phone) setPhoneInput(data.phone)
+        if (Array.isArray(data.addresses) && data.addresses.length > 0) {
+          const def = data.addresses.find((a) => a.isDefault) || data.addresses[0]
+          setSelectedAddressId((curr) => curr || def._id)
+        }
       }
     } catch (err) {
       console.warn('Customer profile load notice:', err.message)
@@ -497,11 +501,31 @@ export default function CustomerHome({ user, onLogout }) {
         quantity: i.quantity,
       }))
 
+      let finalNotes = orderNotes.trim()
+      if (orderType === 'Delivery') {
+        const addr =
+          customerProfile?.addresses?.find(
+            (a) => String(a._id) === String(selectedAddressId),
+          ) ||
+          customerProfile?.addresses?.find((a) => a.isDefault) ||
+          customerProfile?.addresses?.[0]
+        if (addr) {
+          const addrParts = [
+            addr.label ? `[${addr.label.toUpperCase()}]` : null,
+            addr.line1 || addr.street,
+            addr.city,
+            addr.postalCode ? `PIN: ${addr.postalCode}` : null,
+          ].filter(Boolean)
+          const addrStr = `Delivery to: ${addrParts.join(', ')}`
+          finalNotes = finalNotes ? `${addrStr} | Note: ${finalNotes}` : addrStr
+        }
+      }
+
       const payload = {
         branchId: selectedBranchId,
         orderType,
         items: itemsPayload,
-        notes: orderNotes.trim() || undefined,
+        notes: finalNotes || undefined,
         discount: discountAmount,
         couponCode: appliedCoupon || undefined,
       }
@@ -1692,6 +1716,24 @@ export default function CustomerHome({ user, onLogout }) {
                                 <p style={{ margin: 0, fontSize: '13.5px', color: '#445148' }}>
                                   {r.comment || 'No comment provided.'}
                                 </p>
+                                {r.reply?.text && (
+                                  <div
+                                    style={{
+                                      marginTop: '10px',
+                                      padding: '10px 12px',
+                                      background: '#f8f6f0',
+                                      borderRadius: '6px',
+                                      borderLeft: '3px solid #c5a46d',
+                                    }}
+                                  >
+                                    <strong style={{ fontSize: '12px', color: '#8a6d3b', display: 'block', marginBottom: '2px' }}>
+                                      Restaurant Reply:
+                                    </strong>
+                                    <p style={{ margin: 0, fontSize: '12.5px', color: '#443c30' }}>
+                                      {r.reply.text}
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -1735,6 +1777,24 @@ export default function CustomerHome({ user, onLogout }) {
                                 <p style={{ margin: 0, fontSize: '13px', color: '#55625a' }}>
                                   {c.description}
                                 </p>
+                                {c.response && (
+                                  <div
+                                    style={{
+                                      marginTop: '10px',
+                                      padding: '10px 12px',
+                                      background: '#f4f8f5',
+                                      borderRadius: '6px',
+                                      borderLeft: '3px solid #285541',
+                                    }}
+                                  >
+                                    <strong style={{ fontSize: '12px', color: '#285541', display: 'block', marginBottom: '2px' }}>
+                                      Management Response:
+                                    </strong>
+                                    <p style={{ margin: 0, fontSize: '12.5px', color: '#33443a' }}>
+                                      {c.response}
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
