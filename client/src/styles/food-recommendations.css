@@ -72,6 +72,41 @@
   font-size: 16px;
 }
 
+.food-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.food-branch-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0 12px;
+  height: 43px;
+}
+
+.food-branch-selector label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.food-branch-selector select {
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  outline: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
 /* ---------- OVERVIEW CARDS ---------- */
 
 .food-overview {
