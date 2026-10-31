@@ -293,12 +293,6 @@ export const MovementService = {
     return newTransfer;
   },
 
-  deleteTransfer(id) {
-    const list = getTransfersData();
-    const filtered = list.filter(t => t.id !== id && t._id !== id);
-    saveTransfersData(filtered);
-    return true;
-  },
 
   receiveTransfer({ transferId, receivedBy = 'Receiving Manager' }) {
     const transfers = getTransfersData();
@@ -391,7 +385,7 @@ export const MovementService = {
     const deductQty = Number(qty);
     if (deductQty <= 0) throw new Error('Wastage quantity must be greater than zero');
 
-    let ingredients = [];
+    let ingredients;
     try {
       const raw = localStorage.getItem(INGREDIENTS_KEY);
       ingredients = raw ? JSON.parse(raw) : [];
@@ -400,7 +394,7 @@ export const MovementService = {
       ingredients = [];
     }
 
-    let movements = [];
+    let movements;
     try {
       const raw = localStorage.getItem(MOVEMENTS_KEY);
       movements = raw ? JSON.parse(raw) : [];

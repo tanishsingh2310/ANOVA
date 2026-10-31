@@ -27,6 +27,17 @@ export async function apiRequest(endpoint, options = {}) {
     );
   }
 
+  const method = (options.method || "GET").toUpperCase();
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("anova_records_updated", {
+          detail: { endpoint, method },
+        })
+      );
+    }
+  }
+
   return data;
 }
 

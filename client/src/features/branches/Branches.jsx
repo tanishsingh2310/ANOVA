@@ -8,15 +8,14 @@ import {
   Trash2,
   Eye,
   Boxes,
-  TrendingUp,
   AlertTriangle,
   CheckCircle,
 } from 'lucide-react'
 import { InventoryService } from '../inventory/services/inventoryService'
 import InventoryPagination from '../inventory/components/InventoryPagination'
+import { apiClient } from '../../api/client'
 import './branches.css'
 
-const API_BASE = 'http://localhost:5000/api'
 const EMPTY_FORM = {
   name: '',
   code: '',
@@ -27,10 +26,6 @@ const EMPTY_FORM = {
   country: '',
   phone: '',
   email: '',
-}
-
-function getErrorMessage(data, fallback) {
-  return data?.message || fallback
 }
 
 export default function Branches({ user, onBranchesChange }) {
@@ -59,28 +54,10 @@ export default function Branches({ user, onBranchesChange }) {
   const PAGE_SIZE = 6
 
   const request = useCallback(async (endpoint, options = {}) => {
-    const token = sessionStorage.getItem('mbrems_token')
-
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers: {
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers,
-      },
-    })
-
-    const data = await response.json().catch(() => null)
-
-    if (response.status === 401) {
-      throw new Error('Your session may have expired. Please sign in again.')
-    }
-
-    if (!response.ok) {
-      throw new Error(getErrorMessage(data, 'The request could not be completed.'))
-    }
-
-    return data
+    const normalized = endpoint.startsWith('/api')
+      ? endpoint
+      : `/api${endpoint.startsWith('/') ? '' : '/'}${endpoint}`
+    return apiClient(normalized, options)
   }, [])
 
   const loadBranches = useCallback(async () => {
@@ -319,25 +296,6 @@ export default function Branches({ user, onBranchesChange }) {
     [ingredients],
   )
 
-  // Overall metrics
-  const activeLocationsCount = useMemo(
-    () => branches.filter((b) => b.isActive !== false).length,
-    [branches],
-  )
-
-  const totalValuation = useMemo(() => {
-    return branches.reduce(
-      (sum, b) => sum + getBranchInventoryStats(b).totalValuation,
-      0,
-    )
-  }, [branches, getBranchInventoryStats])
-
-  const totalLowStockAlerts = useMemo(() => {
-    return branches.reduce(
-      (sum, b) => sum + getBranchInventoryStats(b).lowStockCount,
-      0,
-    )
-  }, [branches, getBranchInventoryStats])
 
   // Filtering & Sorting
   const filteredBranches = useMemo(() => {
@@ -395,8 +353,6 @@ export default function Branches({ user, onBranchesChange }) {
       {/* Top Toolbar */}
       <div className="branches-toolbar">
         <div>
-          <p className="branches-eyebrow">BRANCH & INVENTORY NETWORK</p>
-          <h2>Branch Management</h2>
           <p className="branches-subtitle">Manage restaurant locations, track branch-specific stock, and inspect inventory valuation.</p>
         </div>
 
@@ -444,48 +400,6 @@ export default function Branches({ user, onBranchesChange }) {
         </div>
       )}
 
-      {/* Summary KPI Grid */}
-      <div className="branches-summary-grid">
-        <div className="branches-summary-card">
-          <div className="branches-summary-icon">
-            <MapPin size={21} />
-          </div>
-          <div>
-            <span className="branches-summary-label">Total Branches</span>
-            <strong>{loading ? '—' : branches.length}</strong>
-          </div>
-        </div>
-
-        <div className="branches-summary-card">
-          <div className="branches-summary-icon" style={{ color: '#276044', background: '#e5f5ea' }}>
-            <CheckCircle size={21} />
-          </div>
-          <div>
-            <span className="branches-summary-label">Active Locations</span>
-            <strong>{loading ? '—' : activeLocationsCount}</strong>
-          </div>
-        </div>
-
-        <div className="branches-summary-card">
-          <div className="branches-summary-icon" style={{ color: '#c5a46d', background: '#fdf7eb' }}>
-            <TrendingUp size={21} />
-          </div>
-          <div>
-            <span className="branches-summary-label">Total Inventory Valuation</span>
-            <strong>{loading ? '—' : `₹${totalValuation.toLocaleString()}`}</strong>
-          </div>
-        </div>
-
-        <div className="branches-summary-card">
-          <div className="branches-summary-icon" style={{ color: '#c93b3b', background: '#fef0f0' }}>
-            <AlertTriangle size={21} />
-          </div>
-          <div>
-            <span className="branches-summary-label">Low Stock Alerts</span>
-            <strong>{loading ? '—' : totalLowStockAlerts}</strong>
-          </div>
-        </div>
-      </div>
 
       {/* Main List & Controls */}
       <div className="branches-list-panel">

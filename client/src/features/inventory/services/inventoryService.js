@@ -56,7 +56,6 @@ const STORAGE_KEYS = {
   BRANCHES: 'anova_inventory_branches'
 };
 
-const MOCK_ID_REGEX = /^(ing|sup|po|tr|wst|mov)_\d{2,3}$/;
 const MOCK_BRANCH_IDS = new Set(['b_downtown', 'b_uptown', 'b_westside', 'b_waterfront']);
 
 function isMockRecord(item) {
@@ -206,8 +205,23 @@ export const InventoryService = {
   // Stock Status Evaluation
   calculateStockStatus(ingredient, branchId = 'all', branches = []) {
     let stock = 0;
+    const stockMap = ingredient.stockByBranch || {};
     if (branchId === 'all') {
-      stock = Object.values(ingredient.stockByBranch || {}).reduce((sum, val) => sum + (Number(val) || 0), 0);
+      if (Array.isArray(branches) && branches.length > 0) {
+        let total = 0;
+        for (const b of branches) {
+          const keys = [b.id, b._id, b.code].filter(Boolean);
+          for (const k of keys) {
+            if (stockMap[k] !== undefined) {
+              total += Number(stockMap[k] || 0);
+              break;
+            }
+          }
+        }
+        stock = total;
+      } else {
+        stock = Object.values(stockMap).reduce((sum, val) => sum + (Number(val) || 0), 0);
+      }
     } else {
       const stockMap = ingredient.stockByBranch || {};
       const branchObj = Array.isArray(branches)

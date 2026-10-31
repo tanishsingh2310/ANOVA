@@ -5,6 +5,23 @@ const Coupon = require('../models/Coupon');
 const CouponRedemption = require('../models/CouponRedemption');
 const Review = require('../models/Review');
 const Complaint = require('../models/Complaint');
+const User = require('../models/User');
+const Branch = require('../models/Branch');
+const MenuItem = require('../models/MenuItem');
+const Reservation = require('../models/Reservation');
+const Order = require('../models/Order');
+const RestaurantTable = require('../models/Table');
+
+const EMPLOYEE_ROLES = [
+  'admin',
+  'manager',
+  'hr',
+  'inventory_manager',
+  'chef',
+  'cashier',
+  'employee',
+  'delivery_personnel',
+];
 
 /**
  * Returns comprehensive analytics across branches, deliveries, coupons, and customer satisfaction.
@@ -209,6 +226,105 @@ async function getOverviewReport({ branchId, timeframe = '30d' }) {
   };
 }
 
+/**
+ * Returns authoritative database counts for the six Overview dashboard statistics.
+ * Respects enterprise vs branch-scoped user authorization and branch filtering.
+ */
+async function getDashboardStatistics({ user, branchId }) {
+  const isEnterpriseAdmin = ['owner', 'admin'].includes(user?.role);
+
+  let targetBranchId = null;
+
+  if (!isEnterpriseAdmin) {
+    const rawBranchId = user?.branch?._id || user?.branch;
+    if (rawBranchId && mongoose.isValidObjectId(rawBranchId)) {
+      targetBranchId = new mongoose.Types.ObjectId(rawBranchId);
+    }
+  } else if (branchId && branchId !== 'all') {
+    if (!mongoose.isValidObjectId(branchId)) {
+      return { error: 'Invalid branch ID.', status: 400 };
+    }
+    const branchExists = await Branch.findOne({ _id: branchId, isActive: true });
+    if (!branchExists) {
+      return { error: 'Active branch not found.', status: 404 };
+    }
+    targetBranchId = new mongoose.Types.ObjectId(branchId);
+  }
+
+  // 1. Staff: active employees matching standard employee roles
+  const staffFilter = {
+    role: { $in: EMPLOYEE_ROLES },
+    isActive: true,
+  };
+  if (targetBranchId) {
+    staffFilter.branch = targetBranchId;
+  }
+
+  // 2. Branches: all registered active branches in the organization
+  const branchFilter = { isActive: true };
+
+  // 3. Menu Items: available at target branch (or all branches)
+  const menuFilter = {};
+  if (targetBranchId) {
+    menuFilter.$or = [
+      { branchId: targetBranchId },
+      { branchIds: targetBranchId },
+    ];
+  }
+
+  // 4. Reservations: recorded reservations for target branch (or all branches)
+  const reservationFilter = {};
+  if (targetBranchId) {
+    reservationFilter.branchId = targetBranchId;
+  }
+
+  // 5. Total Orders: customer orders (not purchase orders)
+  const orderFilter = {};
+  if (targetBranchId) {
+    orderFilter.$or = [
+      { branch: targetBranchId },
+      { branchId: targetBranchId },
+    ];
+  }
+
+  // 6. Total Tables: registered restaurant tables
+  const tableFilter = {};
+  if (targetBranchId) {
+    tableFilter.branchId = targetBranchId;
+  }
+
+  const results = await Promise.allSettled([
+    User.countDocuments(staffFilter),
+    Branch.countDocuments(branchFilter),
+    MenuItem.countDocuments(menuFilter),
+    Reservation.countDocuments(reservationFilter),
+    Order.countDocuments(orderFilter),
+    RestaurantTable.countDocuments(tableFilter),
+  ]);
+
+  const keys = ['staff', 'branches', 'menuItems', 'reservations', 'orders', 'tables'];
+  const totals = {};
+  const failed = [];
+
+  results.forEach((res, index) => {
+    const key = keys[index];
+    if (res.status === 'fulfilled') {
+      totals[key] = res.value;
+    } else {
+      totals[key] = null;
+      failed.push(key);
+      console.error(`[Overview Statistics] Failed counting ${key}:`, res.reason?.message);
+    }
+  });
+
+  return {
+    totals,
+    failed,
+    branchId: targetBranchId ? String(targetBranchId) : 'all',
+  };
+}
+
 module.exports = {
   getOverviewReport,
+  getDashboardStatistics,
 };

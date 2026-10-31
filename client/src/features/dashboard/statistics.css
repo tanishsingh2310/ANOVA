@@ -47,6 +47,18 @@
   font-weight: 600;
 }
 
+select.statistics-period {
+  cursor: pointer;
+  outline: none;
+  font-family: inherit;
+  appearance: auto;
+}
+
+select.statistics-period:focus {
+  border-color: #285b43;
+  box-shadow: 0 0 0 2px rgba(40, 91, 67, 0.12);
+}
+
 .statistics-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -90,6 +102,12 @@
   font-size: 20px;
 }
 
+.statistics-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
 .statistics-label {
   color: #526159;
   font-size: 12px;
@@ -105,6 +123,22 @@
   letter-spacing: -1.2px;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
+}
+
+.statistics-loading-dots {
+  display: inline-block;
+  opacity: 0.5;
+  letter-spacing: 2px;
+  animation: statPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes statPulse {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }
 
 .statistics-description {
@@ -142,6 +176,11 @@
 .statistics-orange .statistics-icon {
   background: #f8eee4;
   color: #a46d3c;
+}
+
+.statistics-red .statistics-icon {
+  background: #fdf2f2;
+  color: #b91c1c;
 }
 
 .statistics-error {

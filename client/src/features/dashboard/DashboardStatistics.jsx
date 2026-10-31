@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '../../api/client'
 
 const STATISTICS = [
@@ -7,6 +7,7 @@ const STATISTICS = [
     label: 'Total Staff',
     icon: 'users',
     description: 'Including owners and admins',
+    branchDescription: 'Assigned to selected branch',
     color: 'green',
   },
   {
@@ -14,6 +15,7 @@ const STATISTICS = [
     label: 'Total Branches',
     icon: 'git-branch',
     description: 'Across the organization',
+    branchDescription: 'Across the organization',
     color: 'gold',
   },
   {
@@ -21,6 +23,7 @@ const STATISTICS = [
     label: 'Menu Items',
     icon: 'utensils',
     description: 'Across all branches',
+    branchDescription: 'Available at selected branch',
     color: 'sage',
   },
   {
@@ -28,6 +31,7 @@ const STATISTICS = [
     label: 'Reservations',
     icon: 'calendar-check',
     description: 'All recorded reservations',
+    branchDescription: 'At selected branch',
     color: 'blue',
   },
   {
@@ -35,6 +39,7 @@ const STATISTICS = [
     label: 'Total Orders',
     icon: 'shopping-bag',
     description: 'All recorded orders',
+    branchDescription: 'At selected branch',
     color: 'purple',
   },
   {
@@ -42,6 +47,7 @@ const STATISTICS = [
     label: 'Total Tables',
     icon: 'layout-grid',
     description: 'Across all branches',
+    branchDescription: 'At selected branch',
     color: 'orange',
   },
 ]
@@ -55,110 +61,108 @@ const INITIAL_TOTALS = {
   tables: null,
 }
 
-export default function DashboardStatistics() {
+export default function DashboardStatistics({
+  selectedBranch = 'all',
+  branches = [],
+  onBranchChange,
+}) {
   const [totals, setTotals] = useState(INITIAL_TOTALS)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [internalBranches, setInternalBranches] = useState(branches || [])
 
+  const availableBranches = branches?.length ? branches : internalBranches
+
+  // If branches prop was not provided, load branches list for selector
   useEffect(() => {
+    if (branches && branches.length > 0) return
+
     let cancelled = false
-
-    async function loadStatistics() {
-      setLoading(true)
-      setError('')
-
+    async function fetchBranches() {
       try {
-        // These paths must match the existing API client's conventions.
-        // Verify response shapes and authorization before using the results.
-        const results = await Promise.allSettled([
-          apiClient.get('/employees'),
-          apiClient.get('/branches'),
-          apiClient.get('/menu'),
-          apiClient.get('/reservations'),
-          apiClient.get('/orders'),
-          apiClient.get('/tables'),
-        ])
-
+        const data = await apiClient('/api/branches')
         if (cancelled) return
-
-        const nextTotals = { ...INITIAL_TOTALS }
-        const failed = []
-
-        const getRows = (response) => {
-          const data = response?.data
-
-          if (Array.isArray(data)) return data
-          if (Array.isArray(data?.data)) return data.data
-          if (Array.isArray(data?.items)) return data.items
-          if (Array.isArray(data?.employees)) return data.employees
-          if (Array.isArray(data?.branches)) return data.branches
-          if (Array.isArray(data?.menuItems)) return data.menuItems
-          if (Array.isArray(data?.reservations)) return data.reservations
-          if (Array.isArray(data?.orders)) return data.orders
-          if (Array.isArray(data?.tables)) return data.tables
-
-          return null
-        }
-
-        const keys = [
-          'staff',
-          'branches',
-          'menuItems',
-          'reservations',
-          'orders',
-          'tables',
-        ]
-
-        results.forEach((result, index) => {
-          const key = keys[index]
-
-          if (result.status !== 'fulfilled') {
-            failed.push(key)
-            return
-          }
-
-          const rows = getRows(result.value)
-
-          if (!rows) {
-            failed.push(key)
-            return
-          }
-
-          if (key === 'staff') {
-            const excludedRoles = ['owner', 'customer']
-            nextTotals.staff = rows.filter((person) => {
-              const role = String(person.role || '').toLowerCase()
-              const active = person.isActive ?? person.active ?? true
-
-              return !excludedRoles.includes(role) && active !== false
-            }).length
-          } else {
-            nextTotals[key] = rows.length
-          }
-        })
-
-        setTotals(nextTotals)
-
-        if (failed.length) {
-          setError(
-            `Some statistics could not be loaded: ${failed.join(', ')}. Check the existing API routes and response formats.`
-          )
-        }
-      } catch {
-        if (!cancelled) {
-          setError('Statistics could not be loaded. Please try again.')
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
+        const list = Array.isArray(data?.branches)
+          ? data.branches
+          : Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data)
+              ? data
+              : []
+        setInternalBranches(list)
+      } catch (err) {
+        console.warn('Failed to load branches for statistics selector:', err.message)
       }
     }
 
-    loadStatistics()
-
+    fetchBranches()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [branches])
+
+  const loadStatistics = useCallback(async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      const branchQuery =
+        selectedBranch && selectedBranch !== 'all'
+          ? `?branchId=${encodeURIComponent(selectedBranch)}`
+          : ''
+
+      const response = await apiClient(`/api/reports/statistics${branchQuery}`)
+
+      if (response?.success && response?.totals) {
+        setTotals({
+          staff: typeof response.totals.staff === 'number' ? response.totals.staff : null,
+          branches: typeof response.totals.branches === 'number' ? response.totals.branches : null,
+          menuItems: typeof response.totals.menuItems === 'number' ? response.totals.menuItems : null,
+          reservations: typeof response.totals.reservations === 'number' ? response.totals.reservations : null,
+          orders: typeof response.totals.orders === 'number' ? response.totals.orders : null,
+          tables: typeof response.totals.tables === 'number' ? response.totals.tables : null,
+        })
+
+        if (response.failed && response.failed.length > 0) {
+          setError(
+            `Some statistics could not be loaded: ${response.failed.join(', ')}. Please try again.`
+          )
+        }
+      } else {
+        throw new Error(response?.message || 'Invalid statistics response.')
+      }
+    } catch {
+      setError('Statistics could not be loaded. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedBranch])
+
+  useEffect(() => {
+    loadStatistics()
+
+    // Synchronize whenever user revisits or tab regains focus, or on mutation events
+    const handleSync = () => {
+      loadStatistics()
+    }
+
+    window.addEventListener('focus', handleSync)
+    window.addEventListener('anova_records_updated', handleSync)
+    window.addEventListener('anova_branches_updated', handleSync)
+
+    return () => {
+      window.removeEventListener('focus', handleSync)
+      window.removeEventListener('anova_records_updated', handleSync)
+      window.removeEventListener('anova_branches_updated', handleSync)
+    }
+  }, [loadStatistics])
+
+  const handleBranchSelect = (event) => {
+    const nextBranchId = event.target.value
+    if (onBranchChange) {
+      onBranchChange(nextBranchId)
+    }
+  }
 
   return (
     <section className="dashboard-statistics" aria-labelledby="statistics-title">
@@ -168,7 +172,23 @@ export default function DashboardStatistics() {
           <h2 id="statistics-title">Organization Overview</h2>
         </div>
 
-        <span className="statistics-period">All branches</span>
+        <select
+          id="overview-branch-filter"
+          className="statistics-period"
+          aria-label="Filter overview by branch"
+          value={selectedBranch || 'all'}
+          onChange={handleBranchSelect}
+        >
+          <option value="all">All branches</option>
+          {availableBranches.map((branch) => {
+            const id = branch._id || branch.id
+            return (
+              <option key={id} value={id}>
+                {branch.name}
+              </option>
+            )
+          })}
+        </select>
       </div>
 
       {error && (
@@ -196,14 +216,20 @@ export default function DashboardStatistics() {
             </div>
 
             <div className="statistics-value" aria-live="polite">
-              {loading
-                ? '—'
-                : totals[stat.key] === null
-                  ? '—'
-                  : totals[stat.key].toLocaleString()}
+              {loading ? (
+                <span className="statistics-loading-dots" aria-label="Loading statistic">···</span>
+              ) : typeof totals[stat.key] === 'number' ? (
+                totals[stat.key].toLocaleString()
+              ) : (
+                '—'
+              )}
             </div>
 
-            <p className="statistics-description">{stat.description}</p>
+            <p className="statistics-description">
+              {selectedBranch && selectedBranch !== 'all'
+                ? stat.branchDescription
+                : stat.description}
+            </p>
           </article>
         ))}
       </div>

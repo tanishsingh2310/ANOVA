@@ -465,6 +465,24 @@ exports.deleteBranch = async (req, res) => {
       // In case StockTransfer model is not registered yet, proceed
     }
 
+    // Safety check: Prevent deletion if there are active purchase orders for this branch
+    try {
+      const PurchaseOrder = mongoose.model("PurchaseOrder");
+      const activePO = await PurchaseOrder.findOne({
+        $or: [
+          { branchRef: id, status: { $in: ["SUBMITTED", "APPROVED", "ORDERED", "PARTIALLY_RECEIVED"] } },
+          { branch: branch.code, status: { $in: ["SUBMITTED", "APPROVED", "ORDERED", "PARTIALLY_RECEIVED"] } }
+        ]
+      });
+      if (activePO) {
+        return res.status(400).json({
+          message: `Cannot delete branch with active purchase order (${activePO.poNumber}).`
+        });
+      }
+    } catch {
+      // In case PurchaseOrder model is not registered yet, proceed
+    }
+
     await Branch.findByIdAndDelete(id);
 
     await writeAuditLog({

@@ -12,6 +12,7 @@ import Branches from '../branches/Branches.jsx'
 import Logo1 from '../../assets/Logo1.png'
 import banner from '../../assets/banner.png'
 import DashboardStatistics from './DashboardStatistics.jsx'
+import OverviewInventoryStatistics from './OverviewInventoryStatistics.jsx'
 import './statistics.css'
 import Employees from '../employees/Employees.jsx'
 import Shifts from '../shifts/Shifts.jsx'
@@ -20,7 +21,6 @@ import Leave from '../leaves/Leaves.jsx'
 import Payroll from "../payroll/Payroll.jsx";
 
 const inventorySubpageMap = {
-  'inv-dashboard': 'Dashboard',
   'inv-ingredients': 'Ingredients & Stock',
   'inv-suppliers': 'Suppliers',
   'inv-orders': 'Purchase Orders & Receiving',
@@ -112,12 +112,6 @@ const navigation = [
   },
 
   {
-    label: 'Dashboard',
-    icon: '◫',
-    group: 'Inventory & Supply Chain',
-    roles: ['owner', 'admin', 'manager', 'inventory_manager', 'chef'],
-  },
-  {
     label: 'Ingredients & Stock',
     icon: '📦',
     group: 'Inventory & Supply Chain',
@@ -168,8 +162,7 @@ const navigationGroups = [
   { label: 'Customer Experience', icon: '♡' },
 ]
 
-
-const modules = [
+const generalModules = [
   {
     title: 'Branches',
     description: 'Manage restaurant locations and branch information.',
@@ -206,48 +199,6 @@ const modules = [
     icon: '₹',
     tone: 'blue',
   },
-  {
-  title: 'Dashboard',
-  description: 'Track executive inventory metrics, stock valuation and urgent alerts.',
-  icon: '◫',
-  tone: 'green',
-},
-{
-  title: 'Ingredients & Stock',
-  description: 'Manage ingredients, stock balances, batch expiry and reorder thresholds.',
-  icon: '📦',
-  tone: 'gold',
-},
-{
-  title: 'Suppliers',
-  description: 'Manage supplier contacts, lead times, categories and vendor directory.',
-  icon: '🏢',
-  tone: 'blue',
-},
-{
-  title: 'Purchase Orders & Receiving',
-  description: 'Draft purchase orders, vendor procurement and goods received notes (GRN).',
-  icon: '📋',
-  tone: 'green',
-},
-{
-  title: 'Branch Transfers',
-  description: 'Coordinate inter-branch stock dispatches and receipt verifications.',
-  icon: '⇄',
-  tone: 'blue',
-},
-{
-  title: 'Wastage & Spoilage',
-  description: 'Log kitchen wastage, spoiled food items and shrinkage audit trails.',
-  icon: '🗑',
-  tone: 'gold',
-},
-{
-  title: 'Valuation & Reports',
-  description: 'FIFO inventory valuation, turnover metrics and audit movement logs.',
-  icon: '📊',
-  tone: 'green',
-},
 ]
 
 export default function Dashboard({ user, onLogout }) {
@@ -556,23 +507,32 @@ const [branchError, setBranchError] = useState('')
   </div>
 </section>
 
-<DashboardStatistics />
+<DashboardStatistics
+  selectedBranch={selectedBranchId}
+  branches={branches}
+  onBranchChange={setSelectedBranchId}
+/>
 
-    <div className="section-heading">
+<OverviewInventoryStatistics
+  selectedBranch={selectedBranchId || 'all'}
+  branches={branches}
+/>
+
+    <div className="section-heading" style={{ marginTop: '36px' }}>
       <div>
-        <h2>Your Workspace</h2>
-        
+        <span className="statistics-eyebrow">OPERATIONS</span>
+        <h2>General Management</h2>
       </div>
     </div>
-    
 
-    <section className="module-grid">
-      {modules
+    <section className="module-grid" aria-label="General Management">
+      {generalModules
         .filter((module) =>
           visibleNavigation.some((item) => item.label === module.title),
         )
         .map((module) => (
           <button
+            type="button"
             className="module-card"
             key={module.title}
             onClick={() => selectPage(module.title)}
@@ -586,17 +546,8 @@ const [branchError, setBranchError] = useState('')
           </button>
         ))}
     </section>
-
   </>
-) : activePage === 'Dashboard' || activePage === 'Dashboard & KPIs' || activePage === 'Inventory' || activePage === 'Inventory & Supply Chain' ? (
-  <InventoryModule
-    activeSubpage="inv-dashboard"
-    showSubnav={false}
-    selectedBranch={selectedBranchId || 'all'}
-    branches={branches}
-    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
-  />
-) : activePage === 'Ingredients & Stock' ? (
+) : activePage === 'Ingredients & Stock' || activePage === 'Inventory' || activePage === 'Inventory & Supply Chain' ? (
   <InventoryModule
     activeSubpage="inv-ingredients"
     showSubnav={false}
