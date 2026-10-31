@@ -7,7 +7,7 @@ import login_banner from '../../assets/login_banner.jpeg'
 const API_URL = 'http://localhost:5000/api'
 
 export default function Login({ onLogin }) {
-  const [accountType, setAccountType] = useState('staff')
+  const [accountType, setAccountType] = useState('customer')
   const [formMode, setFormMode] = useState('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -120,20 +120,21 @@ export default function Login({ onLogin }) {
           <div className="auth-account-switch" aria-label="Account type">
             <button
               type="button"
-              className={accountType === 'staff' ? 'auth-switch-active' : ''}
-              onClick={() => changeAccountType('staff')}
-              disabled={loading}
-            >
-              Staff Login
-            </button>
-            <button
-              type="button"
               className={accountType === 'customer' ? 'auth-switch-active' : ''}
               onClick={() => changeAccountType('customer')}
               disabled={loading}
             >
               Customer
             </button>
+            <button
+              type="button"
+              className={accountType === 'staff' ? 'auth-switch-active' : ''}
+              onClick={() => changeAccountType('staff')}
+              disabled={loading}
+            >
+              Staff Login
+            </button>
+            
           </div>
 
           <div className="form-heading">

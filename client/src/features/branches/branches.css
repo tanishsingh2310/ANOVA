@@ -15,6 +15,10 @@
 .branches-toolbar {
   margin-bottom: 24px;
 }
+.branches-toolbar p {
+  font-size: 14px;
+  color: #748078;
+}
 
 .branches-eyebrow {
   margin: 0 0 7px;
@@ -548,17 +552,6 @@
   color: var(--anova-forest, #183c34);
 }
 
-.branches-button-danger {
-  color: #c93b3b;
-  background: #fff;
-  border-color: #f0c5c5;
-}
-
-.branches-button-danger:hover {
-  background: #fff5f5;
-  border-color: #e59999;
-}
-
 .branches-view-modal {
   width: min(100%, 820px);
   max-height: 90vh;
@@ -615,4 +608,100 @@
 
 .branch-items-table tr:hover td {
   background: #fbfdfb;
+}
+
+.branches-button-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid #dc2626;
+  border-radius: 8px;
+  background: #dc2626;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease, opacity 0.2s ease;
+}
+
+.branches-button-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.branches-button-danger:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.branches-delete-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 55%);
+}
+
+.branches-delete-modal {
+  width: 100%;
+  max-width: 440px;
+  padding: 28px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 20%);
+}
+
+.branches-delete-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 18px;
+  border-radius: 12px;
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.branches-delete-modal h3 {
+  margin: 0 0 12px;
+  color: #17211b;
+  font-size: 20px;
+}
+
+.branches-delete-modal p {
+  margin: 0;
+  color: #647067;
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.branches-delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.branches-delete-actions button {
+  min-height: 40px;
+}
+
+@media (max-width: 480px) {
+  .branches-delete-modal {
+    padding: 22px;
+  }
+
+  .branches-delete-actions {
+    flex-direction: column-reverse;
+  }
+
+  .branches-delete-actions button {
+    width: 100%;
+  }
 }

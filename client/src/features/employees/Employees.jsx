@@ -248,6 +248,7 @@ export default function Employees({ user }) {
 
   // Reset to page 1 when the search or any filter changes.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentPage(1)
   }, [search, roleFilter, statusFilter, branchFilter])
 
@@ -260,6 +261,7 @@ export default function Employees({ user }) {
 )
   // Keep the page valid when employees are deleted or results decrease.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentPage((page) => {
       const lastPage = Math.max(1, totalPages)
       return Math.min(page, lastPage)
