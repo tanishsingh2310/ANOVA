@@ -25,7 +25,18 @@ exports.create = async (req, res, next) => {
   try {
     const b = req.body || {};
     if (!String(b.subject || '').trim()) return fail(res, 400, 'Please add a subject');
-    if (b.category !== undefined && !Complaint.CATEGORIES.includes(b.category)) return fail(res, 400, 'Invalid category');
+
+    const CATEGORY_MAP = {
+      food_quality: 'food',
+      late_delivery: 'delivery',
+      wrong_item: 'delivery',
+      staff_behavior: 'service',
+    };
+    let category = b.category;
+    if (category && CATEGORY_MAP[category]) {
+      category = CATEGORY_MAP[category];
+    }
+    if (category !== undefined && !Complaint.CATEGORIES.includes(category)) return fail(res, 400, 'Invalid category');
 
     const openCount = await Complaint.countDocuments({ customer: req.user.id, status: { $in: ['open', 'in_review'] } });
     if (openCount >= MAX_OPEN_PER_CUSTOMER) {
@@ -41,7 +52,7 @@ exports.create = async (req, res, next) => {
     const complaint = await Complaint.create({
       customer: req.user.id,
       order: order?._id, orderNumber: order?.orderNumber, branch: order?.branch,
-      category: b.category, subject: b.subject, description: b.description,
+      category: category || 'other', subject: b.subject, description: b.description,
       history: [{ status: 'open', at: new Date(), by: req.user.id }],
     });
     ok(res, complaint, 'Complaint sent. We will reply as soon as we can.', 201);

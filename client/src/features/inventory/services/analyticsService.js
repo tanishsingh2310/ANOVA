@@ -70,8 +70,23 @@ export const AnalyticsService = {
 
     const reportRows = ingredients.map(ing => {
       let branchQty = 0;
+      const stockMap = ing.stockByBranch || {};
       if (branchId === 'all') {
-        branchQty = Object.values(ing.stockByBranch || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+        if (Array.isArray(branchList) && branchList.length > 0) {
+          let total = 0;
+          for (const b of branchList) {
+            const keys = [b.id, b._id, b.code].filter(Boolean);
+            for (const k of keys) {
+              if (stockMap[k] !== undefined) {
+                total += Number(stockMap[k] || 0);
+                break;
+              }
+            }
+          }
+          branchQty = total;
+        } else {
+          branchQty = Object.values(stockMap).reduce((s, v) => s + (Number(v) || 0), 0);
+        }
       } else {
         const stockMap = ing.stockByBranch || {};
         const bObj = branchList.find(b => b.id === branchId || b._id === branchId || b.code === branchId);
@@ -197,10 +212,10 @@ export const AnalyticsService = {
           outOfStockCount: Number(d.outOfStockAlerts || 0),
           criticalLowCount: Number(d.criticalLowAlerts || 0),
           lowStockCount: Number(d.lowStockAlerts || 0),
-          totalAlerts: Number(d.outOfStockAlerts || 0) + Number(d.lowStockAlerts || 0),
+          totalAlerts: Number(d.totalAlerts || (Number(d.outOfStockAlerts || 0) + Number(d.lowStockAlerts || 0))),
           expiringBatchesCount: Number(d.expiringBatchesCount || 0),
-          pendingApprovalPOs: Number(d.activePOs || 0),
-          activeOrderedPOs: Number(d.activePOs || 0),
+          pendingApprovalPOs: Number(d.pendingApprovalPOs ?? d.activePOs ?? 0),
+          activeOrderedPOs: Number(d.activeOrderedPOs ?? d.activePOs ?? 0),
           inTransitTransfers: Number(d.inTransitTransfers || 0),
           totalWastageCost: Number(d.totalWastageCost || 0)
         };

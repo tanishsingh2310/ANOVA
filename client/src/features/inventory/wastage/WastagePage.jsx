@@ -368,9 +368,9 @@ export default function WastagePage({ branchId, branches = [] }) {
                 </tr>
               </thead>
               <tbody>
-                {paginatedWastage.map((w) => {
+                {paginatedWastage.map((w, index) => {
                   if (!w) return null;
-                  const recordKey = w.id || w._id || Math.random().toString();
+                  const recordKey = w.id || w._id || w.wasteNumber || `wst-row-${index}`;
                   const dateStr = w.date
                     ? (typeof w.date === 'string'
                         ? w.date.replace('T', ' ').slice(0, 16)

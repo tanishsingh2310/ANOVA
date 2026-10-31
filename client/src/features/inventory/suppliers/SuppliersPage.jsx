@@ -29,8 +29,6 @@ export default function SuppliersPage() {
   // Modals / Drawers
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
-  const [catalogSupplier, setCatalogSupplier] = useState(null);
-  const [suppliedItems, setSuppliedItems] = useState([]);
   const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
@@ -124,11 +122,6 @@ export default function SuppliersPage() {
     setFormError('');
   };
 
-  const handleOpenCatalog = (supplier) => {
-    setCatalogSupplier(supplier);
-    const items = SupplierService.getSuppliedIngredients(supplier.id);
-    setSuppliedItems(items);
-  };
 
   const handleToggleStatus = async (supplier) => {
     try {
@@ -391,69 +384,6 @@ export default function SuppliersPage() {
           onPageChange={setCurrentPage}
         />
       </div>
-
-      {/* Catalog Modal */}
-      {catalogSupplier && (
-        <div
-          className="employees-modal-backdrop"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setCatalogSupplier(null);
-          }}
-        >
-          <div className="employees-modal" role="dialog" aria-modal="true" style={{ maxWidth: '700px' }}>
-            <div className="employees-modal-heading">
-              <div>
-                <p className="employees-eyebrow">SUPPLIED ITEMS</p>
-                <h3>{catalogSupplier.name} Catalog</h3>
-              </div>
-              <button
-                type="button"
-                className="employees-modal-close"
-                onClick={() => setCatalogSupplier(null)}
-              >
-                <X size={20} />
-              </button>
-            </div>
-            {suppliedItems.length === 0 ? (
-              <div className="employees-empty-state">
-                <p>No ingredients currently associated with this vendor.</p>
-              </div>
-            ) : (
-              <div className="employees-table-scroll">
-                <table className="employees-table">
-                  <thead>
-                    <tr>
-                      <th>SKU</th>
-                      <th>Ingredient</th>
-                      <th>Category</th>
-                      <th>Unit Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {suppliedItems.map((item) => (
-                      <tr key={item.id}>
-                        <td><code>{item.sku}</code></td>
-                        <td><strong>{item.name}</strong></td>
-                        <td>{item.category}</td>
-                        <td>₹{item.unitCost}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <div className="employees-form-actions">
-              <button
-                type="button"
-                className="employees-button employees-button-secondary"
-                onClick={() => setCatalogSupplier(null)}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Add / Edit Supplier Modal matching People & HR Form Modals */}
       {isFormOpen && (

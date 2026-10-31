@@ -103,7 +103,7 @@ export default function CustomerHome({ user, onLogout }) {
   const [reviewOrder, setReviewOrder] = useState('')
   const [complaintSubject, setComplaintSubject] = useState('')
   const [complaintDesc, setComplaintDesc] = useState('')
-  const [complaintCategory, setComplaintCategory] = useState('food_quality')
+  const [complaintCategory, setComplaintCategory] = useState('food')
   const [feedbackSuccess, setFeedbackSuccess] = useState('')
   const [feedbackError, setFeedbackError] = useState('')
   const [pastReviews, setPastReviews] = useState([])
@@ -447,38 +447,41 @@ export default function CustomerHome({ user, onLogout }) {
     setCart((prev) => prev.filter((it) => it.menuItemId !== menuItemId))
   }
 
-  const handleApplyCoupon = () => {
+  const handleApplyCoupon = async (codeToApply) => {
     setCouponMessage('')
-    const code = couponInput.trim().toUpperCase()
-    if (!code) return
+    const code = (typeof codeToApply === 'string' ? codeToApply : couponInput).trim().toUpperCase()
+    if (!code) {
+      setCouponMessage('Please enter a coupon or promo code.')
+      return
+    }
+    if (cartSubtotal <= 0) {
+      setCouponMessage('Add items to your cart before applying a coupon.')
+      return
+    }
+    if (!selectedBranchId) {
+      setCouponMessage('Please select a restaurant branch first.')
+      return
+    }
 
-    if (code === 'WELCOME25') {
-      const discount = Math.min(250, Math.round(cartSubtotal * 0.25))
-      setDiscountAmount(discount)
-      setAppliedCoupon(code)
-      setCouponMessage(`Promo code ${code} applied! 25% discount (₹${discount})`)
-    } else if (code === 'ANOVAGOURMET') {
-      if (cartSubtotal < 800) {
-        setCouponMessage('ANOVAGOURMET requires a minimum order of ₹800.')
-        return
+    try {
+      const res = await apiClient('/api/coupons/validate', {
+        method: 'POST',
+        body: {
+          code,
+          branch: selectedBranchId,
+          subtotal: cartSubtotal,
+        },
+      })
+      const data = res?.data || res
+      if (data && data.discount !== undefined) {
+        setDiscountAmount(data.discount)
+        setAppliedCoupon(data.code || code)
+        setCouponMessage(`Offer ${data.code || code} applied! Saved ₹${data.discount}.`)
+      } else {
+        setCouponMessage('Coupon could not be applied.')
       }
-      setDiscountAmount(150)
-      setAppliedCoupon(code)
-      setCouponMessage(`Promo code ${code} applied! Flat ₹150 discount.`)
-    } else if (code === 'WEEKENDLUX') {
-      if (cartSubtotal < 1000) {
-        setCouponMessage('WEEKENDLUX requires a minimum order of ₹1000.')
-        return
-      }
-      const discount = Math.round(cartSubtotal * 0.15)
-      setDiscountAmount(discount)
-      setAppliedCoupon(code)
-      setCouponMessage(`Promo code ${code} applied! 15% discount (₹${discount})`)
-    } else {
-      const discount = Math.round(cartSubtotal * 0.1)
-      setDiscountAmount(discount)
-      setAppliedCoupon(code)
-      setCouponMessage(`Special offer ${code} applied: ₹${discount} off.`)
+    } catch (err) {
+      setCouponMessage(err.message || 'Invalid or inapplicable coupon code.')
     }
   }
 
@@ -1395,7 +1398,7 @@ export default function CustomerHome({ user, onLogout }) {
                               Order Total:{' '}
                             </span>
                             <span className="order-total-amount">
-                              {formatPrice(o.total || o.billTotal || 0)}
+                              {formatPrice(o.total ?? o.totalAmount ?? o.billTotal ?? 0)}
                             </span>
                           </div>
 
@@ -1435,50 +1438,57 @@ export default function CustomerHome({ user, onLogout }) {
                 </div>
               ) : (
                 <div className="offers-grid">
-                  {offers.map((offer) => (
-                    <article key={offer._id || offer.code} className="offer-card">
-                      <div>
-                        <span className="offer-badge">
-                          {offer.discountPercent
-                            ? `${offer.discountPercent}% OFF`
-                            : `FLAT ₹${offer.discountAmount} OFF`}
-                        </span>
+                  {offers.map((offer) => {
+                    const discountText =
+                      offer.discountType === 'percent' || offer.discountPercent
+                        ? `${offer.discountValue || offer.discountPercent}% OFF`
+                        : `FLAT ₹${offer.discountValue || offer.discountAmount || 0} OFF`
+                    const minOrderVal = offer.minOrderAmount ?? offer.minOrder ?? 0
+                    const expiryVal = offer.validTo || offer.expiresAt
 
-                        <h3 style={{ margin: '0 0 8px', color: '#193b2b', fontSize: '18px' }}>
-                          {offer.code}
-                        </h3>
+                    return (
+                      <article key={offer._id || offer.code} className="offer-card">
+                        <div>
+                          <span className="offer-badge">
+                            {discountText}
+                          </span>
 
-                        <p style={{ margin: '0 0 14px', fontSize: '13.5px', color: '#5a6860', lineHeight: '1.5' }}>
-                          {offer.description}
-                        </p>
-                      </div>
+                          <h3 style={{ margin: '0 0 8px', color: '#193b2b', fontSize: '18px' }}>
+                            {offer.code}
+                          </h3>
 
-                      <div>
-                        <div className="offer-code-box">
-                          <span className="offer-code-text">{offer.code}</span>
-                          <button
-                            type="button"
-                            className="copy-btn"
-                            onClick={() => handleCopyCode(offer.code)}
+                          <p style={{ margin: '0 0 14px', fontSize: '13.5px', color: '#5a6860', lineHeight: '1.5' }}>
+                            {offer.description || offer.title}
+                          </p>
+                        </div>
+
+                        <div>
+                          <div className="offer-code-box">
+                            <span className="offer-code-text">{offer.code}</span>
+                            <button
+                              type="button"
+                              className="copy-btn"
+                              onClick={() => handleCopyCode(offer.code)}
+                            >
+                              {copiedCode === offer.code ? 'Copied ✓' : 'Copy Code'}
+                            </button>
+                          </div>
+
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              fontSize: '11.5px',
+                              color: '#7f8a83',
+                            }}
                           >
-                            {copiedCode === offer.code ? 'Copied ✓' : 'Copy Code'}
-                          </button>
+                            <span>Min Order: {formatPrice(minOrderVal)}</span>
+                            <span>Valid till {expiryVal ? formatDate(expiryVal) : 'Ongoing'}</span>
+                          </div>
                         </div>
-
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            fontSize: '11.5px',
-                            color: '#7f8a83',
-                          }}
-                        >
-                          <span>Min Order: {formatPrice(offer.minOrder || 0)}</span>
-                          <span>Valid till {formatDate(offer.expiresAt) || 'Ongoing'}</span>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -1542,12 +1552,22 @@ export default function CustomerHome({ user, onLogout }) {
                         required
                       >
                         <option value="">-- Choose past order --</option>
-                        {orders.map((o) => (
-                          <option key={o._id} value={o._id}>
-                            Order #{o.orderNumber || o._id.slice(-6)} (
-                            {formatDate(o.createdAt)})
-                          </option>
-                        ))}
+                        {orders.map((o) => {
+                          const isEligible = ['completed', 'delivered'].includes(
+                            String(o.status || '').toLowerCase()
+                          )
+                          return (
+                            <option
+                              key={o._id}
+                              value={o._id}
+                              disabled={!isEligible}
+                            >
+                              Order #{o.orderNumber || o._id.slice(-6)} · {o.status || 'Active'} (
+                              {formatDate(o.createdAt)})
+                              {!isEligible ? ' — (Review available once completed)' : ''}
+                            </option>
+                          )
+                        })}
                       </select>
                     </div>
 
@@ -1599,10 +1619,9 @@ export default function CustomerHome({ user, onLogout }) {
                         value={complaintCategory}
                         onChange={(e) => setComplaintCategory(e.target.value)}
                       >
-                        <option value="food_quality">Food Quality & Taste</option>
-                        <option value="late_delivery">Delivery / Service Timing</option>
-                        <option value="wrong_item">Incorrect Dish / Item</option>
-                        <option value="staff_behavior">Hospitality & Service</option>
+                        <option value="food">Food Quality & Taste</option>
+                        <option value="delivery">Delivery & Timing</option>
+                        <option value="service">Hospitality & Service</option>
                         <option value="billing">Billing & Payment</option>
                         <option value="other">Other Inquiry</option>
                       </select>

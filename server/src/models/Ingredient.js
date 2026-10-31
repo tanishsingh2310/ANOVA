@@ -49,7 +49,11 @@ const ingredientSchema = new mongoose.Schema({
 
   // Traceable inventory batches for FIFO valuation & expiry tracking
   batches: [batchSchema]
-}, { timestamps: true });
+}, {
+  timestamps: true,
+  toJSON: { flattenMaps: true },
+  toObject: { flattenMaps: true }
+});
 
 // Safe branch stock accessors
 ingredientSchema.methods.getStock = function(branchId) {
@@ -59,15 +63,24 @@ ingredientSchema.methods.getStock = function(branchId) {
       for (const val of this.stockByBranch.values()) {
         total += Number(val || 0);
       }
+    } else if (typeof this.stockByBranch === 'object' && this.stockByBranch !== null) {
+      for (const val of Object.values(this.stockByBranch)) {
+        total += Number(val || 0);
+      }
     }
     return total;
   }
-  return Number(this.stockByBranch?.get?.(String(branchId)) || 0);
+  if (this.stockByBranch instanceof Map) {
+    return Number(this.stockByBranch.get(String(branchId)) || 0);
+  }
+  return Number(this.stockByBranch?.[String(branchId)] || 0);
 };
 
 ingredientSchema.methods.setStock = function(branchId, qty) {
   if (this.stockByBranch instanceof Map) {
     this.stockByBranch.set(String(branchId), Math.max(0, Number(qty)));
+  } else if (typeof this.stockByBranch === 'object' && this.stockByBranch !== null) {
+    this.stockByBranch[String(branchId)] = Math.max(0, Number(qty));
   }
 };
 

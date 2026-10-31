@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import InventoryNav from './components/InventoryNav';
-import InventoryDashboard from './dashboard/InventoryDashboard';
 import IngredientsPage from './ingredients/IngredientsPage';
 import SuppliersPage from './suppliers/SuppliersPage';
 import PurchaseOrdersPage from './orders/PurchaseOrdersPage';
@@ -26,7 +25,7 @@ if (typeof window !== 'undefined' && !localStorage.getItem(MOCK_PURGE_FLAG)) {
 }
 
 export default function InventoryModule({
-  activeSubpage = 'inv-dashboard',
+  activeSubpage = 'inv-ingredients',
   onSubpageChange = () => {},
   selectedBranch = 'all',
   showSubnav = false,
@@ -90,13 +89,6 @@ export default function InventoryModule({
           activeTab={currentTab}
           onTabChange={handleTabChange}
           alertsCount={alertsCount}
-        />
-      )}
-      {currentTab === 'inv-dashboard' && (
-        <InventoryDashboard
-          branchId={selectedBranch}
-          branches={branches}
-          onNavigate={handleTabChange}
         />
       )}
 

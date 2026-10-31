@@ -507,6 +507,40 @@ img {
   color: #244b38;
 }
 
+.module-tone-gold {
+  background: #f5efe2;
+  color: #927541;
+}
+
+.module-tone-blue {
+  background: #eaf0f6;
+  color: #496b8c;
+}
+
+.module-tone-green {
+  background: #eaf2ec;
+  color: #285b43;
+}
+
+.overview-inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+@media (max-width: 1200px) {
+  .overview-inventory-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .overview-inventory-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .module-title {
   margin-bottom: 8px;
   font-size: 16px;

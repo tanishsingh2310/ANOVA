@@ -5,6 +5,10 @@ import "../../../styles/food-recommendations.css";
 function DishPhoto({ dish, containerClass, photoClass }) {
   const [imageFailed, setImageFailed] = useState(false);
 
+  useEffect(() => {
+    setImageFailed(false);
+  }, [dish.image, dish.id, dish._id]);
+
   if (!dish.image || imageFailed) {
     return (
       <span className={containerClass} aria-hidden="true">
@@ -35,6 +39,8 @@ const currency = (amount) =>
   }).format(amount);
 
 function FoodRecommendations({ branchId }) {
+  const [branches, setBranches] = useState([]);
+  const [selectedBranch, setSelectedBranch] = useState(branchId || "");
   const [dishes, setDishes] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,18 +50,63 @@ function FoodRecommendations({ branchId }) {
   const [category, setCategory] = useState("All");
   const [dietary, setDietary] = useState("All");
   const [sortBy, setSortBy] = useState("recommended");
-  const [maxPrice, setMaxPrice] = useState(500);
+  const [maxPrice, setMaxPrice] = useState(1000);
   const [budget, setBudget] = useState("300");
   const [showPopularOnly, setShowPopularOnly] = useState(false);
   const [selectedDish, setSelectedDish] = useState(null);
   const [recommendationMode, setRecommendationMode] = useState(false);
 
+  // Load public branches for branch selection and defaulting when branchId is 'all'
+  useEffect(() => {
+    let isMounted = true;
 
-      useEffect(() => {
+    async function loadBranches() {
+      try {
+        const response = await apiRequest("/api/branches/public");
+        const available = Array.isArray(response?.branches)
+          ? response.branches
+          : Array.isArray(response)
+          ? response
+          : [];
+
+        if (isMounted && available.length > 0) {
+          setBranches(available);
+          if (!branchId || branchId === "all") {
+            const pune = available.find(
+              (b) =>
+                b.name?.toLowerCase().includes("pune") ||
+                b._id === "6ad0e90a53cc462cbaaec9fa"
+            );
+            setSelectedBranch(pune ? pune._id : available[0]._id);
+          }
+        }
+      } catch (err) {
+        console.warn("Unable to load restaurant locations:", err);
+      }
+    }
+
+    loadBranches();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [branchId]);
+
+  const effectiveBranchId = useMemo(() => {
+    if (selectedBranch && selectedBranch !== "all") {
+      return selectedBranch;
+    }
+    if (branchId && branchId !== "all") {
+      return branchId;
+    }
+    return branches[0]?._id || "";
+  }, [selectedBranch, branchId, branches]);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function loadRecommendationData() {
-      if (!branchId) {
+      if (!effectiveBranchId) {
         setDishes([]);
         setOrders([]);
         setLoading(false);
@@ -70,8 +121,8 @@ function FoodRecommendations({ branchId }) {
 
       try {
         const [menuData, orderData] = await Promise.all([
-          apiRequest(`/api/menu/${branchId}`),
-          apiRequest(`/api/orders/${branchId}`),
+          apiRequest(`/api/menu/${effectiveBranchId}`),
+          apiRequest(`/api/orders/${effectiveBranchId}`),
         ]);
 
         if (!Array.isArray(menuData) || !Array.isArray(orderData)) {
@@ -100,7 +151,7 @@ function FoodRecommendations({ branchId }) {
     return () => {
       isMounted = false;
     };
-  }, [branchId]);
+  }, [effectiveBranchId]);
 
     const salesByMenuItemId = useMemo(() => {
     const totals = {};
@@ -208,6 +259,8 @@ function FoodRecommendations({ branchId }) {
       result.sort((a, b) => a.price - b.price);
     } else if (sortBy === "price-high") {
       result.sort((a, b) => b.price - a.price);
+    } else if (sortBy === "name-asc") {
+      result.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     } else if (sortBy === "popular" || sortBy === "recommended") {
       result.sort(
         (a, b) =>
@@ -273,7 +326,7 @@ function FoodRecommendations({ branchId }) {
   setCategory("All");
   setDietary("All");
   setSortBy("recommended");
-  setMaxPrice(500);
+  setMaxPrice(1000);
   setShowPopularOnly(false);
   setRecommendationMode(false);
 };
@@ -287,14 +340,33 @@ function FoodRecommendations({ branchId }) {
         </p>
       </div>
 
-      <button
-        type="button"
-        className="food-recommend-button"
-        onClick={() => setRecommendationMode((current) => !current)}
-      >
-        <span aria-hidden="true">✦</span>
-        {recommendationMode ? "Browse Menu" : "Find Recommendations"}
-      </button>
+      <div className="food-header-actions">
+        {branches.length > 0 && (
+          <div className="food-branch-selector">
+            <label htmlFor="food-branch-select">Branch:</label>
+            <select
+              id="food-branch-select"
+              value={effectiveBranchId}
+              onChange={(event) => setSelectedBranch(event.target.value)}
+            >
+              {branches.map((b) => (
+                <option key={b._id} value={b._id}>
+                  {b.name} ({b.city})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="food-recommend-button"
+          onClick={() => setRecommendationMode((current) => !current)}
+        >
+          <span aria-hidden="true">✦</span>
+          {recommendationMode ? "Browse Menu" : "Find Recommendations"}
+        </button>
+      </div>
     </header>
 
     {loading && (
@@ -391,7 +463,11 @@ function FoodRecommendations({ branchId }) {
             <span>{recommendations.length} suggestions</span>
           </div>
 
-          {recommendations.length > 0 ? (
+          {Number(budget) <= 0 || !Number.isFinite(Number(budget)) ? (
+            <p className="food-no-results">
+              Please enter a valid budget greater than ₹0 to receive recommendations.
+            </p>
+          ) : recommendations.length > 0 ? (
             <div className="food-recommendation-list">
               {recommendations.map((dish) => (
                 <button
@@ -419,7 +495,7 @@ function FoodRecommendations({ branchId }) {
             </div>
           ) : (
             <p className="food-no-results">
-              No dishes match this budget and dietary preference. Try adjusting
+              No dishes match this budget ({currency(Number(budget))}) and dietary preference ({dietary}). Try adjusting
               your choices.
             </p>
           )}
@@ -490,11 +566,27 @@ function FoodRecommendations({ branchId }) {
                 <option value="popular">Most Popular</option>
                 <option value="price-low">Price: Low to High</option>
                 <option value="price-high">Price: High to Low</option>
+                <option value="name-asc">Name: A to Z</option>
               </select>
             </div>
           </div>
 
-          
+          <div className="food-price-filter">
+            <div className="food-price-heading">
+              <label htmlFor="food-max-price">Maximum dish price</label>
+              <strong>{currency(maxPrice)}</strong>
+            </div>
+            <input
+              id="food-max-price"
+              type="range"
+              min="50"
+              max="1500"
+              step="25"
+              value={maxPrice}
+              onChange={(event) => setMaxPrice(Number(event.target.value))}
+              aria-label="Filter dishes by maximum price"
+            />
+          </div>
 
           <div className="food-filter-footer">
             <label className="food-popular-toggle">
@@ -573,6 +665,12 @@ function FoodRecommendations({ branchId }) {
                 </div>
               </article>
             ))}
+          </div>
+         ) : dishes.length === 0 && !loading && !error ? (
+          <div className="food-empty-state">
+            <span aria-hidden="true">🍽️</span>
+            <h3>No dishes available</h3>
+            <p>There are no menu items configured for this branch yet.</p>
           </div>
          ) : !loading && !error ? (
           <div className="food-empty-state">

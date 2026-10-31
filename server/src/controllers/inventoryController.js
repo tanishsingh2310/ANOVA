@@ -105,16 +105,29 @@ async function resolveInventoryBranch(req, requestedBranch) {
 function getScopedBranchStock(ingredient, scope) {
   if (scope.all) {
     let total = 0;
-    for (const qty of ingredient.stockByBranch.values()) {
-      total += Number(qty || 0);
+    if (ingredient.stockByBranch instanceof Map) {
+      for (const qty of ingredient.stockByBranch.values()) {
+        total += Number(qty || 0);
+      }
+    } else if (typeof ingredient.stockByBranch === 'object' && ingredient.stockByBranch !== null) {
+      for (const qty of Object.values(ingredient.stockByBranch)) {
+        total += Number(qty || 0);
+      }
     }
     return total;
   }
 
-  return scope.keys.reduce(
-    (total, key) => total + Number(ingredient.stockByBranch.get(key) || 0),
-    0
-  );
+  for (const key of scope.keys) {
+    if (ingredient.stockByBranch instanceof Map) {
+      if (ingredient.stockByBranch.has(key)) {
+        return Number(ingredient.stockByBranch.get(key) || 0);
+      }
+    } else if (ingredient.stockByBranch && ingredient.stockByBranch[key] !== undefined) {
+      return Number(ingredient.stockByBranch[key] || 0);
+    }
+  }
+
+  return 0;
 }
 
 function inventoryRecordMatchesBranch(record, scope, fields) {
@@ -186,7 +199,7 @@ const getIngredients = async (req, res, next) => {
       .sort({ name: 1 });
 
     const result = ingredients.map((ingredient) => {
-      const item = ingredient.toObject();
+      const item = ingredient.toObject({ flattenMaps: true });
       if (!branchDoc) return item;
 
       const branchId = String(branchDoc._id);
@@ -465,7 +478,7 @@ const getIngredientById = async (req, res, next) => {
       return sendResponse(res, 404, false, null, 'Ingredient not found');
     }
 
-    const item = ingredient.toObject();
+    const item = ingredient.toObject({ flattenMaps: true });
 
     if (branchDoc) {
       const branchId = String(branchDoc._id);
@@ -477,8 +490,10 @@ const getIngredientById = async (req, res, next) => {
           ? branchCode
           : null;
 
+      const branchQty = stockKey ? Number(stockMap.get(stockKey) || 0) : 0;
       item.stockByBranch = {
-        [branchCode]: stockKey ? Number(stockMap.get(stockKey) || 0) : 0
+        [branchCode]: branchQty,
+        [branchId]: branchQty
       };
 
       item.batches = (item.batches || []).filter((batch) =>
@@ -1022,7 +1037,9 @@ const receivePurchaseOrder = async (req, res, next) => {
       });
     }
 
-    const stockBranchKey = String(po.branch);
+    const branchId = String(branchDoc._id);
+    const branchCode = String(branchDoc.code || '');
+
     for (const entry of validatedItems) {
       const { ingredientDoc, line, acceptedQty, rejectedQty, damagedQty } = entry;
 
@@ -1032,9 +1049,16 @@ const receivePurchaseOrder = async (req, res, next) => {
 
       if (acceptedQty <= 0) continue;
 
-      const currentStock = Number(ingredientDoc.stockByBranch.get(stockBranchKey) || 0);
+      const stockMap = ingredientDoc.stockByBranch;
+      const stockBranchKey = stockMap.has(branchId)
+        ? branchId
+        : stockMap.has(branchCode)
+          ? branchCode
+          : (stockMap.has(String(po.branch)) ? String(po.branch) : (branchCode || branchId));
+
+      const currentStock = Number(stockMap.get(stockBranchKey) || 0);
       const newStock = currentStock + acceptedQty;
-      ingredientDoc.stockByBranch.set(stockBranchKey, newStock);
+      stockMap.set(stockBranchKey, newStock);
 
       ingredientDoc.batches.push({
         batchNumber: entry.batchNumber,
@@ -1314,14 +1338,15 @@ const dispatchTransfer = async (req, res, next) => {
           fail(400, `Transfer unit must match the base unit (${ingredient.baseUnit}) for ${ingredient.name}`);
         }
 
-        const currentStock = Number(ingredient.stockByBranch.get(sourceKey) || 0);
+        const sourceKeys = [sourceKey, String(sourceBranch._id), String(sourceBranch.code || '')].filter(Boolean);
+        const sourceStockKey = sourceKeys.find(k => ingredient.stockByBranch.has(k)) || sourceKey;
+        const currentStock = Number(ingredient.stockByBranch.get(sourceStockKey) || 0);
 
         if (!Number.isFinite(currentStock) || currentStock < item.qty) {
-          fail(400, `Insufficient stock for ${ingredient.name} at branch ${sourceKey}`);
+          fail(400, `Insufficient stock for ${ingredient.name} at branch ${sourceBranch.name || sourceKey}`);
         }
 
         // Ensure batch ledger covers deduction for FIFO depleting
-        const sourceKeys = [sourceKey, String(sourceBranch._id), String(sourceBranch.code || '')].filter(Boolean);
         const totalBatchQty = (ingredient.batches || [])
           .filter(b => sourceKeys.includes(String(b.branch)) || sourceKeys.includes(String(b.branchRef)))
           .reduce((sum, b) => sum + Number(b.quantity || 0), 0);
@@ -1329,7 +1354,7 @@ const dispatchTransfer = async (req, res, next) => {
         if (totalBatchQty < item.qty) {
           ingredient.batches.push({
             batchNumber: item.batchNumber || `BAT-TR-${Date.now().toString().slice(-6)}`,
-            branch: sourceKey,
+            branch: sourceStockKey,
             branchRef: sourceBranch._id,
             quantity: Math.max(item.qty - totalBatchQty, currentStock),
             expiryDate: new Date(Date.now() + 30 * 86400000),
@@ -1341,12 +1366,13 @@ const dispatchTransfer = async (req, res, next) => {
           item,
           ingredient,
           currentStock,
+          sourceStockKey,
           sourceKeys
         });
       }
 
       for (const entry of prepared) {
-        const { item, ingredient, currentStock, sourceKeys } = entry;
+        const { item, ingredient, currentStock, sourceStockKey, sourceKeys } = entry;
         const deducted = depleteBatchesFIFO(
           ingredient.batches,
           sourceKeys,
@@ -1359,7 +1385,7 @@ const dispatchTransfer = async (req, res, next) => {
         }
 
         const newStock = currentStock - item.qty;
-        ingredient.stockByBranch.set(sourceKey, newStock);
+        ingredient.stockByBranch.set(sourceStockKey, newStock);
         await ingredient.save({ session });
 
         await StockMovement.create([{
@@ -1524,20 +1550,25 @@ const receiveTransfer = async (req, res, next) => {
         });
       }
 
+      const destId = String(destinationBranch._id);
+      const destCode = String(destinationBranch.code || '');
+      const destKeys = [destinationKey, destId, destCode].filter(Boolean);
+
       for (const entry of validatedItems) {
         const { item, ingredient, qty, expiryDate, batchNumber } = entry;
-        const current = Number(ingredient.stockByBranch.get(destinationKey) || 0);
+        const destStockKey = destKeys.find(k => ingredient.stockByBranch.has(k)) || destCode || destinationKey;
+        const current = Number(ingredient.stockByBranch.get(destStockKey) || 0);
 
         if (!Number.isFinite(current) || current < 0) {
           fail(409, `Invalid destination stock balance for ${ingredient.name}`);
         }
 
         const newStock = current + qty;
-        ingredient.stockByBranch.set(destinationKey, newStock);
+        ingredient.stockByBranch.set(destStockKey, newStock);
 
         ingredient.batches.push({
           batchNumber,
-          branch: destinationKey,
+          branch: destStockKey,
           branchRef: destinationBranch._id,
           quantity: qty,
           expiryDate,
@@ -2103,6 +2134,7 @@ const getDashboardKPIs = async (req, res, next) => {
     let totalStockValue = 0;
     let totalItemsTracked = ingredients.length;
     let lowStockAlerts = 0;
+    let criticalLowAlerts = 0;
     let outOfStockAlerts = 0;
 
     for (const ing of ingredients) {
@@ -2112,13 +2144,40 @@ const getDashboardKPIs = async (req, res, next) => {
 
       if (branchStock <= 0) {
         outOfStockAlerts++;
+      } else if (branchStock <= Math.floor(ing.minThreshold / 2)) {
+        criticalLowAlerts++;
       } else if (branchStock <= ing.minThreshold) {
         lowStockAlerts++;
       }
     }
 
-    const activePOs = pos.filter(p => {
+    const targetExpiryDate = new Date();
+    targetExpiryDate.setDate(targetExpiryDate.getDate() + 7);
+
+    let expiringBatchesCount = 0;
+    for (const ing of ingredients) {
+      for (const batch of (ing.batches || [])) {
+        if (!(batch.quantity > 0)) continue;
+        const expiry = new Date(batch.expiryDate);
+        if (expiry <= targetExpiryDate && expiry >= new Date(Date.now() - 86400000)) {
+          if (!scope.all) {
+            const match =
+              String(batch.branchRef || '') === String(scope.branchDoc?._id) ||
+              scope.keys.includes(String(batch.branch));
+            if (!match) continue;
+          }
+          expiringBatchesCount++;
+        }
+      }
+    }
+
+    const activeOrderedPOs = pos.filter(p => {
       if (!['SUBMITTED', 'APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(p.status)) return false;
+      return inventoryRecordMatchesBranch(p, scope, ['branch', 'branchRef']);
+    }).length;
+
+    const pendingApprovalPOs = pos.filter(p => {
+      if (p.status !== 'SUBMITTED') return false;
       return inventoryRecordMatchesBranch(p, scope, ['branch', 'branchRef']);
     }).length;
 
@@ -2135,9 +2194,13 @@ const getDashboardKPIs = async (req, res, next) => {
       totalStockValue: Math.round(totalStockValue * 100) / 100,
       totalItemsTracked,
       lowStockAlerts,
+      criticalLowAlerts,
       outOfStockAlerts,
-      totalAlerts: lowStockAlerts + outOfStockAlerts,
-      activePOs,
+      totalAlerts: lowStockAlerts + criticalLowAlerts + outOfStockAlerts + expiringBatchesCount,
+      expiringBatchesCount,
+      activePOs: activeOrderedPOs,
+      activeOrderedPOs,
+      pendingApprovalPOs,
       inTransitTransfers,
       totalWastageCost: Math.round(totalWastageCost * 100) / 100
     }, 'Dashboard KPIs calculated');

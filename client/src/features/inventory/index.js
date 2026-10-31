@@ -7,8 +7,6 @@ export { default as InventoryModule } from './InventoryModule';
 export { default as InventoryNav } from './components/InventoryNav';
 export { default as StockBadge } from './components/StockBadge';
 
-// Module-wise sub-features
-export { default as InventoryDashboard } from './dashboard/InventoryDashboard';
 export { default as IngredientsPage } from './ingredients/IngredientsPage';
 export { default as BatchTrackerModal } from './ingredients/BatchTrackerModal';
 export { default as StockAdjustmentModal } from './ingredients/StockAdjustmentModal';
@@ -34,7 +32,6 @@ export const inventoryNavigation = {
   title: 'Inventory & Supply Chain',
   roleRequired: ['owner', 'admin', 'inventory_manager', 'branch_manager'],
   items: [
-    { id: 'inv-dashboard', label: 'Inventory Overview', path: '/inventory/dashboard' },
     { id: 'inv-ingredients', label: 'Ingredients & Stock', path: '/inventory/ingredients' },
     { id: 'inv-suppliers', label: 'Supplier Directory', path: '/inventory/suppliers' },
     { id: 'inv-orders', label: 'Purchase Orders & GRN', path: '/inventory/orders' },

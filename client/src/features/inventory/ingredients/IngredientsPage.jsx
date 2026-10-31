@@ -192,13 +192,26 @@ export default function IngredientsPage({ branchId, branches = [] }) {
   const getBranchStock = (ing) => {
     if (!ing || !ing.stockByBranch) return 0;
     if (selectedBranch === 'all') {
+      if (Array.isArray(branches) && branches.length > 0) {
+        let total = 0;
+        for (const b of branches) {
+          const keys = [b.id, b._id, b.code].filter(Boolean);
+          for (const k of keys) {
+            if (ing.stockByBranch[k] !== undefined) {
+              total += Number(ing.stockByBranch[k] || 0);
+              break;
+            }
+          }
+        }
+        return total;
+      }
       return Object.values(ing.stockByBranch).reduce((s, v) => s + (Number(v) || 0), 0);
     }
     const b = branches.find(item => item.id === selectedBranch || item._id === selectedBranch || item.code === selectedBranch);
     const candidates = [selectedBranch, b?.code, b?.id, b?._id].filter(Boolean);
     for (const key of candidates) {
       if (ing.stockByBranch[key] !== undefined) {
-        return Number(ing.stockByBranch[key]);
+        return Number(ing.stockByBranch[key] || 0);
       }
     }
     return 0;
