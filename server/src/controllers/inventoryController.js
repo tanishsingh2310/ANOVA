@@ -248,9 +248,33 @@ const createIngredient = async (req, res, next) => {
       delete data.primarySupplier;
     }
     const ingredient = new Ingredient(data);
+    if (data.stockByBranch && typeof data.stockByBranch === 'object') {
+      const stockEntries = data.stockByBranch instanceof Map
+        ? Array.from(data.stockByBranch.entries())
+        : Object.entries(data.stockByBranch);
+      for (const [bKey, qtyVal] of stockEntries) {
+        const qty = Number(qtyVal);
+        if (qty > 0) {
+          ingredient.batches.push({
+            batchNumber: `OPENING-${ingredient.sku}-${bKey}`,
+            branch: bKey,
+            quantity: qty,
+            expiryDate: new Date(Date.now() + 90 * 86400000),
+            receivedCost: Number(ingredient.unitCost || 0)
+          });
+        }
+      }
+    }
     await ingredient.save();
     sendResponse(res, 201, true, ingredient, 'Ingredient registered successfully');
   } catch (err) {
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors || {}).map((e) => e.message).join(', ');
+      return sendResponse(res, 400, false, null, messages || err.message);
+    }
+    if (err.code === 11000) {
+      return sendResponse(res, 409, false, null, 'An ingredient with this SKU already exists');
+    }
     next(err);
   }
 };
@@ -327,10 +351,26 @@ const adjustStock = async (req, res, next) => {
       const delta = targetQuantity - previousQty;
 
       if (delta < 0) {
+        const needed = Math.abs(delta);
+        const totalBatchQty = (ingredient.batches || [])
+          .filter(b => branchKeys.includes(String(b.branch)) || branchKeys.includes(String(b.branchRef)))
+          .reduce((sum, b) => sum + Number(b.quantity || 0), 0);
+
+        if (totalBatchQty < needed) {
+          ingredient.batches.push({
+            batchNumber: `OPENING-${ingredient.sku}-${stockKey}`,
+            branch: stockKey,
+            branchRef: branchDoc._id,
+            quantity: Math.max(needed - totalBatchQty, previousQty),
+            expiryDate: new Date(Date.now() + 90 * 86400000),
+            receivedCost: ingredient.unitCost || 0
+          });
+        }
+
         depleteBatchesFIFO(
           ingredient.batches,
           branchKeys,
-          Math.abs(delta)
+          needed
         );
       } else if (delta > 0) {
         adjustBatches(
@@ -550,6 +590,13 @@ const updateIngredient = async (req, res, next) => {
 
     sendResponse(res, 200, true, ingredient, 'Ingredient updated successfully');
   } catch (err) {
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors || {}).map((e) => e.message).join(', ');
+      return sendResponse(res, 400, false, null, messages || err.message);
+    }
+    if (err.code === 11000) {
+      return sendResponse(res, 409, false, null, 'An ingredient with this SKU already exists');
+    }
     next(err);
   }
 };
@@ -1188,7 +1235,10 @@ const deletePurchaseOrder = async (req, res, next) => {
       );
     }
 
-    await PurchaseOrder.findByIdAndDelete(po._id);
+    const deleted = await PurchaseOrder.findByIdAndDelete(po._id);
+    if (!deleted) {
+      return sendResponse(res, 404, false, null, 'Purchase order not found or already deleted');
+    }
     return sendResponse(res, 200, true, { id: po._id, poNumber: po.poNumber }, 'Purchase order deleted successfully');
   } catch (err) {
     if (err.statusCode) {
@@ -1346,6 +1396,21 @@ const dispatchTransfer = async (req, res, next) => {
           fail(400, `Insufficient stock for ${ingredient.name} at branch ${sourceBranch.name || sourceKey}`);
         }
 
+        // Ensure item has a batch number assigned
+        let assignedBatchNumber = item.batchNumber ? String(item.batchNumber).trim() : null;
+        if (!assignedBatchNumber) {
+          const existingBatch = (ingredient.batches || []).find(
+            b => (sourceKeys.includes(String(b.branch)) || sourceKeys.includes(String(b.branchRef))) &&
+                 Number(b.quantity || 0) > 0
+          );
+          if (existingBatch && existingBatch.batchNumber) {
+            assignedBatchNumber = existingBatch.batchNumber;
+          } else {
+            assignedBatchNumber = `BAT-TR-${Date.now().toString().slice(-6)}`;
+          }
+        }
+        item.batchNumber = assignedBatchNumber;
+
         // Ensure batch ledger covers deduction for FIFO depleting
         const totalBatchQty = (ingredient.batches || [])
           .filter(b => sourceKeys.includes(String(b.branch)) || sourceKeys.includes(String(b.branchRef)))
@@ -1353,7 +1418,7 @@ const dispatchTransfer = async (req, res, next) => {
 
         if (totalBatchQty < item.qty) {
           ingredient.batches.push({
-            batchNumber: item.batchNumber || `BAT-TR-${Date.now().toString().slice(-6)}`,
+            batchNumber: assignedBatchNumber,
             branch: sourceStockKey,
             branchRef: sourceBranch._id,
             quantity: Math.max(item.qty - totalBatchQty, currentStock),
@@ -1515,9 +1580,7 @@ const receiveTransfer = async (req, res, next) => {
           fail(400, 'Transfer contains an invalid ingredient or quantity');
         }
 
-        if (!item.batchNumber || !String(item.batchNumber).trim()) {
-          fail(400, 'Transfer item is missing its source batch number');
-        }
+        const batchNumber = String(item.batchNumber || '').trim() || 'TRANSFER-STOCK';
 
         const ingredientId = String(item.ingredient);
         if (seenIngredients.has(ingredientId)) {
@@ -1530,23 +1593,22 @@ const receiveTransfer = async (req, res, next) => {
           fail(400, `Ingredient ${ingredientId} was not found`);
         }
 
-        const sourceBatch = ingredient.batches.find(batch =>
-          String(batch.batchNumber) === String(item.batchNumber).trim() &&
-          String(batch.branch) === String(transfer.fromBranch) &&
+        const sourceKeys = [String(transfer.fromBranch), String(transfer.fromBranchRef || '')].filter(Boolean);
+        const sourceBatch = (ingredient.batches || []).find(batch =>
+          String(batch.batchNumber).trim() === batchNumber &&
+          (sourceKeys.includes(String(batch.branch)) || sourceKeys.includes(String(batch.branchRef))) &&
           batch.expiryDate &&
           Number.isFinite(new Date(batch.expiryDate).getTime())
         );
 
-        if (!sourceBatch) {
-          fail(400, `Cannot verify expiry for batch ${item.batchNumber}`);
-        }
+        const expiryDate = sourceBatch ? new Date(sourceBatch.expiryDate) : new Date(Date.now() + 30 * 86400000);
 
         validatedItems.push({
           item,
           ingredient,
           qty,
-          expiryDate: new Date(sourceBatch.expiryDate),
-          batchNumber: String(item.batchNumber).trim()
+          expiryDate,
+          batchNumber
         });
       }
 
@@ -2062,6 +2124,7 @@ const recordWastage = async (req, res, next) => {
 };
 
 const deleteWastage = async (req, res, next) => {
+  let session;
   try {
     const { id } = req.params;
     let wastage = null;
@@ -2078,10 +2141,72 @@ const deleteWastage = async (req, res, next) => {
     }
     if (!wastage) return sendResponse(res, 404, false, null, 'Wastage record not found');
 
-    await Wastage.findByIdAndDelete(wastage._id);
-    return sendResponse(res, 200, true, { id: wastage._id }, 'Wastage record deleted successfully');
+    session = await mongoose.startSession();
+    await session.withTransaction(async () => {
+      const ing = await Ingredient.findById(wastage.ingredient).session(session);
+      if (ing) {
+        const Branch = mongoose.model('Branch');
+        let branchDoc = null;
+        if (wastage.branchRef && mongoose.isValidObjectId(wastage.branchRef)) {
+          branchDoc = await Branch.findById(wastage.branchRef).session(session);
+        }
+        if (!branchDoc && mongoose.isValidObjectId(wastage.branch)) {
+          branchDoc = await Branch.findById(wastage.branch).session(session);
+        }
+        if (!branchDoc && typeof wastage.branch === 'string') {
+          branchDoc = await Branch.findOne({ code: wastage.branch.toUpperCase() }).session(session);
+        }
+
+        const bId = branchDoc ? String(branchDoc._id) : String(wastage.branchRef || '');
+        const bCode = branchDoc ? String(branchDoc.code) : String(wastage.branch);
+        const stockKeys = [bId, bCode, String(wastage.branch)].filter(Boolean);
+
+        const stockMap = ing.stockByBranch;
+        const targetStockKey = stockKeys.find(k => stockMap.has(k)) || bCode || wastage.branch;
+        const currentStock = Number(stockMap.get(targetStockKey) || 0);
+        const restoredStock = Number((currentStock + Number(wastage.quantity)).toFixed(8));
+
+        stockMap.set(targetStockKey, restoredStock);
+
+        ing.batches.push({
+          batchNumber: wastage.batchNumber && wastage.batchNumber !== 'GENERAL-STOCK'
+            ? wastage.batchNumber
+            : `BAT-REV-${Date.now().toString().slice(-6)}`,
+          branch: targetStockKey,
+          branchRef: branchDoc ? branchDoc._id : undefined,
+          quantity: Number(wastage.quantity),
+          expiryDate: new Date(Date.now() + 30 * 86400000),
+          receivedCost: Number(wastage.unitCost || ing.unitCost || 0)
+        });
+
+        await ing.save({ session });
+
+        await StockMovement.create([{
+          type: 'STOCK_ADJUSTMENT',
+          reference: `REVERSAL-${wastage.wasteNumber}`,
+          ingredient: ing._id,
+          branch: targetStockKey,
+          branchRef: branchDoc ? branchDoc._id : undefined,
+          deltaQty: Number(wastage.quantity),
+          unit: ing.baseUnit,
+          resultingBalance: restoredStock,
+          performedBy: String(req.user?._id || 'Staff'),
+          performedByUser: req.user?._id || undefined,
+          notes: `Wastage record ${wastage.wasteNumber} deleted. Stock restored.`
+        }], { session });
+      }
+
+      await Wastage.findByIdAndDelete(wastage._id).session(session);
+    });
+
+    return sendResponse(res, 200, true, { id: wastage._id, wasteNumber: wastage.wasteNumber }, 'Wastage record deleted and stock reversed successfully');
   } catch (err) {
+    if (err.statusCode) {
+      return sendResponse(res, err.statusCode, false, null, err.message);
+    }
     next(err);
+  } finally {
+    if (session) await session.endSession();
   }
 };
 
@@ -2353,7 +2478,8 @@ const getStockStatus = async (req, res, next) => {
 
 const checkRecipeAvailability = async (req, res, next) => {
   try {
-    const { branch, items } = req.body;
+    const { branch } = req.body;
+    const items = req.body.items || req.body.ingredients;
     if (!branch || !items || !Array.isArray(items)) {
       return sendResponse(res, 400, false, null, 'Branch and valid items array are required');
     }

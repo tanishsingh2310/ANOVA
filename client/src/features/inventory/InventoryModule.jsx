@@ -67,13 +67,21 @@ export default function InventoryModule({
     };
   }, []);
 
-  useEffect(() => {
+  const updateAlerts = () => {
     try {
       const kpis = AnalyticsService.getDashboardKPIs(selectedBranch);
       setAlertsCount(kpis?.totalAlerts || 0);
     } catch {
       setAlertsCount(0);
     }
+  };
+
+  useEffect(() => {
+    updateAlerts();
+    window.addEventListener('anova_records_updated', updateAlerts);
+    return () => {
+      window.removeEventListener('anova_records_updated', updateAlerts);
+    };
   }, [selectedBranch]);
 
   const handleTabChange = (tabId) => {

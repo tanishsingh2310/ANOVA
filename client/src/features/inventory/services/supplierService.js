@@ -188,51 +188,48 @@ export const SupplierService = {
 
     const endpoint = isUpdate ? `/api/inventory/suppliers/${targetId}` : '/api/inventory/suppliers';
     const method = isUpdate ? 'PUT' : 'POST';
-    try {
-      const res = await apiClient(endpoint, { method, body: payload });
-      if (res && res.success && res.data) {
-        const normalized = normalizeSupplier(res.data);
-        const list = getSuppliersData();
-        const idx = list.findIndex(s => s.id === normalized.id || s._id === normalized.id);
-        if (idx !== -1) {
-          list[idx] = normalized;
-        } else {
-          list.unshift(normalized);
-        }
-        saveSuppliersData(list);
-        return normalized;
+    const res = await apiClient(endpoint, { method, body: payload });
+    if (res && res.success && res.data) {
+      const normalized = normalizeSupplier(res.data);
+      const list = getSuppliersData();
+      const idx = list.findIndex(s => s.id === normalized.id || s._id === normalized.id);
+      if (idx !== -1) {
+        list[idx] = normalized;
+      } else {
+        list.unshift(normalized);
       }
-    } catch (err) {
-      console.warn('[SupplierService] Remote save supplier failed, saving locally:', err.message);
-      return this.saveSupplier(supplierData);
+      saveSuppliersData(list);
+      return normalized;
+    }
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to save supplier to database');
     }
     return this.saveSupplier(supplierData);
   },
 
   async deleteSupplierRemote(id) {
-    try {
-      await apiClient(`/api/inventory/suppliers/${id}`, { method: 'DELETE' });
-    } catch (err) {
-      console.warn('[SupplierService] Remote delete supplier failed, deleting locally:', err.message);
+    const res = await apiClient(`/api/inventory/suppliers/${id}`, { method: 'DELETE' });
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to delete supplier from database');
     }
-    return this.deleteSupplier(id);
+    this.deleteSupplier(id);
+    return res?.data || true;
   },
 
   async toggleStatusRemote(id) {
-    try {
-      const res = await apiClient(`/api/inventory/suppliers/${id}/status`, { method: 'PATCH' });
-      if (res && res.success && res.data) {
-        const normalized = normalizeSupplier(res.data);
-        const list = getSuppliersData();
-        const idx = list.findIndex(s => s.id === normalized.id || s._id === normalized.id);
-        if (idx !== -1) {
-          list[idx] = normalized;
-          saveSuppliersData(list);
-        }
-        return normalized;
+    const res = await apiClient(`/api/inventory/suppliers/${id}/status`, { method: 'PATCH' });
+    if (res && res.success && res.data) {
+      const normalized = normalizeSupplier(res.data);
+      const list = getSuppliersData();
+      const idx = list.findIndex(s => s.id === normalized.id || s._id === normalized.id);
+      if (idx !== -1) {
+        list[idx] = normalized;
+        saveSuppliersData(list);
       }
-    } catch (err) {
-      console.warn('[SupplierService] Remote toggle status failed, falling back:', err.message);
+      return normalized;
+    }
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to toggle supplier status');
     }
     return this.toggleStatus(id);
   }

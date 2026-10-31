@@ -427,16 +427,25 @@ export const PurchaseOrderService = {
   },
 
   async deletePORemote(id) {
-    try {
-      const res = await apiClient(`/api/inventory/purchase-orders/${id}`, { method: 'DELETE' });
-      if (res && res.success === false) {
-        throw new Error(res.message || 'Failed to delete purchase order from database');
-      }
-    } catch (err) {
-      console.warn('[PurchaseOrderService] Remote delete failed, deleting locally:', err.message);
+    if (!id) throw new Error('Purchase order ID is required');
+
+    // If purely a mock PO, delete locally
+    if (isMockPO({ id })) {
+      this.deletePO(id);
+      return true;
     }
+
+    const res = await apiClient(`/api/inventory/purchase-orders/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to delete purchase order from database');
+    }
+
+    // Only update local store upon confirmed backend deletion
     this.deletePO(id);
-    return true;
+    return res?.data || true;
   },
 
   async updateStatusRemote(poId, nextStatus, user = 'Enterprise Admin') {

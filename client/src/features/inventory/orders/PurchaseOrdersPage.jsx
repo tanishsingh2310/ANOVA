@@ -211,11 +211,22 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     setError('');
     setNotice('');
     try {
-      await PurchaseOrderService.deletePORemote(po.id || po._id || po.poNumber);
+      const targetId = po._id || po.id || po.poNumber;
+      await PurchaseOrderService.deletePORemote(targetId);
       setDeleteConfirmTarget(null);
+      // Immediately remove from local state for instant responsive UI
+      setOrders((prev) =>
+        prev.filter(
+          (o) =>
+            String(o.id) !== String(targetId) &&
+            String(o._id) !== String(targetId) &&
+            String(o.poNumber) !== String(po.poNumber),
+        ),
+      );
       setNotice(`Purchase Order ${po.poNumber} deleted.`);
       await loadData();
     } catch (err) {
+      setDeleteConfirmTarget(null);
       setError(err.message || 'Failed to delete order');
     } finally {
       setDeleting(false);
@@ -351,6 +362,13 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE
   );
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    if (currentPage > maxPage) {
+      setCurrentPage(maxPage);
+    }
+  }, [totalItems, currentPage]);
 
   const getStatusClass = (status) => {
     if (status === 'RECEIVED') return 'is-received';
@@ -1014,6 +1032,21 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
               Are you sure you want to permanently delete PO <strong>{deleteConfirmTarget.poNumber}</strong>? This action cannot be undone.
             </p>
 
+            {(deleteConfirmTarget.status === 'RECEIVED' ||
+              deleteConfirmTarget.status === 'PARTIALLY_RECEIVED' ||
+              (deleteConfirmTarget.receiptHistory && deleteConfirmTarget.receiptHistory.length > 0)) && (
+              <div
+                className="employees-error"
+                style={{ marginBottom: '16px', textAlign: 'left', fontSize: '13px' }}
+                role="alert"
+              >
+                <AlertCircle size={16} />
+                <span>
+                  Cannot delete purchase order with received goods. Stock has already been recorded in inventory.
+                </span>
+              </div>
+            )}
+
             <div className="employees-delete-actions">
               <button
                 type="button"
@@ -1027,7 +1060,12 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
                 type="button"
                 className="employees-button employees-button-danger"
                 onClick={() => handleDeletePO(deleteConfirmTarget)}
-                disabled={deleting}
+                disabled={
+                  deleting ||
+                  deleteConfirmTarget.status === 'RECEIVED' ||
+                  deleteConfirmTarget.status === 'PARTIALLY_RECEIVED' ||
+                  (deleteConfirmTarget.receiptHistory && deleteConfirmTarget.receiptHistory.length > 0)
+                }
               >
                 <Trash2 size={16} />
                 {deleting ? 'Deleting...' : 'Delete Purchase Order'}
