@@ -97,6 +97,7 @@ export default function Branches({ user }) {
   }, [isAdmin, request])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadBranches()
   }, [loadBranches])
 
