@@ -20,6 +20,7 @@ import Shifts from '../shifts/Shifts.jsx'
 import Attendance from '../attendance/Attendance.jsx'
 import Leave from '../leaves/Leaves.jsx'
 import Payroll from '../payroll/Payroll.jsx'
+import DeliveryManagement from '../restaurant/deliveries/DeliveryManagement.jsx'
 
 const inventorySubpageMap = {
   'inv-ingredients': 'Ingredients & Stock',
@@ -35,7 +36,13 @@ const navigation = [
     label: 'Overview',
     icon: '◫',
     group: 'Main',
-    roles: ['owner', 'admin', 'manager', 'hr', 'employee'],
+    roles: ['owner', 'admin', 'manager', 'hr', 'employee', 'delivery_personnel'],
+  },
+  {
+    label: 'Deliveries',
+    icon: '🚚',
+    group: 'Main',
+    roles: ['delivery_personnel'],
   },
   {
     label: 'Branches',
@@ -166,10 +173,15 @@ const navigationGroups = [
 
 export default function Dashboard({ user, onLogout }) {
   const isEnterprise = user?.role === 'owner' || (user?.role === 'admin' && !user?.branch);
-  const userBranchId = user?.branch ? String(user.branch) : null;
+  const userBranchId = user?.branch
+    ? typeof user.branch === 'object'
+      ? String(user.branch._id || user.branch.id)
+      : String(user.branch)
+    : null;
 
   const initialPage = () => {
     const userRole = user?.role;
+    if (userRole === 'delivery_personnel') return 'Deliveries';
     const allowed = navigation.filter(item => item.roles.includes(userRole));
     if (allowed.some(item => item.label === 'Overview')) return 'Overview';
     return allowed[0]?.label || 'Overview';
@@ -185,6 +197,7 @@ export default function Dashboard({ user, onLogout }) {
 
   // Independent branch selections for restaurant modules.
   const [ordersBranchId, setOrdersBranchId] = useState(!isEnterprise && userBranchId ? userBranchId : 'all');
+  const [deliveriesBranchId, setDeliveriesBranchId] = useState(!isEnterprise && userBranchId ? userBranchId : 'all');
   const [reservationsBranchId, setReservationsBranchId] = useState(!isEnterprise && userBranchId ? userBranchId : 'all');
   const [kitchenBranchId, setKitchenBranchId] = useState(!isEnterprise && userBranchId ? userBranchId : 'all');
   const [billingBranchId, setBillingBranchId] = useState(!isEnterprise && userBranchId ? userBranchId : '');
@@ -244,9 +257,22 @@ export default function Dashboard({ user, onLogout }) {
       if (!isEnterprise && userBranchId) {
         setSelectedBranchId(userBranchId);
         setOrdersBranchId(userBranchId);
+        setDeliveriesBranchId(userBranchId);
         setReservationsBranchId(userBranchId);
         setKitchenBranchId(userBranchId);
         setBillingBranchId(userBranchId);
+      } else if (user?.role === 'delivery_personnel') {
+        const assignedBranch =
+          (userBranchId &&
+            availableBranches.find(
+              (b) => String(b._id || b.id) === userBranchId,
+            )) ||
+          availableBranches[0];
+        if (assignedBranch) {
+          const pId = String(assignedBranch._id || assignedBranch.id);
+          setSelectedBranchId(pId);
+          setDeliveriesBranchId(pId);
+        }
       } else {
         setSelectedBranchId((currentId) =>
           validForLoadedBranches(currentId) ? currentId : 'all',
@@ -273,6 +299,20 @@ export default function Dashboard({ user, onLogout }) {
           ? currentId
           : '',
       )
+
+      if (user?.role === 'delivery_personnel') {
+        const userBranch =
+          (userBranchId &&
+            availableBranches.find(
+              (b) => String(b._id || b.id) === userBranchId,
+            )) ||
+          availableBranches[0];
+
+        if (userBranch) {
+          const uBranchId = String(userBranch._id || userBranch.id);
+          setDeliveriesBranchId(uBranchId);
+        }
+      }
 
       if (availableBranches.length === 0) {
         setBranchError('No active branches are available to your account.')
@@ -729,6 +769,15 @@ export default function Dashboard({ user, onLogout }) {
             <Leave user={user} />
           ) : activePage === 'Payroll' ? (
             <Payroll user={user} />
+          ) : activePage === 'Deliveries' ? (
+            <DeliveryManagement
+              user={user}
+              branchId={deliveriesBranchId}
+              branches={branches}
+              onBranchChange={setDeliveriesBranchId}
+              branchLoading={branchLoading}
+              branchError={branchError}
+            />
           ) : (
             <section className="module-placeholder">
               <div className="placeholder-icon">✳</div>

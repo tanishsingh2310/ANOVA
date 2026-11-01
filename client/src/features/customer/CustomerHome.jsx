@@ -122,6 +122,9 @@ export default function CustomerHome({ user, onLogout }) {
   const [orderPlacing, setOrderPlacing] = useState(false)
   const [orderError, setOrderError] = useState('')
   const [orderSuccessData, setOrderSuccessData] = useState(null)
+  const [branchTables, setBranchTables] = useState([])
+  const [branchTablesLoading, setBranchTablesLoading] = useState(false)
+  const [selectedTableId, setSelectedTableId] = useState('')
 
   const displayName = user?.name || user?.email?.split('@')[0] || 'Customer'
   const initials = displayName
@@ -146,13 +149,10 @@ export default function CustomerHome({ user, onLogout }) {
         if (cancelled) return
         setBranches(available)
         if (available.length > 0 && !selectedBranchId) {
-          // Default to Pune branch because it contains the active menu items in the database
-          const pune = available.find(
-            (b) =>
-              b.name?.toLowerCase().includes('pune') ||
-              b._id === '6ad0e90a53cc462cbaaec9fa',
-          )
-          setSelectedBranchId(pune ? pune._id : available[0]._id)
+          const defaultBranch =
+            available.find((b) => b.name?.toLowerCase().includes('pune')) ||
+            available[0]
+          setSelectedBranchId(defaultBranch?._id || '')
         }
       } catch (err) {
         if (!cancelled) {
@@ -396,6 +396,38 @@ export default function CustomerHome({ user, onLogout }) {
     }
   }, [customerProfile, selectedAddressId])
 
+  // Load Tables when Dine-in is active
+  useEffect(() => {
+    if (!selectedBranchId || !showCheckoutModal || orderType !== 'Dine-in') return
+    let cancelled = false
+    async function loadTables() {
+      setBranchTablesLoading(true)
+      try {
+        const response = await apiClient(`/api/tables/${encodeURIComponent(selectedBranchId)}`)
+        const tablesList = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.data)
+          ? response.data
+          : []
+        if (cancelled) return
+        setBranchTables(tablesList)
+        const firstAvailable =
+          tablesList.find((t) => t.status === 'Available') || tablesList[0]
+        if (firstAvailable) {
+          setSelectedTableId(firstAvailable._id)
+        }
+      } catch (err) {
+        console.warn('Unable to load branch tables:', err.message)
+      } finally {
+        if (!cancelled) setBranchTablesLoading(false)
+      }
+    }
+    loadTables()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedBranchId, showCheckoutModal, orderType])
+
   // Cart calculations
   const cartSubtotal = useMemo(() => {
     return cart.reduce(
@@ -495,6 +527,12 @@ export default function CustomerHome({ user, onLogout }) {
     setOrderPlacing(true)
     setOrderError('')
 
+    if (orderType === 'Dine-in' && !selectedTableId) {
+      setOrderError('Please select a restaurant table for dine-in dining.')
+      setOrderPlacing(false)
+      return
+    }
+
     try {
       const itemsPayload = cart.map((i) => ({
         menuItemId: i.menuItemId,
@@ -524,6 +562,7 @@ export default function CustomerHome({ user, onLogout }) {
       const payload = {
         branchId: selectedBranchId,
         orderType,
+        tableId: orderType === 'Dine-in' ? selectedTableId : undefined,
         items: itemsPayload,
         notes: finalNotes || undefined,
         discount: discountAmount,
@@ -991,9 +1030,7 @@ export default function CustomerHome({ user, onLogout }) {
                             <h3 className="branch-card-title">{b.name}</h3>
                             <span className="branch-status-pill">
                               <span className="branch-status-dot" />
-                              {b.name?.toLowerCase().includes('pune')
-                                ? '41 Dishes Available'
-                                : 'Menu Coming Soon'}
+                              Open & Serving
                             </span>
                           </div>
 
@@ -1065,14 +1102,11 @@ export default function CustomerHome({ user, onLogout }) {
                   onChange={(e) => setSelectedBranchId(e.target.value)}
                   aria-label="Select Restaurant Branch"
                 >
-                  {branches.map((b) => {
-                    const isPune = b.name?.toLowerCase().includes('pune')
-                    return (
-                      <option key={b._id} value={b._id}>
-                        {b.name} {isPune ? '— (41 Dishes)' : '— (No items in DB yet)'}
-                      </option>
-                    )
-                  })}
+                  {branches.map((b) => (
+                    <option key={b._id} value={b._id}>
+                      {b.name}
+                    </option>
+                  ))}
                 </select>
 
                 <div className="filter-input-wrap">
@@ -1138,24 +1172,10 @@ export default function CustomerHome({ user, onLogout }) {
               ) : menuItems.length === 0 ? (
                 <div className="empty-state">
                   <div className="empty-state-icon">🍽</div>
-                  <h3>No dishes in database for {selectedBranch?.name || 'this branch'} yet</h3>
+                  <h3>No dishes currently listed for {selectedBranch?.name || 'this branch'}</h3>
                   <p style={{ maxWidth: '520px', margin: '0 auto 16px' }}>
-                    Menu items are stored per branch. Currently, only <strong>ANOVA Pune (Main Branch)</strong> has all 41 menu dishes stored in the database.
+                    The kitchen is preparing seasonal updates for this location. Please check back shortly or choose another branch.
                   </p>
-                  {branches.some((b) => b.name?.toLowerCase().includes('pune')) && (
-                    <button
-                      type="button"
-                      className="btn-primary-anova"
-                      onClick={() => {
-                        const pune = branches.find((b) =>
-                          b.name?.toLowerCase().includes('pune'),
-                        )
-                        if (pune) setSelectedBranchId(pune._id)
-                      }}
-                    >
-                      Switch to ANOVA Pune Menu (41 Dishes) →
-                    </button>
-                  )}
                 </div>
               ) : filteredMenuItems.length === 0 ? (
                 <div className="empty-state">
@@ -2400,6 +2420,89 @@ export default function CustomerHome({ user, onLogout }) {
                           ))}
                         </select>
                       )}
+                    </div>
+                  )}
+
+                  {/* Table Selection for Dine-in */}
+                  {orderType === 'Dine-in' && (
+                    <div className="checkout-section-block">
+                      <div className="checkout-section-heading">
+                        <span>🍽</span> Restaurant Table Selection
+                      </div>
+
+                      {branchTablesLoading ? (
+                        <p style={{ fontSize: '13px', color: '#66756d' }}>
+                          Loading tables for {selectedBranch?.name}…
+                        </p>
+                      ) : branchTables.length === 0 ? (
+                        <div
+                          style={{
+                            padding: '12px 14px',
+                            background: '#fbf4ea',
+                            border: '1px solid #f2e3cb',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            color: '#9b7028',
+                          }}
+                        >
+                          No tables configured for {selectedBranch?.name || 'this branch'}. Please select Takeaway or Delivery instead.
+                        </div>
+                      ) : (
+                        <div>
+                          <select
+                            className="form-control"
+                            value={selectedTableId}
+                            onChange={(e) => setSelectedTableId(e.target.value)}
+                            required
+                          >
+                            <option value="">-- Choose an Available Table --</option>
+                            {branchTables.map((tbl) => {
+                              const isAvail = tbl.status === 'Available'
+                              return (
+                                <option
+                                  key={tbl._id}
+                                  value={tbl._id}
+                                  disabled={!isAvail}
+                                >
+                                  Table {tbl.number} (Seats {tbl.capacity || 2} guests) {isAvail ? '— Available' : `— (${tbl.status})`}
+                                </option>
+                              )
+                            })}
+                          </select>
+                          <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#68776e' }}>
+                            Choose your table. We will have it prepared with your order upon arrival.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Takeaway Info */}
+                  {orderType === 'Takeaway' && (
+                    <div className="checkout-section-block">
+                      <div className="checkout-section-heading">
+                        <span>🛍</span> Pickup Location
+                      </div>
+                      <div
+                        style={{
+                          padding: '12px 14px',
+                          background: '#f4f8f5',
+                          border: '1px solid #dce8df',
+                          borderRadius: '8px',
+                          fontSize: '13px',
+                          color: '#193b2b',
+                        }}
+                      >
+                        <strong>{selectedBranch?.name}</strong>
+                        {formatAddress(selectedBranch?.address) && (
+                          <div style={{ marginTop: '4px', color: '#55655a' }}>
+                            📍 {formatAddress(selectedBranch.address)}
+                          </div>
+                        )}
+                        <div style={{ marginTop: '4px', fontSize: '12px', color: '#68776e' }}>
+                          Your order will be freshly packed and ready at the counter upon arrival.
+                        </div>
+                      </div>
                     </div>
                   )}
 

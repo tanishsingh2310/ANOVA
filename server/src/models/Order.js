@@ -140,6 +140,18 @@ const orderSchema = new mongoose.Schema(
       maxlength: 500,
       default: "",
     },
+
+    deliveryStaff: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    deliveryStaffName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
   },
   {
     timestamps: true,

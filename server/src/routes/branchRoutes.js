@@ -30,7 +30,8 @@ router.get(
     "inventory_manager",
     "chef",
     "cashier",
-    "employee"
+    "employee",
+    "delivery_personnel"
   ),
   getBranches
 );
@@ -45,7 +46,8 @@ router.get(
     "inventory_manager",
     "chef",
     "cashier",
-    "employee"
+    "employee",
+    "delivery_personnel"
   ),
   getBranchById
 );

@@ -428,6 +428,17 @@ function Orders({
   }, [loadOrders, refreshKey]);
 
   useEffect(() => {
+    const handleUpdated = (e) => {
+      const endpoint = e.detail?.endpoint || "";
+      if (endpoint.includes("/orders")) {
+        setRefreshKey((k) => k + 1);
+      }
+    };
+    window.addEventListener("anova_records_updated", handleUpdated);
+    return () => window.removeEventListener("anova_records_updated", handleUpdated);
+  }, []);
+
+  useEffect(() => {
     if (branchError) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoadError(branchError);

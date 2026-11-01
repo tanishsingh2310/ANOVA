@@ -17,9 +17,10 @@ const ORDER_STATUSES = [
   "Cancelled",
 ];
 
-const getOrderBranchFilter = (branchId) => ({
-  $or: [{ branch: branchId }, { branchId }],
-});
+const getOrderBranchFilter = (branchId) => {
+  if (!branchId) return {};
+  return { $or: [{ branch: branchId }, { branchId }] };
+};
 
 const getRouteOrderId = (req) =>
   req.params.orderId || req.params.id;
@@ -162,7 +163,7 @@ const prepareItems = async (items, branchId) => {
 
     const menuItem = await MenuItem.findOne({
       _id: item.menuItemId,
-      branchId,
+      $or: [{ branchId }, { branchIds: branchId }],
     });
 
     if (!menuItem) {
@@ -209,7 +210,9 @@ const getMyOrders = async (req, res) => {
     const orders = await Order.find({
       ...getOrderBranchFilter(req.branchId),
       customer: req.user?._id,
-    }).sort({ createdAt: -1 });
+    })
+      .populate("branch", "name code address phone")
+      .sort({ createdAt: -1 });
 
     return res.json({
       success: true,
@@ -227,7 +230,11 @@ const getOrders = async (req, res) => {
   try {
     const orders = await Order.find(
       getOrderBranchFilter(req.branchId)
-    ).sort({ createdAt: -1 });
+    )
+      .populate("customer", "name email phone")
+      .populate("branch", "name code address phone")
+      .populate("deliveryStaff", "name email phone")
+      .sort({ createdAt: -1 });
 
     return res.json({
       success: true,
@@ -517,6 +524,18 @@ const updateOrder = async (req, res) => {
       updates.customerName = customerName;
     }
 
+    if (req.body.deliveryStaff !== undefined) {
+      updates.deliveryStaff = req.body.deliveryStaff;
+    } else if (req.user?.role === "delivery_personnel") {
+      updates.deliveryStaff = req.user._id;
+    }
+
+    if (req.body.deliveryStaffName !== undefined) {
+      updates.deliveryStaffName = req.body.deliveryStaffName;
+    } else if (req.user?.role === "delivery_personnel") {
+      updates.deliveryStaffName = req.user.name || "";
+    }
+
     if (items !== undefined) {
       const existingInvoice = await Payment.findOne({
         branchId: req.branchId,
@@ -568,6 +587,33 @@ const updateOrder = async (req, res) => {
     }
 
     await releaseTableIfEligible(updatedOrder);
+
+    try {
+      if (mongoose.models.Delivery) {
+        const Delivery = mongoose.model("Delivery");
+        const statusMap = {
+          "Ready": "pending",
+          "Out for Delivery": "on_the_way",
+          "Delivered": "delivered",
+          "Completed": "delivered",
+          "Cancelled": "cancelled",
+        };
+        const deliveryUpdate = {};
+        if (statusMap[nextStatus]) {
+          deliveryUpdate.status = statusMap[nextStatus];
+        }
+        if (updates.deliveryStaff) {
+          deliveryUpdate.deliveryStaff = updates.deliveryStaff;
+        }
+        if (nextStatus === "Completed" || nextStatus === "Delivered") {
+          deliveryUpdate.deliveredAt = new Date();
+        }
+        await Delivery.findOneAndUpdate(
+          { order: orderId },
+          { $set: deliveryUpdate }
+        );
+      }
+    } catch (_) {}
 
     return res.json({
       success: true,
