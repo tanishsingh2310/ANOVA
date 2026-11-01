@@ -1,20 +1,44 @@
+
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  LoaderCircle,
+  MapPin,
+  Pencil,
+  Plus,
+  Receipt,
+  RefreshCw,
+  Search,
+  ShoppingBag,
+  Trash2,
+  Truck,
+  Utensils,
+  X,
+} from "lucide-react";
+
 import { apiRequest } from "../../../services/api";
 import "../../../styles/orders.css";
 
+const ALL_BRANCHES = "all";
+const ITEMS_PER_PAGE = 10;
 
-
-const orderStatuses = [
+const ORDER_STATUSES = [
   "Pending",
   "Preparing",
   "Ready",
+  "Out for Delivery",
+  "Delivered",
   "Completed",
   "Cancelled",
 ];
 
-const orderTypes = ["Dine-in", "Takeaway", "Delivery"];
+const ORDER_TYPES = ["Dine-in", "Takeaway", "Delivery"];
 
-const emptyForm = {
+const EMPTY_FORM = {
   customer: "",
   branchId: "",
   orderType: "Dine-in",
@@ -24,6 +48,36 @@ const emptyForm = {
   notes: "",
 };
 
+function getId(value) {
+  if (value && typeof value === "object") {
+    return String(value._id || value.id || "");
+  }
+
+  return value == null ? "" : String(value);
+}
+
+function getErrorMessage(error, fallback) {
+  return (
+    error?.response?.data?.message ||
+    error?.data?.message ||
+    error?.message ||
+    fallback
+  );
+}
+
+function unwrapResponse(response) {
+  return response?.data ?? response;
+}
+
+function extractArray(response, key) {
+  const data = unwrapResponse(response);
+
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.[key])) return data[key];
+
+  return [];
+}
+
 function formatCurrency(amount) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -32,10 +86,24 @@ function formatCurrency(amount) {
   }).format(Number(amount) || 0);
 }
 
-function formatOrderTime(dateString) {
-  if (!dateString) return "—";
+function formatDate(value) {
+  if (!value) return "—";
 
-  const date = new Date(dateString);
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatTime(value) {
+  if (!value) return "—";
+
+  const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) return "—";
 
@@ -46,20 +114,132 @@ function formatOrderTime(dateString) {
   });
 }
 
-function getOrderTotal(items = []) {
-  return items.reduce(
-    (total, item) =>
-      total + (Number(item.price) || 0) * (Number(item.quantity) || 0),
-    0
+function normalizeStatus(status) {
+  return (
+    ORDER_STATUSES.find(
+      (item) =>
+        item.toLowerCase() === String(status || "").toLowerCase()
+    ) || "Pending"
   );
 }
 
-function getOrderId(order) {
-  return order.orderNumber || order.id || order._id;
+function getOrderTotal(items = []) {
+  return items.reduce((total, item) => {
+    const price = Number(item.price ?? item.menuItemId?.price ?? 0);
+    const quantity = Number(item.quantity ?? 1);
+
+    return total + price * quantity;
+  }, 0);
+}
+function getCustomerName(order) {
+  const candidates = [
+    order?.customerName,
+    typeof order?.customer === "string" ? order.customer : null,
+    order?.customer?.name,
+    order?.customer?.fullName,
+  ];
+
+  return (
+    candidates.find(
+      (value) =>
+        typeof value === "string" &&
+        value.trim() &&
+        !/^[a-f\d]{24}$/i.test(value.trim())
+    )?.trim() || "Walk-in customer"
+  );
+}
+function normalizeOrder(order, fallbackBranchId = "") {
+  const branchId = getId(order?.branchId ?? order?.branch) || fallbackBranchId;
+
+  const rawItems = Array.isArray(order?.items) ? order.items : [];
+
+  const items = rawItems.map((item) => {
+    const menuItem =
+      item.menuItemId && typeof item.menuItemId === "object"
+        ? item.menuItemId
+        : null;
+
+    return {
+      ...item,
+      menuItemId: getId(item.menuItemId),
+      name: item.name || menuItem?.name || "Menu item",
+      price: Number(item.price ?? menuItem?.price ?? 0),
+      quantity: Math.max(1, Number(item.quantity) || 1),
+    };
+  });
+
+  const total =
+    order?.totalAmount ??
+    order?.totalPrice ??
+    order?.total ??
+    getOrderTotal(items);
+
+  return {
+    ...order,
+    id: getId(order?._id || order?.id),
+    branchId,
+    branchName:
+      order?.branchId?.name ||
+      order?.branch?.name ||
+      order?.branchName ||
+      "",
+    customer: getCustomerName(order),
+    orderType: order?.orderType || "Dine-in",
+    tableId: getId(order?.tableId || order?.table),
+    items,
+    status: normalizeStatus(order?.status),
+    notes: order?.notes || "",
+    totalAmount: Number(total) || 0,
+    createdAt:
+      order?.createdAt || order?.orderDate || order?.date || null,
+  };
+}
+
+function getStatusClass(status) {
+  return String(status || "pending").toLowerCase().replace(/\s+/g, "-");
+}
+
+function getTypeIcon(type) {
+  if (type === "Delivery") return Truck;
+  if (type === "Takeaway") return ShoppingBag;
+
+  return Utensils;
+}
+
+function getPaginationPages(currentPage, totalPages) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "...", totalPages];
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [
+      1,
+      "...",
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ];
+  }
+
+  return [
+    1,
+    "...",
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    "...",
+    totalPages,
+  ];
 }
 
 function Orders({
-  branchId,
+  branchid = ALL_BRANCHES,
   branches = [],
   onBranchChange,
   branchLoading = false,
@@ -69,227 +249,295 @@ function Orders({
   const [menuItems, setMenuItems] = useState([]);
   const [tables, setTables] = useState([]);
 
-  const [searchTerm, setSearchTerm] = useState("");
+  const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
+  const [dateFilter, setDateFilter] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [formData, setFormData] = useState(emptyForm);
+  const [form, setForm] = useState(EMPTY_FORM);
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [pageError, setPageError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [loadError, setLoadError] = useState("");
+  const [notice, setNotice] = useState(null);
+
+  const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [formDataLoading, setFormDataLoading] = useState(false);
 
-    const loadData = useCallback(async () => {
-  setIsLoading(true);
-  setPageError("");
-  setOrders([]);
-  setMenuItems([]);
-  setTables([]);
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
+  const [deletingOrder, setDeletingOrder] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  try {
-    let ordersData = [];
-    let menuData = [];
-    let tablesData = [];
+  const selectedBranchId = String(branchid || ALL_BRANCHES);
 
-    if (branchId === "all") {
-      if (branches.length === 0) {
+  const branchOptions = useMemo(
+    () => (Array.isArray(branches) ? branches : []),
+    [branches]
+  );
+
+  const branchNames = useMemo(() => {
+    const names = new Map();
+
+    branchOptions.forEach((item) => {
+      const id = getId(item?._id || item?.id);
+
+      if (id) {
+        names.set(
+          id,
+          item.name || item.branchName || "Unnamed Branch"
+        );
+      }
+    });
+
+    return names;
+  }, [branchOptions]);
+
+  const currentBranchLabel =
+    selectedBranchId === ALL_BRANCHES
+      ? "All Branches"
+      : branchNames.get(selectedBranchId) || "Selected Branch";
+
+  const notify = useCallback((type, message) => {
+    setNotice({
+      type,
+      message,
+      id: `${Date.now()}-${Math.random()}`,
+    });
+  }, []);
+
+  const loadOrders = useCallback(
+    async (active = () => true) => {
+      if (branchLoading) return;
+
+      if (branchError) {
         setOrders([]);
+        setLoadError(branchError);
+        setLoading(false);
         return;
       }
 
-      const branchOrders = await Promise.all(
-        branches.map(async (branch) => {
-          const data = await apiRequest(`/api/orders/${branch._id}`);
+      setLoadError("");
 
-          if (!Array.isArray(data)) {
-            throw new Error(
-              `Invalid orders response for ${branch.name}.`
-            );
-          }
+      try {
+        let loadedOrders = [];
 
-          return data.map((order) => ({
-            ...order,
-            id: order._id,
-            branchId:
-              typeof order.branchId === "object"
-                ? order.branchId?._id || branch._id
-                : order.branchId || branch._id,
-            branchName:
-              typeof order.branchId === "object"
-                ? order.branchId?.name || branch.name
-                : branch.name,
-            items: (order.items || []).map((item) => ({
-              ...item,
-              menuItemId: String(
-                typeof item.menuItemId === "object"
-                  ? item.menuItemId?._id
-                  : item.menuItemId
-              ),
-              price: Number(item.price) || 0,
-              quantity: Number(item.quantity) || 1,
-            })),
-          }));
-        })
-      );
-
-      ordersData = branchOrders.flat();
-    } else if (branchId) {
-      const [branchOrders, branchMenu, branchTables] =
-        await Promise.all([
-          apiRequest(`/api/orders/${branchId}`),
-          apiRequest(`/api/menu/${branchId}`),
-          apiRequest(`/api/tables/${branchId}`),
-        ]);
-
-      if (
-        !Array.isArray(branchOrders) ||
-        !Array.isArray(branchMenu) ||
-        !Array.isArray(branchTables)
-      ) {
-        throw new Error("The server returned an unexpected response.");
-      }
-
-      const selectedBranch = branches.find(
-        (branch) => String(branch._id) === String(branchId)
-      );
-
-      ordersData = branchOrders.map((order) => ({
-        ...order,
-        id: order._id,
-        branchId:
-          typeof order.branchId === "object"
-            ? order.branchId?._id || branchId
-            : order.branchId || branchId,
-        branchName:
-          typeof order.branchId === "object"
-            ? order.branchId?.name || selectedBranch?.name || "—"
-            : selectedBranch?.name || "—",
-        items: (order.items || []).map((item) => ({
-          ...item,
-          menuItemId: String(
-            typeof item.menuItemId === "object"
-              ? item.menuItemId?._id
-              : item.menuItemId
-          ),
-          price: Number(item.price) || 0,
-          quantity: Number(item.quantity) || 1,
-        })),
-      }));
-
-      menuData = branchMenu;
-      tablesData = branchTables;
+        if (selectedBranchId === ALL_BRANCHES) {
+  if (!branchOptions.length) {
+    if (active()) {
+      setOrders([]);
+      setLoading(false);
     }
-
-    setOrders(ordersData);
-
-    setMenuItems(
-      menuData
-        .filter((item) => item.available)
-        .map((item) => ({
-          ...item,
-          id: String(item._id),
-          price: Number(item.price),
-        }))
-    );
-
-    setTables(
-      tablesData.map((table) => ({
-        ...table,
-        id: String(table._id),
-      }))
-    );
-  } catch (error) {
-    setPageError(
-      error.message ||
-        "Unable to load orders. Please check that the backend is running."
-    );
-  } finally {
-    setIsLoading(false);
-  }
-}, [branchId, branches]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-useEffect(() => {
-  if (!isModalOpen) return;
-
-  const selectedFormBranch = formData.branchId;
-
-  if (!selectedFormBranch) {
-    setMenuItems([]);
-    setTables([]);
     return;
   }
 
-  let cancelled = false;
+  const results = await Promise.all(
+    branchOptions.map(async (item) => {
+      const id = getId(item?._id || item?.id);
 
-  async function loadBranchFormData() {
-    setFormError("");
-
-    try {
-      const [menuData, tablesData] = await Promise.all([
-        apiRequest(`/api/menu/${selectedFormBranch}`),
-        apiRequest(`/api/tables/${selectedFormBranch}`),
-      ]);
-
-      if (!Array.isArray(menuData) || !Array.isArray(tablesData)) {
+      if (!id) {
         throw new Error(
-          "Unable to load menu items and tables for this branch."
+          "A branch is missing its ID. Please refresh the branches."
         );
       }
 
-      if (cancelled) return;
+      const response = await apiRequest(`/api/orders/${id}`);
+      const data = extractArray(response, "orders");
 
-      setMenuItems(
-        menuData
-          .filter((item) => item.available)
-          .map((item) => ({
-            ...item,
-            id: String(item._id),
-            price: Number(item.price) || 0,
-          }))
-      );
+      if (!Array.isArray(data)) {
+        throw new Error(
+          `Invalid orders response for ${
+            item.name || item.branchName || id
+          }.`
+        );
+      }
 
-      setTables(
-        tablesData.map((table) => ({
-          ...table,
-          id: String(table._id),
-        }))
-      );
+      return data.map((order) => ({
+        ...normalizeOrder(order, id),
+        branchName:
+          order?.branchId?.name ||
+          order?.branchName ||
+          item.name ||
+          item.branchName ||
+          "Unnamed Branch",
+      }));
+    })
+  );
+
+  if (!active()) return;
+
+  const uniqueOrders = new Map();
+
+  results.flat().forEach((order) => {
+    if (!order.id) return;
+    uniqueOrders.set(order.id, order);
+  });
+
+  loadedOrders = Array.from(uniqueOrders.values());
+} else {
+          const response = await apiRequest(
+            `/api/orders/${selectedBranchId}`
+          );
+
+          const data = extractArray(response, "orders");
+
+          if (!Array.isArray(data)) {
+            throw new Error(
+              "The server returned an invalid orders response."
+            );
+          }
+
+          loadedOrders = data.map((order) =>
+            normalizeOrder(order, selectedBranchId)
+          );
+        }
+
+        if (active()) setOrders(loadedOrders);
+      } catch (error) {
+        if (active()) {
+          setLoadError(
+            getErrorMessage(error, "Unable to load orders.")
+          );
+        }
+      } finally {
+        if (active()) setLoading(false);
+      }
+    },
+    [selectedBranchId, branchOptions, branchLoading, branchError]
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    loadOrders(() => active);
+
+    return () => {
+      active = false;
+    };
+  }, [loadOrders, refreshKey]);
+
+  useEffect(() => {
+    if (branchError) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoadError(branchError);
+    }
+  }, [branchError]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSearch("");
+    setStatusFilter("All");
+    setTypeFilter("All");
+    setDateFilter("");
+    setCurrentPage(1);
+  }, [selectedBranchId]);
+
+  
+useEffect(() => {
+  let active = true;
+
+  async function loadFormData() {
+    const id = String(form.branchId || "");
+
+    // Clear data from the previously selected branch immediately.
+    setMenuItems([]);
+    setTables([]);
+
+    if (!showForm || !id || id === ALL_BRANCHES) {
+      setFormDataLoading(false);
+      return;
+    }
+
+    setFormDataLoading(true);
+    setFormError("");
+
+    try {
+      const [menuResponse, tablesResponse] = await Promise.all([
+        apiRequest(`/api/menu/${id}`),
+        apiRequest(`/api/tables/${id}`),
+      ]);
+
+      if (!active) return;
+
+      // Support common API response structures.
+      const menuData = unwrapResponse(menuResponse);
+      const tableData = unwrapResponse(tablesResponse);
+
+      const loadedMenuItems = Array.isArray(menuData)
+        ? menuData
+        : Array.isArray(menuData?.menuItems)
+          ? menuData.menuItems
+          : Array.isArray(menuData?.data?.menuItems)
+            ? menuData.data.menuItems
+            : Array.isArray(menuData?.data)
+              ? menuData.data
+              : [];
+
+      const loadedTables = Array.isArray(tableData)
+        ? tableData
+        : Array.isArray(tableData?.tables)
+          ? tableData.tables
+          : Array.isArray(tableData?.data?.tables)
+            ? tableData.data.tables
+            : Array.isArray(tableData?.data)
+              ? tableData.data
+              : [];
+
+      setMenuItems(loadedMenuItems);
+      setTables(loadedTables);
+
+      // Remove any selections that don't belong to the new branch.
+      setForm((current) => ({
+        ...current,
+        items: [{ menuItemId: "", quantity: 1 }],
+        tableId: "",
+      }));
     } catch (error) {
-      if (cancelled) return;
-
-      setMenuItems([]);
-      setTables([]);
-
-      setFormError(
-        error.message ||
-          "Unable to load menu items and tables for this branch."
-      );
+      if (active) {
+        setMenuItems([]);
+        setTables([]);
+        setFormError(
+          getErrorMessage(
+            error,
+            "Unable to load menu items and tables for this branch."
+          )
+        );
+      }
+    } finally {
+      if (active) setFormDataLoading(false);
     }
   }
 
-  loadBranchFormData();
+  loadFormData();
 
   return () => {
-    cancelled = true;
+    active = false;
   };
-}, [isModalOpen, formData.branchId]);
+}, [showForm, form.branchId]);
+
 
   const filteredOrders = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
 
     return orders
       .filter((order) => {
-        const orderId = String(getOrderId(order) || "").toLowerCase();
-        const customer = String(order.customer || "").toLowerCase();
-
         const matchesSearch =
-          orderId.includes(query) || customer.includes(query);
+          !query ||
+          [
+            order.customer,
+            order.id,
+            order.branchName,
+            order.orderType,
+            order.status,
+            ...(order.items || []).map((item) => item.name),
+          ].some((value) =>
+            String(value || "").toLowerCase().includes(query)
+          );
 
         const matchesStatus =
           statusFilter === "All" || order.status === statusFilter;
@@ -297,876 +545,1363 @@ useEffect(() => {
         const matchesType =
           typeFilter === "All" || order.orderType === typeFilter;
 
-        return matchesSearch && matchesStatus && matchesType;
+        const orderDate = order.createdAt
+          ? new Date(order.createdAt)
+          : null;
+
+        const normalizedDate =
+          orderDate && !Number.isNaN(orderDate.getTime())
+            ? `${orderDate.getFullYear()}-${String(
+                orderDate.getMonth() + 1
+              ).padStart(2, "0")}-${String(orderDate.getDate()).padStart(
+                2,
+                "0"
+              )}`
+            : "";
+
+        return (
+          matchesSearch &&
+          matchesStatus &&
+          matchesType &&
+          (!dateFilter || normalizedDate === dateFilter)
+        );
       })
       .sort(
         (a, b) =>
-          new Date(b.createdAt).getTime() -
-          new Date(a.createdAt).getTime()
+          new Date(b.createdAt || 0).getTime() -
+          new Date(a.createdAt || 0).getTime()
       );
-  }, [orders, searchTerm, statusFilter, typeFilter]);
+  }, [orders, search, statusFilter, typeFilter, dateFilter]);
 
-  const availableTables = useMemo(
-    () =>
-      tables.filter(
-        (table) =>
-          table.status === "Available" ||
-          String(table._id) === String(formData.tableId)
-      ),
-    [tables, formData.tableId]
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCurrentPage(1);
+  }, [search, statusFilter, typeFilter, dateFilter, selectedBranchId]);
+
+  const totalPages = Math.ceil(
+    filteredOrders.length / ITEMS_PER_PAGE
   );
 
-  function openAddModal() {
-  setEditingId(null);
-  setFormError("");
+  const paginationPages = getPaginationPages(
+    currentPage,
+    totalPages
+  );
 
-  setFormData({
-    ...emptyForm,
-    branchId: branchId && branchId !== "all" ? branchId : "",
-    tableId: "",
-    items: [{ menuItemId: "", quantity: 1 }],
-  });
+  const paginatedOrders = filteredOrders.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
-  setIsModalOpen(true);
-}
 
- function openEditModal(order) {
-  const orderStatus = String(order.status || "").toLowerCase();
+  const availableTables = useMemo(() => {
+    return tables.filter((table) => {
+      const status = String(table.status || "").toLowerCase();
 
-  // Only pending orders can be edited.
-  if (orderStatus !== "pending") {
-    setFormError(
-      "This order cannot be edited because kitchen preparation has started."
-    );
-    return;
+      return (
+        !status ||
+        ["available", "vacant", "active"].includes(status) ||
+        getId(table._id || table.id) === form.tableId
+      );
+    });
+  }, [tables, form.tableId]);
+
+  function refreshOrders() {
+    setNotice(null);
+    setRefreshKey((current) => current + 1);
   }
 
-  setEditingId(order._id);
-  setFormError("");
+  function clearFilters() {
+    setSearch("");
+    setStatusFilter("All");
+    setTypeFilter("All");
+    setDateFilter("");
+  }
 
-  setFormData({
-    customer: order.customer || "",
-    branchId:
-  typeof order.branchId === "object"
-    ? order.branchId?._id || ""
-    : order.branchId || "",
-    orderType: order.orderType,
-    tableId: order.tableId ? String(order.tableId) : "",
-    items: (order.items || []).map((item) => ({
-      menuItemId: String(item.menuItemId),
-      quantity: item.quantity,
-    })),
-    status: order.status,
-    notes: order.notes || "",
+  
+function openAddForm() {
+  setEditingId(null);
+  setFormError("");
+  setNotice(null);
+
+  setForm({
+    ...EMPTY_FORM,
+    branchId: "",
   });
 
-  setIsModalOpen(true);
+  setShowForm(true);
 }
 
-  function closeModal() {
-    if (isSaving) return;
+  function openEditForm(order) {
+    if (order.status !== "Pending") {
+      notify("error", "Only pending orders can be edited.");
+      return;
+    }
 
-    setIsModalOpen(false);
+    setEditingId(order.id);
+    setFormError("");
+    setNotice(null);
+
+    setForm({
+      customer:
+        order.customer === "Walk-in customer" ? "" : order.customer,
+      branchId: order.branchId,
+      orderType: order.orderType,
+      tableId: order.tableId || "",
+      items:
+        order.items.length > 0
+          ? order.items.map((item) => ({
+              menuItemId: item.menuItemId,
+              quantity: Math.max(1, Number(item.quantity) || 1),
+            }))
+          : [{ menuItemId: "", quantity: 1 }],
+      status: order.status,
+      notes: order.notes || "",
+    });
+
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    if (saving) return;
+
+    setShowForm(false);
     setEditingId(null);
-    setFormData(emptyForm);
+    setForm(EMPTY_FORM);
     setFormError("");
   }
 
-  function handleInputChange(event) {
-    const { name, value } = event.target;
+  
+function handleFormChange(event) {
+  const { name, value } = event.target;
 
-    setFormData((previous) => ({
-      ...previous,
-      [name]: value,
-      ...(name === "orderType" && value !== "Dine-in"
-        ? { tableId: "" }
-        : {}),
+  if (name === "branchId") {
+    setForm((current) => ({
+      ...current,
+      branchId: value,
+      tableId: "",
+      items: [{ menuItemId: "", quantity: 1 }],
     }));
+
+    setMenuItems([]);
+    setTables([]);
+    setFormError("");
+    return;
   }
 
+  if (name === "orderType") {
+    setForm((current) => ({
+      ...current,
+      orderType: value,
+      tableId: value === "Dine-in" ? current.tableId : "",
+    }));
+    return;
+  }
+
+  setForm((current) => ({ ...current, [name]: value }));
+  setFormError("");
+}
+
   function handleItemChange(index, field, value) {
-    setFormData((previous) => ({
-      ...previous,
-      items: previous.items.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              [field]:
-                field === "quantity" ? Number(value) : value,
-            }
+    setForm((current) => ({
+      ...current,
+      items: current.items.map((item, itemIndex) =>
+        index === itemIndex
+          ? { ...item, [field]: value }
           : item
       ),
     }));
   }
 
-  function addItemRow() {
-    setFormData((previous) => ({
-      ...previous,
+  function addItem() {
+    setForm((current) => ({
+      ...current,
       items: [
-        ...previous.items,
-        {
-          menuItemId: menuItems[0]?.id || "",
-          quantity: 1,
-        },
+        ...current.items,
+        { menuItemId: "", quantity: 1 },
       ],
     }));
   }
 
-  function removeItemRow(index) {
-    setFormData((previous) => ({
-      ...previous,
-      items: previous.items.filter(
+  function removeItem(index) {
+    setForm((current) => {
+      const items = current.items.filter(
         (_, itemIndex) => itemIndex !== index
-      ),
-    }));
+      );
+
+      return {
+        ...current,
+        items:
+          items.length > 0
+            ? items
+            : [{ menuItemId: "", quantity: 1 }],
+      };
+    });
   }
 
-  function getFormTotal() {
-    return formData.items.reduce((total, item) => {
-      const menuItem = menuItems.find(
-        (menu) => menu.id === item.menuItemId
-      );
+  function validateForm() {
+    if (
+      !form.branchId ||
+      !branchOptions.some(
+        (item) => getId(item._id || item.id) === form.branchId
+      )
+    ) {
+      return "Please select a valid branch.";
+    }
 
-      return (
-        total +
-        (Number(menuItem?.price) || 0) *
-          (Number(item.quantity) || 0)
-      );
-    }, 0);
+    if (!form.customer.trim()) {
+      return "Please enter the customer's name.";
+    }
+
+    if (!ORDER_TYPES.includes(form.orderType)) {
+      return "Please select a valid order type.";
+    }
+
+    if (
+      form.orderType === "Dine-in" &&
+      !availableTables.some(
+        (table) =>
+          getId(table._id || table.id) === form.tableId
+      )
+    ) {
+      return "Please select an available table.";
+    }
+
+    if (!form.items.length) {
+      return "Add at least one menu item.";
+    }
+
+    for (const item of form.items) {
+      if (
+        !menuItems.some(
+          (menu) =>
+            getId(menu._id || menu.id) === item.menuItemId
+        )
+      ) {
+        return "Select a valid menu item for every order row.";
+      }
+
+      const quantity = Number(item.quantity);
+
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        return "Each quantity must be a whole number greater than zero.";
+      }
+    }
+
+    return "";
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setFormError("");
 
-    if (!formData.customer.trim()) {
-      setFormError("Please enter the customer's name.");
-      return;
-    }
+    if (saving) return;
 
-    if (formData.customer.trim().length > 100) {
-      setFormError("Customer name cannot exceed 100 characters.");
-      return;
-    }
+    const validationError = validateForm();
 
-    if (formData.orderType === "Dine-in" && !formData.tableId) {
-      setFormError("Please select an available table.");
-      return;
-    }
-
-    if (
-      formData.items.length === 0 ||
-      formData.items.some(
-        (item) =>
-          !item.menuItemId ||
-          !Number.isInteger(item.quantity) ||
-          item.quantity < 1 ||
-          item.quantity > 99
-      )
-    ) {
-      setFormError(
-        "Select at least one menu item and a quantity between 1 and 99."
-      );
-      return;
-    }
-
-    if (
-      formData.items.some(
-        (item) =>
-          !menuItems.some((menu) => menu.id === item.menuItemId)
-      )
-    ) {
-      setFormError(
-        "One or more selected menu items are no longer available. Refresh the page and try again."
-      );
-      return;
-    }
-
-    if (formData.notes.length > 500) {
-      setFormError("Special instructions cannot exceed 500 characters.");
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
 
     const payload = {
-      branchId: branchId,
-      customer: formData.customer.trim(),
-      orderType: formData.orderType,
-      tableId:
-        formData.orderType === "Dine-in" ? formData.tableId : null,
-      items: formData.items.map((item) => ({
+      branchId: form.branchId,
+      customer: form.customer.trim(),
+      orderType: form.orderType,
+      tableId: form.orderType === "Dine-in" ? form.tableId : null,
+      items: form.items.map((item) => ({
         menuItemId: item.menuItemId,
-        quantity: item.quantity,
+        quantity: Number(item.quantity),
       })),
-      status: formData.status,
-      notes: formData.notes.trim(),
+      status: editingId ? form.status : "Pending",
+      notes: form.notes.trim(),
     };
 
-    setIsSaving(true);
+    setSaving(true);
+    setFormError("");
+    setNotice(null);
 
     try {
       if (editingId) {
         await apiRequest(
-          `/api/orders/${branchId}/${editingId}`,
+          `/api/orders/${form.branchId}/${editingId}`,
           {
             method: "PUT",
             body: JSON.stringify(payload),
           }
         );
+
+        notify("success", "Order updated successfully.");
       } else {
         await apiRequest("/api/orders", {
           method: "POST",
           body: JSON.stringify(payload),
         });
+
+        notify("success", "Order created successfully.");
       }
 
-      setIsModalOpen(false);
+      setShowForm(false);
       setEditingId(null);
-      setFormData(emptyForm);
-
-      await loadData();
+      setForm(EMPTY_FORM);
+      setRefreshKey((current) => current + 1);
     } catch (error) {
       setFormError(
-        error.message || "Unable to save the order. Please try again."
+        getErrorMessage(error, "Unable to save the order.")
       );
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   }
 
-  async function handleStatusChange(id, newStatus) {
-    const previousOrders = orders;
+  async function handleStatusChange(order, newStatus) {
+    if (
+      !order.id ||
+      !order.branchId ||
+      !ORDER_STATUSES.includes(newStatus) ||
+      newStatus === order.status ||
+      statusUpdatingId !== null
+    ) {
+      return;
+    }
 
-    setPageError("");
+    const previousStatus = order.status;
 
-    setOrders((previous) =>
-      previous.map((order) =>
-        order._id === id ? { ...order, status: newStatus } : order
-      )
-    );
+    setStatusUpdatingId(order.id);
+    setNotice(null);
 
     try {
-      await apiRequest(`/api/orders/${branchId}/${id}`, {
-        method: "PUT",
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      await loadData();
-    } catch (error) {
-      setOrders(previousOrders);
-      setPageError(
-        error.message || "Unable to update the order status."
+      const response = await apiRequest(
+        `/api/orders/${order.branchId}/${order.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ status: newStatus }),
+        }
       );
+
+      const data = unwrapResponse(response);
+
+      setOrders((current) =>
+        current.map((item) =>
+          item.id === order.id
+            ? {
+                ...item,
+                ...(data && typeof data === "object" ? data : {}),
+                id: order.id,
+                branchId: order.branchId,
+                status: normalizeStatus(data?.status || newStatus),
+              }
+            : item
+        )
+      );
+
+      notify("success", `Order status changed to ${newStatus}.`);
+      setRefreshKey((current) => current + 1);
+    } catch (error) {
+      notify(
+        "error",
+        getErrorMessage(
+          error,
+          `Unable to update order from ${previousStatus}.`
+        )
+      );
+    } finally {
+      setStatusUpdatingId(null);
     }
   }
 
-  async function handleDelete(order) {
-    const orderNumber = getOrderId(order);
+  async function confirmDelete() {
+    if (!deletingOrder || deleting) return;
 
-    const confirmed = window.confirm(
-      `Delete order ${orderNumber} for ${order.customer}?`
-    );
+    const order = deletingOrder;
 
-    if (!confirmed) return;
+    if (!order.id || !order.branchId) {
+      notify("error", "The order's branch or ID could not be identified.");
+      return;
+    }
 
-    setPageError("");
+    setDeleting(true);
+    setNotice(null);
 
     try {
       await apiRequest(
-        `/api/orders/${branchId}/${order._id}`,
+        `/api/orders/${order.branchId}/${order.id}`,
         { method: "DELETE" }
       );
 
-      setOrders((previous) =>
-        previous.filter((item) => item._id !== order._id)
+      setOrders((current) =>
+        current.filter((item) => item.id !== order.id)
       );
+
+      setDeletingOrder(null);
+      notify("success", "Order deleted successfully.");
+      setRefreshKey((current) => current + 1);
     } catch (error) {
-      setPageError(
-        error.message || "Unable to delete the order."
+      notify(
+        "error",
+        getErrorMessage(error, "Unable to delete the order.")
       );
+    } finally {
+      setDeleting(false);
     }
   }
 
-  function clearFilters() {
-    setSearchTerm("");
-    setStatusFilter("All");
-    setTypeFilter("All");
-  }
+  const estimatedTotal = form.items.reduce((total, item) => {
+    const menuItem = menuItems.find(
+      (menu) => getId(menu._id || menu.id) === item.menuItemId
+    );
+
+    return (
+      total +
+      Number(menuItem?.price || 0) * Number(item.quantity || 0)
+    );
+  }, 0);
 
   return (
-    <section className="orders-page">
-      <div className="orders-page-header">
-        <div>
-          
+    <section className="orders-management">
+      <div className="orders-page-heading">
+        <div className="orders-page-heading-copy">
           <p>
-            Track incoming orders, coordinate preparation, and keep
-            service running smoothly.
+            Manage restaurant orders, monitor preparation, and coordinate
+            service across your branches.
           </p>
         </div>
 
-        <button
-          className="orders-primary-button"
-          type="button"
-          onClick={openAddModal}
-          disabled={isLoading || menuItems.length === 0}
-          title={
-            menuItems.length === 0
-              ? "Add available menu items before creating an order"
-              : ""
-          }
-        >
-          <span aria-hidden="true">+</span> New Order
-        </button>
+        <div className="orders-header-actions">
+          <button
+            type="button"
+            className="orders-primary-button"
+            onClick={openAddForm}
+            disabled={branchLoading || !branchOptions.length}
+          >
+            <Plus size={17} aria-hidden="true" />
+            New Order
+          </button>
+
+          <button
+            type="button"
+            className="orders-secondary-button orders-refresh-button"
+            onClick={refreshOrders}
+            disabled={loading || branchLoading}
+          >
+            <RefreshCw
+              size={15}
+              className={loading ? "orders-spin" : ""}
+              aria-hidden="true"
+            />
+            Refresh
+          </button>
+        </div>
       </div>
 
-      {pageError && (
-        <div className="orders-error-message" role="alert">
-          <span>{pageError}</span>
-          <button type="button" onClick={loadData}>
-            Retry
+      {notice && (
+        <div
+          className={`orders-notice orders-notice-${notice.type}`}
+          role={notice.type === "error" ? "alert" : "status"}
+          key={notice.id}
+        >
+          {notice.type === "success" ? (
+            <CheckCircle2 size={18} />
+          ) : (
+            <AlertCircle size={18} />
+          )}
+
+          <span>{notice.message}</span>
+
+          <button
+            type="button"
+            className="orders-notice-close"
+            onClick={() => setNotice(null)}
+            aria-label="Dismiss notification"
+          >
+            <X size={16} />
           </button>
         </div>
       )}
 
-      
+      <div className="orders-filter-card">
+        <div className="orders-toolbar">
+          <label className="orders-search">
+            <Search size={17} aria-hidden="true" />
 
-      <div className="orders-content-panel">
-        <div className="orders-content-header">
+            <input
+              type="search"
+              placeholder="Search customer, order ID or menu item..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              aria-label="Search orders"
+            />
+
+            {search && (
+              <button
+                type="button"
+                className="orders-search-clear"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </label>
+
+          <label className="orders-filter">
+            <span>Branch</span>
+            <select
+              value={selectedBranchId}
+              onChange={(event) => {
+                setNotice(null);
+                onBranchChange?.(event.target.value);
+              }}
+              disabled={
+                branchLoading ||
+                Boolean(branchError) ||
+                !branchOptions.length
+              }
+              aria-label="Filter by branch"
+            >
+              <option value={ALL_BRANCHES}>All Branches</option>
+              {branchOptions.map((branch) => {
+                const id = String(branch._id || branch.id);
+                return (
+                  <option key={id} value={id}>
+                    {branch.name || branch.branchName || id}
+                  </option>
+                );
+              })}
+            </select>
+
+            {branchError && (
+              <small className="orders-filter-error" role="alert">
+                {branchError}
+              </small>
+            )}
+          </label>
+
+          <label className="orders-filter">
+            <span>Status</span>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="All">All statuses</option>
+              {ORDER_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="orders-filter">
+            <span>Order type</span>
+            <select
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value)}
+            >
+              <option value="All">All types</option>
+              {ORDER_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="orders-filter">
+            <span>Order date</span>
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(event) => setDateFilter(event.target.value)}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="orders-table-container">
+        <div className="orders-table-heading">
           <div>
-            <h3>Restaurant Orders</h3>
-            <p>Review order details and update their progress.</p>
+            <h2>Restaurant Orders</h2>
+            <p>
+              {loading
+                ? "Loading orders..."
+                : loadError
+                  ? "Orders could not be loaded"
+                  : `${filteredOrders.length} ${
+                      filteredOrders.length === 1 ? "order" : "orders"
+                    } found`}
+            </p>
           </div>
 
-          <span className="orders-count">
-            {filteredOrders.length}{" "}
-            {filteredOrders.length === 1 ? "order" : "orders"}
+          <span className="orders-current-branch">
+            <MapPin size={14} aria-hidden="true" />
+            {currentBranchLabel}
           </span>
         </div>
 
-        <div className="orders-toolbar">
-          <div className="orders-search">
-            <span aria-hidden="true">⌕</span>
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search order ID or customer..."
-              aria-label="Search orders"
-            />
-          </div>
-          <div className="orders-branch-filter">
-  <label htmlFor="orders-branch-filter">BRANCH</label>
-  <select
-    id="orders-branch-filter"
-    value={branchId || "all"}
-    onChange={(event) => onBranchChange?.(event.target.value)}
-    disabled={branchLoading}
-  >
-    <option value="all">All Branches</option>
-    {branches.map((branch) => (
-      <option key={branch._id} value={branch._id}>
-        {branch.name}
-      </option>
-    ))}
-  </select>
-</div>
-          <select
-            className="orders-filter"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            aria-label="Filter by order status"
-          >
-            <option value="All">All statuses</option>
-            {orderStatuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="orders-filter"
-            value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value)}
-            aria-label="Filter by order type"
-          >
-            <option value="All">All order types</option>
-            {orderTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-
-          {(searchTerm ||
-            statusFilter !== "All" ||
-            typeFilter !== "All") && (
+        {loadError && (
+          <div className="orders-inline-error" role="alert">
+            <AlertCircle size={18} />
+            <span>{loadError}</span>
             <button
-              className="orders-clear-button"
               type="button"
-              onClick={clearFilters}
+              className="orders-secondary-button"
+              onClick={refreshOrders}
             >
-              Clear filters
+              <RefreshCw size={14} />
+              Try Again
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="orders-table-wrapper">
+        <div className="orders-table-scroll">
           <table className="orders-table">
+            <colgroup>
+              <col className="orders-col-order" />
+              <col className="orders-col-branch" />
+              <col className="orders-col-date" />
+              <col className="orders-col-type" />
+              <col className="orders-col-items" />
+              <col className="orders-col-total" />
+              <col className="orders-col-status" />
+              <col className="orders-col-change-status" />
+              <col className="orders-col-actions" />
+            </colgroup>
+
             <thead>
               <tr>
-                <th>ORDER</th>
-                <th>Branch</th>
-                <th>CUSTOMER</th>
-                <th>TYPE / TABLE</th>
-                <th>ITEMS</th>
-                <th>AMOUNT</th>
-                <th>STATUS</th>
-                <th>ACTIONS</th>
+                <th scope="col">Customer Name</th>
+                <th scope="col">Branch</th>
+                <th scope="col">Date &amp; Time</th>
+                <th scope="col">Type</th>
+                <th scope="col">Items</th>
+                <th scope="col">Total</th>
+                <th scope="col">Status</th>
+                <th scope="col">Update Status</th>
+                <th scope="col" className="orders-actions-heading">
+                  Actions
+                </th>
               </tr>
             </thead>
 
             <tbody>
-              {isLoading ? (
+              {loading || branchLoading ? (
                 <tr>
-                  <td colSpan="7">
-                    <div className="orders-empty-state">
-                      <h3>Loading orders...</h3>
-                      <p>Retrieving orders from the database.</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : filteredOrders.map((order) => (
-                <tr key={order._id}>
-                  <td>
-                    <div className="orders-id-details">
-                      <strong>{getOrderId(order)}</strong>
-                      <span>{formatOrderTime(order.createdAt)}</span>
-                    </div>
-                  </td>
-                  <td>
-  <span className="orders-branch-name">
-    {order.branchName ||
-      branches.find(
-        (branch) =>
-          String(branch._id) ===
-          String(
-            typeof order.branchId === "object"
-              ? order.branchId?._id
-              : order.branchId || ""
-          )
-      )?.name ||
-      "—"}
-  </span>
-</td>
-
-                  <td>
-  <div className="orders-customer-details">
-    <strong>{order.customer}</strong>
-
-    {order.notes?.trim() && (
-      <div className="orders-special-instructions">
-        <span className="orders-special-instructions-label">
-          <span aria-hidden="true">✦</span>
-          Customer Demand
-        </span>
-
-        <p>{order.notes}</p>
-      </div>
-    )}
-  </div>
-</td>
-
-                  <td>
-                    <div className="orders-type-details">
-                      <strong>{order.orderType}</strong>
-                      {order.orderType === "Dine-in" && (
-                        <span>{order.table || "—"}</span>
-                      )}
-                    </div>
-                  </td>
-
-                  <td>
-                    <div className="orders-item-details">
+                  <td colSpan={9} className="orders-state-cell">
+                    <div className="orders-loading-state">
+                      <LoaderCircle
+                        size={25}
+                        className="orders-spin"
+                        aria-hidden="true"
+                      />
                       <strong>
-                        {order.items.reduce(
-                          (total, item) => total + item.quantity,
-                          0
-                        )}{" "}
-                        items
+                        {branchLoading ? "Loading branches" : "Loading orders"}
                       </strong>
-                      <span>
-                        {order.items
-                          .map((item) => item.name)
-                          .join(", ")}
-                      </span>
+                      <span>Please wait while we retrieve your orders.</span>
                     </div>
                   </td>
-
-                  <td>
-                    <strong className="orders-amount">
-                      {formatCurrency(order.totalAmount)}
-                    </strong>
-                  </td>
-
-                  <td>
-                    <select
-                      className={`orders-status-select ${order.status
-                        .toLowerCase()
-                        .replace(/\s+/g, "-")}`}
-                      value={order.status}
-                      onChange={(event) =>
-                        handleStatusChange(
-                          order._id,
-                          event.target.value
-                        )
-                      }
-                      aria-label={`Change status for ${getOrderId(order)}`}
-                    >
-                      {orderStatuses.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-
-                  <td>
-                  <div className="orders-actions">
-                    {String(order.status || "").toLowerCase() === "pending" && (
+                </tr>
+              ) : loadError || branchError ? (
+                <tr>
+                  <td colSpan={9} className="orders-state-cell">
+                    <div className="orders-error-state">
+                      <AlertCircle size={26} />
+                      <strong>Unable to load orders</strong>
+                      <p>{loadError || branchError}</p>
                       <button
-                        className="orders-action-button"
                         type="button"
-                        onClick={() => openEditModal(order)}
-                        aria-label={`Edit ${getOrderId(order)}`}
+                        className="orders-secondary-button"
+                        onClick={refreshOrders}
                       >
-                      Edit
+                        <RefreshCw size={14} />
+                        Try Again
                       </button>
-                    )}
-
-                       <button
-                        className="orders-action-button delete"
-                        type="button"
-                        onClick={() => handleDelete(order)}
-                        aria-label={`Delete ${getOrderId(order)}`}
-                       >
-                       Delete
-                      </button>
-                  </div>
+                    </div>
                   </td>
                 </tr>
-              ))}
-
-              {!isLoading && filteredOrders.length === 0 && (
+              ) : !branchOptions.length ? (
                 <tr>
-                  <td colSpan="7">
+                  <td colSpan={9} className="orders-state-cell">
                     <div className="orders-empty-state">
-                      <span aria-hidden="true">▤</span>
-                      <h3>No orders found</h3>
+                      <strong>No branches available</strong>
                       <p>
-                        {orders.length === 0
-                          ? "Create your first order to get started."
-                          : "Adjust your filters or create a new restaurant order."}
+                        Create or load a branch before managing restaurant
+                        orders.
                       </p>
                     </div>
                   </td>
                 </tr>
+              ) : filteredOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="orders-state-cell">
+                    <div className="orders-empty-state">
+                      <div className="orders-empty-icon">
+                        <Receipt size={23} />
+                      </div>
+                      <strong>
+                        {orders.length
+                          ? "No matching orders"
+                          : "No orders yet"}
+                      </strong>
+                      <p>
+                        {orders.length
+                          ? "Try another search term or adjust your filters."
+                          : "Create an order to start tracking restaurant sales and preparation."}
+                      </p>
+
+                      {orders.length ? (
+                        <button
+                          type="button"
+                          className="orders-secondary-button"
+                          onClick={clearFilters}
+                        >
+                          Clear filters
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="orders-primary-button"
+                          onClick={openAddForm}
+                        >
+                          <Plus size={16} />
+                          New Order
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedOrders.map((order) => {
+                  const TypeIcon = getTypeIcon(order.orderType);
+                  const isUpdating =
+                    String(statusUpdatingId) === String(order.id);
+
+                  const initials =
+                    order.customer
+                      .trim()
+                      .split(/\s+/)
+                      .map((part) => part[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase() || "?";
+
+                  return (
+                    <tr key={order.id}>
+                      <td>
+                        
+<div className="orders-order-cell">
+  <div className="orders-order-avatar" aria-hidden="true">
+    {initials}
+  </div>
+  <div className="orders-order-copy">
+    <strong>{order.customer}</strong>
+  </div>
+</div>
+
+                      </td>
+
+                      <td>
+                        <span className="orders-branch-name">
+                          {branchNames.get(String(order.branchId)) ||
+                            order.branchName ||
+                            "Unknown Branch"}
+                        </span>
+                      </td>
+
+                      <td>
+                        <div className="orders-date-cell">
+                          <strong>{formatDate(order.createdAt)}</strong>
+                          <span>
+                            <Clock3 size={12} />
+                            {formatTime(order.createdAt)}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td>
+                        <span className="orders-type-badge">
+                          <TypeIcon size={13} />
+                          {order.orderType}
+                        </span>
+                      </td>
+
+                      <td>
+                        
+<div className="orders-items-cell">
+  <strong>
+    {order.items.reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0
+    )}{" "}
+    item(s)
+  </strong>
+
+  <div className="orders-item-names">
+    {order.items.map((item, index) => (
+      <span key={`${item.menuItemId || item.name}-${index}`}>
+        {item.name}
+      </span>
+    ))}
+  </div>
+</div>
+
+                      </td>
+
+                      <td>
+                        <strong className="orders-total">
+                          {formatCurrency(order.totalAmount)}
+                        </strong>
+                      </td>
+
+                      <td>
+                        <span
+                          className={`orders-status-badge ${getStatusClass(
+                            order.status
+                          )}`}
+                        >
+                          {order.status}
+                        </span>
+                      </td>
+
+                      <td>
+                        <div className="orders-status-cell">
+                          <select
+                            className={`orders-status-select ${getStatusClass(
+                              order.status
+                            )}`}
+                            value={order.status}
+                            onChange={(event) =>
+                              handleStatusChange(order, event.target.value)
+                            }
+                            disabled={
+                              isUpdating ||
+                              statusUpdatingId !== null ||
+                              saving ||
+                              deleting
+                            }
+                            aria-label={`Change status for order ${order.id}`}
+                          >
+                            {ORDER_STATUSES.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+
+                          {isUpdating && (
+                            <LoaderCircle
+                              size={14}
+                              className="orders-spin"
+                              aria-label="Updating status"
+                            />
+                          )}
+                        </div>
+                      </td>
+
+                      <td>
+                        <div className="orders-row-actions">
+                          <button
+                            type="button"
+                            className="orders-action-button"
+                            onClick={() => openEditForm(order)}
+                            disabled={
+                              order.status !== "Pending" ||
+                              saving ||
+                              deleting ||
+                              statusUpdatingId !== null
+                            }
+                            aria-label={`Edit order ${order.id}`}
+                            title={
+                              order.status !== "Pending"
+                                ? "Only pending orders can be edited"
+                                : "Edit order"
+                            }
+                          >
+                            <Pencil size={14} />
+                            <span>Edit</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="orders-action-button orders-delete-button"
+                            onClick={() => setDeletingOrder(order)}
+                            disabled={
+                              saving ||
+                              deleting ||
+                              statusUpdatingId !== null
+                            }
+                            aria-label={`Delete order ${order.id}`}
+                            title="Delete order"
+                          >
+                            <Trash2 size={14} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {isModalOpen && (
+      {totalPages > 1 && !loading && !loadError && (
+        <div className="orders-pagination">
+          <span className="orders-pagination-info">
+            Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
+            {Math.min(
+              currentPage * ITEMS_PER_PAGE,
+              filteredOrders.length
+            )}{" "}
+            of {filteredOrders.length} orders
+          </span>
+
+          <div className="orders-pagination-buttons">
+            <button
+              type="button"
+              className="orders-pagination-button"
+              disabled={currentPage === 1}
+              onClick={() =>
+                setCurrentPage((page) => Math.max(1, page - 1))
+              }
+            >
+              <ChevronLeft size={16} />
+              Previous
+            </button>
+
+            {paginationPages.map((page, index) =>
+              page === "..." ? (
+                <span
+                  key={`ellipsis-${index}`}
+                  className="orders-pagination-ellipsis"
+                  aria-hidden="true"
+                >
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={page}
+                  type="button"
+                  className={`orders-pagination-button ${
+                    currentPage === page ? "active" : ""
+                  }`}
+                  onClick={() => setCurrentPage(page)}
+                  aria-current={currentPage === page ? "page" : undefined}
+                >
+                  {page}
+                </button>
+              )
+            )}
+
+            <button
+              type="button"
+              className="orders-pagination-button"
+              disabled={currentPage === totalPages}
+              onClick={() =>
+                setCurrentPage((page) =>
+                  Math.min(totalPages, page + 1)
+                )
+              }
+            >
+              Next
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showForm && (
         <div
-          className="orders-modal-overlay"
+          className="orders-modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeModal();
+            if (event.target === event.currentTarget) closeForm();
           }}
         >
           <section
             className="orders-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="orders-modal-title"
+            aria-labelledby="order-modal-title"
           >
-            <div className="orders-modal-header">
+            <div className="orders-modal-heading">
               <div>
                 <span className="orders-eyebrow">ORDER DETAILS</span>
-                <h3 id="orders-modal-title">
-                  {editingId ? "Edit Order" : "Create New Order"}
-                </h3>
+                <h2 id="order-modal-title">
+                  {editingId ? "Edit Order" : "New Order"}
+                </h2>
                 <p>
-                  Enter customer details and select the required items.
+                  {editingId
+                    ? "Update the details of this pending order."
+                    : "Select a branch and add items to create an order."}
                 </p>
               </div>
 
               <button
-                className="orders-modal-close"
                 type="button"
-                onClick={closeModal}
-                disabled={isSaving}
-                aria-label="Close order form"
+                className="orders-modal-close"
+                onClick={closeForm}
+                disabled={saving}
+                aria-label="Close form"
               >
-                ×
+                <X size={19} />
               </button>
             </div>
 
-            <form className="orders-modal-form" onSubmit={handleSubmit}>
-              <div className="orders-form-group orders-branch-form-group">
-  <label htmlFor="order-branch">Branch *</label>
-  <select
-    id="order-branch"
-    name="branchId"
-    value={formData.branchId || ""}
-    onChange={(event) => {
-      const nextBranchId = event.target.value;
-
-      setFormData((previous) => ({
-        ...previous,
-        branchId: nextBranchId,
-        tableId: "",
-        items: [{ menuItemId: "", quantity: 1 }],
-      }));
-
-      setFormError("");
-    }}
-    required
-    disabled={Boolean(editingId)}
-  >
-    <option value="">Select a branch</option>
-    {branches.map((branch) => (
-      <option key={branch._id} value={branch._id}>
-        {branch.name}
-      </option>
-    ))}
-  </select>
-</div>
-              <div className="orders-form-group">
-                <label htmlFor="order-customer">Customer name *</label>
-                <input
-                  id="order-customer"
-                  name="customer"
-                  type="text"
-                  value={formData.customer}
-                  onChange={handleInputChange}
-                  placeholder="Enter customer name"
-                  maxLength={100}
-                  required
-                />
+            {formError && (
+              <div className="orders-form-error" role="alert">
+                <AlertCircle size={17} />
+                <span>{formError}</span>
               </div>
+            )}
 
-              <div className="orders-form-row">
-                <div className="orders-form-group">
-                  <label htmlFor="order-type">Order type *</label>
+            <form className="orders-modal-form" onSubmit={handleSubmit}>
+              <div className="orders-form-grid">
+                <label className="orders-form-field">
+                  <span>
+                    Branch <b>*</b>
+                  </span>
                   <select
-                    id="order-type"
-                    name="orderType"
-                    value={formData.orderType}
-                    onChange={handleInputChange}
+                    name="branchId"
+                    value={form.branchId}
+                    onChange={handleFormChange}
+                    required
+                    disabled={saving || editingId !== null}
                   >
-                    {orderTypes.map((type) => (
+                    <option value="">Select branch</option>
+                    {branchOptions.map((item) => {
+                      const id = getId(item._id || item.id);
+
+                      return (
+                        <option key={id} value={id}>
+                          {item.name || item.branchName || id}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+
+                <label className="orders-form-field">
+                  <span>
+                    Customer name <b>*</b>
+                  </span>
+                  <input
+                    name="customer"
+                    value={form.customer}
+                    onChange={handleFormChange}
+                    placeholder="Enter customer name"
+                    maxLength={120}
+                    required
+                    autoFocus
+                    disabled={saving}
+                  />
+                </label>
+
+                <label className="orders-form-field">
+                  <span>
+                    Order type <b>*</b>
+                  </span>
+                  <select
+                    name="orderType"
+                    value={form.orderType}
+                    onChange={handleFormChange}
+                    required
+                    disabled={saving}
+                  >
+                    {ORDER_TYPES.map((type) => (
                       <option key={type} value={type}>
                         {type}
                       </option>
                     ))}
                   </select>
-                </div>
+                </label>
 
-                {formData.orderType === "Dine-in" && (
-                  <div className="orders-form-group">
-                    <label htmlFor="order-table">Table *</label>
+                {form.orderType === "Dine-in" && (
+                  <label className="orders-form-field">
+                    <span>
+                      Table <b>*</b>
+                    </span>
                     <select
-                      id="order-table"
                       name="tableId"
-                      value={formData.tableId}
-                      onChange={handleInputChange}
+                      value={form.tableId}
+                      onChange={handleFormChange}
+                      disabled={saving || formDataLoading || !form.branchId}
                       required
                     >
-                      <option value="">Select a table</option>
+                      <option value="">
+                        {!form.branchId
+                          ? "Select a branch first"
+                          : formDataLoading
+                            ? "Loading tables..."
+                            : availableTables.length
+                              ? "Select table"
+                              : "No available tables"}
+                      </option>
+                      
 
-                      {availableTables.map((table) => (
-                        <option key={table.id} value={table.id}>
-                          {table.number} — {table.status}
-                        </option>
-                      ))}
+{availableTables.map((table) => {
+  const id = getId(table._id || table.id);
+
+  return (
+    <option key={id} value={id}>
+      Table {table.number || id.slice(-4)}
+      {table.capacity != null
+        ? ` · Capacity ${table.capacity}`
+        : ""}
+    </option>
+  );
+})}
+
+
                     </select>
-
-                    {availableTables.length === 0 && (
-                      <small>No available tables found.</small>
-                    )}
-                  </div>
+                  </label>
                 )}
               </div>
 
-              <div className="orders-items-heading">
-                <div>
-                  <h4>Order items</h4>
-                  <p>Select menu items and quantities.</p>
-                </div>
-
-                <button
-                  className="orders-add-item-button"
-                  type="button"
-                  onClick={addItemRow}
-                  disabled={menuItems.length === 0 || isSaving}
-                >
-                  + Add item
-                </button>
-              </div>
-
-              <div className="orders-form-items">
-                {formData.items.map((item, index) => (
-                  <div className="orders-form-item-row" key={index}>
-                    <div className="orders-form-group">
-                      <label htmlFor={`item-name-${index}`}>
-                        Food item {index + 1}
-                      </label>
-
-                      <select
-                        id={`item-name-${index}`}
-                        value={item.menuItemId}
-                        onChange={(event) =>
-                          handleItemChange(
-                            index,
-                            "menuItemId",
-                            event.target.value
-                          )
-                        }
-                        required
-                      >
-                        <option value="">Select a menu item</option>
-
-                        {menuItems.map((menuItem) => (
-                          <option
-                            key={menuItem.id}
-                            value={menuItem.id}
-                          >
-                            {menuItem.name} —{" "}
-                            {formatCurrency(menuItem.price)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="orders-form-group orders-quantity-group">
-                      <label htmlFor={`item-quantity-${index}`}>
-                        Qty.
-                      </label>
-
-                      <input
-                        id={`item-quantity-${index}`}
-                        type="number"
-                        min="1"
-                        max="99"
-                        value={item.quantity}
-                        onChange={(event) =>
-                          handleItemChange(
-                            index,
-                            "quantity",
-                            event.target.value
-                          )
-                        }
-                        required
-                      />
-                    </div>
-
-                    <button
-                      className="orders-remove-item-button"
-                      type="button"
-                      onClick={() => removeItemRow(index)}
-                      disabled={formData.items.length === 1 || isSaving}
-                      aria-label={`Remove food item ${index + 1}`}
-                    >
-                      ×
-                    </button>
+              <div className="orders-items-section">
+                <div className="orders-section-heading">
+                  <div>
+                    <h3>Order Items</h3>
+                    <p>Add menu items and specify their quantities.</p>
                   </div>
-                ))}
-              </div>
 
-              <div className="orders-form-row">
-                <div className="orders-form-group">
-                  <label htmlFor="order-status">Order status</label>
-                  <select
-                    id="order-status"
-                    name="status"
-                    value={formData.status}
-                    onChange={handleInputChange}
+                  <button
+                    type="button"
+                    className="orders-secondary-button orders-add-item-button"
+                    onClick={addItem}
+                    disabled={
+                      saving ||
+                      formDataLoading ||
+                      !form.branchId ||
+                      menuItems.length === 0
+                    }
                   >
-                    {orderStatuses.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
+                    <Plus size={14} />
+                    Add Item
+                  </button>
                 </div>
 
-                <div className="orders-form-group">
-                  <label htmlFor="order-notes">
-                    Special instructions
-                  </label>
-                  <input
-                    id="order-notes"
-                    name="notes"
-                    type="text"
-                    value={formData.notes}
-                    onChange={handleInputChange}
-                    placeholder="Optional notes"
-                    maxLength={500}
-                  />
+                {formDataLoading ? (
+                  <div className="orders-form-loading">
+                    <LoaderCircle size={17} className="orders-spin" />
+                    Loading menu items and tables...
+                  </div>
+                ) : !form.branchId ? (
+                  <p className="orders-form-helper">
+                    Select a branch to load its menu.
+                  </p>
+                ) : menuItems.length === 0 ? (
+                  <p className="orders-form-helper">
+                    No menu items are available for this branch.
+                  </p>
+                ) : (
+                  <div className="orders-item-list">
+                    {form.items.map((item, index) => {
+                      const selectedMenuItem = menuItems.find(
+                        (menu) =>
+                          getId(menu._id || menu.id) === item.menuItemId
+                      );
+
+                      return (
+                        <div className="orders-item-row" key={index}>
+                          <label className="orders-form-field orders-menu-field">
+                            <span>
+                              Menu item <b>*</b>
+                            </span>
+                            <select
+                              value={item.menuItemId}
+                              onChange={(event) =>
+                                handleItemChange(
+                                  index,
+                                  "menuItemId",
+                                  event.target.value
+                                )
+                              }
+                              required
+                              disabled={saving}
+                            >
+                              <option value="">Select menu item</option>
+                              {menuItems.map((menu) => {
+                                const id = getId(menu._id || menu.id);
+
+                                return (
+                                  <option key={id} value={id}>
+                                    {menu.name} — {formatCurrency(menu.price)}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </label>
+
+                          <label className="orders-form-field orders-quantity-field">
+                            <span>
+                              Quantity <b>*</b>
+                            </span>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={item.quantity}
+                              onChange={(event) =>
+                                handleItemChange(
+                                  index,
+                                  "quantity",
+                                  event.target.value
+                                )
+                              }
+                              required
+                              disabled={saving}
+                            />
+                          </label>
+
+                          <div className="orders-item-subtotal">
+                            <span>Subtotal</span>
+                            <strong>
+                              {formatCurrency(
+                                Number(selectedMenuItem?.price || 0) *
+                                  Number(item.quantity || 0)
+                              )}
+                            </strong>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="orders-remove-item"
+                            onClick={() => removeItem(index)}
+                            disabled={saving || form.items.length === 1}
+                            aria-label={`Remove item ${index + 1}`}
+                            title="Remove item"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="orders-form-total">
+                  <span>Estimated Total</span>
+                  <strong>{formatCurrency(estimatedTotal)}</strong>
                 </div>
               </div>
 
-              <div className="orders-total-preview">
-                <span>Order total</span>
-                <strong>{formatCurrency(getFormTotal())}</strong>
-              </div>
-
-              {formError && (
-                <div className="orders-error-message" role="alert">
-                  {formError}
-                </div>
-              )}
+              <label className="orders-form-field">
+                <span>Order notes</span>
+                <textarea
+                  name="notes"
+                  value={form.notes}
+                  onChange={handleFormChange}
+                  placeholder="Special instructions or additional notes"
+                  maxLength={1000}
+                  rows={3}
+                  disabled={saving}
+                />
+              </label>
 
               <div className="orders-modal-actions">
                 <button
-                  className="orders-secondary-button"
                   type="button"
-                  onClick={closeModal}
-                  disabled={isSaving}
+                  className="orders-secondary-button"
+                  onClick={closeForm}
+                  disabled={saving}
                 >
                   Cancel
                 </button>
 
                 <button
-                  className="orders-primary-button"
                   type="submit"
-                  disabled={isSaving || menuItems.length === 0}
+                  className="orders-primary-button"
+                  disabled={
+                    saving ||
+                    formDataLoading ||
+                    !branchOptions.length
+                  }
                 >
-                  {isSaving
-                    ? "Saving..."
-                    : editingId
-                      ? "Save Changes"
-                      : "Create Order"}
+                  {saving ? (
+                    <>
+                      <LoaderCircle size={16} className="orders-spin" />
+                      Saving...
+                    </>
+                  ) : editingId ? (
+                    <>
+                      <CheckCircle2 size={16} />
+                      Save Changes
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={17} />
+                      Create Order
+                    </>
+                  )}
                 </button>
               </div>
             </form>
           </section>
         </div>
       )}
+
+      {deletingOrder && (
+        <div
+          className="orders-modal-backdrop orders-confirm-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !deleting) {
+              setDeletingOrder(null);
+            }
+          }}
+        >
+          <section
+            className="orders-confirm-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="order-delete-title"
+            aria-describedby="order-delete-description"
+          >
+            <div className="orders-confirm-icon">
+              <Trash2 size={23} aria-hidden="true" />
+            </div>
+
+            <h2 id="order-delete-title">Delete Order?</h2>
+
+            <p id="order-delete-description">
+              Delete order{" "}
+              <strong>#{deletingOrder.id.slice(-8).toUpperCase()}</strong> for{" "}
+              <strong>{deletingOrder.customer}</strong>? This action cannot be
+              undone.
+            </p>
+
+            <div className="orders-confirm-actions">
+              <button
+                type="button"
+                className="orders-secondary-button"
+                onClick={() => setDeletingOrder(null)}
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="orders-danger-button"
+                onClick={confirmDelete}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <>
+                    <LoaderCircle size={16} className="orders-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={15} />
+                    Delete Order
+                  </>
+                )}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
-  );
-}
-
-function SummaryCard({ icon, label, value, type }) {
-  return (
-    <div className="orders-summary-card">
-      <div className={`orders-summary-icon ${type}`}>{icon}</div>
-
-      <div className="orders-summary-info">
-        <span>{label}</span>
-        <strong>{value}</strong>
-      </div>
-    </div>
   );
 }
 

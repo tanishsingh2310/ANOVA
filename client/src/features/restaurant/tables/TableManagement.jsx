@@ -176,6 +176,7 @@ function TableManagement({
 
   // Reset filters when the selected branch changes.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSearch("");
     setStatusFilter("All Statuses");
     setLocationFilter("All Locations");
@@ -296,6 +297,7 @@ function TableManagement({
   useEffect(() => {
     if (branchLoading) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadTables(false);
   }, [loadTables, branchLoading, refreshKey]);
 
@@ -342,6 +344,7 @@ function TableManagement({
   ]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentPage(1);
   }, [
     search,

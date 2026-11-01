@@ -92,7 +92,7 @@ function FoodRecommendations({ branchId }) {
   const [budget, setBudget] = useState("300");
   const [showPopularOnly, setShowPopularOnly] = useState(false);
   const [selectedDish, setSelectedDish] = useState(null);
-  const [recommendationMode, setRecommendationMode] = useState(false);
+  const [recommendationMode, setRecommendationMode] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
 
   // Load public branches for branch selection and defaulting when branchId is 'all'
@@ -447,10 +447,11 @@ function FoodRecommendations({ branchId }) {
               onChange={(event) => setSelectedBranch(event.target.value)}
             >
               {branches.map((b) => (
-                <option key={b._id} value={b._id}>
-                  {b.name} ({b.city})
-                </option>
-              ))}
+  <option key={b._id} value={b._id}>
+    {b.name}
+    {b.city ? ` (${b.city})` : ""}
+  </option>
+))}
             </select>
           </div>
         )}

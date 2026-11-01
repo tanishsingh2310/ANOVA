@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useCallback } from 'react'
 import './dashboard.css'
 import InventoryModule from '../inventory/InventoryModule.jsx'
@@ -18,7 +19,7 @@ import Employees from '../employees/Employees.jsx'
 import Shifts from '../shifts/Shifts.jsx'
 import Attendance from '../attendance/Attendance.jsx'
 import Leave from '../leaves/Leaves.jsx'
-import Payroll from "../payroll/Payroll.jsx";
+import Payroll from '../payroll/Payroll.jsx'
 
 const inventorySubpageMap = {
   'inv-ingredients': 'Ingredients & Stock',
@@ -27,7 +28,7 @@ const inventorySubpageMap = {
   'inv-transfers': 'Branch Transfers',
   'inv-wastage': 'Wastage & Spoilage',
   'inv-reports': 'Valuation & Reports',
-};
+}
 
 const navigation = [
   {
@@ -42,7 +43,6 @@ const navigation = [
     group: 'Main',
     roles: ['owner', 'admin', 'manager', 'hr', 'inventory_manager', 'chef', 'cashier', 'employee'],
   },
-
   {
     label: 'Employees',
     icon: '♙',
@@ -73,7 +73,6 @@ const navigation = [
     group: 'People & HR',
     roles: ['owner', 'admin', 'hr'],
   },
-
   {
     label: 'Menu',
     icon: 'M',
@@ -110,7 +109,6 @@ const navigation = [
     group: 'Restaurant Operations',
     roles: ['owner', 'admin', 'manager', 'cashier'],
   },
-
   {
     label: 'Ingredients & Stock',
     icon: '📦',
@@ -162,15 +160,19 @@ const navigationGroups = [
   { label: 'Customer Experience', icon: '♡' },
 ]
 
-
 export default function Dashboard({ user, onLogout }) {
   const [activePage, setActivePage] = useState('Overview')
   const [mobileMenu, setMobileMenu] = useState(false)
 
   const [branches, setBranches] = useState([])
-const [selectedBranchId, setSelectedBranchId] = useState('all')
-const [branchLoading, setBranchLoading] = useState(true)
-const [branchError, setBranchError] = useState('')
+  const [selectedBranchId, setSelectedBranchId] = useState('all')
+
+  // Independent filters for Orders and Reservations
+  const [ordersBranchId, setOrdersBranchId] = useState('all')
+  const [reservationsBranchId, setReservationsBranchId] = useState('all')
+
+  const [branchLoading, setBranchLoading] = useState(true)
+  const [branchError, setBranchError] = useState('')
 
   const loadBranches = useCallback(async () => {
     setBranchLoading(true)
@@ -196,21 +198,30 @@ const [branchError, setBranchError] = useState('')
 
       const availableBranches = Array.isArray(data.branches)
         ? data.branches
-        : (Array.isArray(data.data) ? data.data : [])
+        : Array.isArray(data.data)
+          ? data.data
+          : []
 
       setBranches(availableBranches)
 
-      setSelectedBranchId((currentId) => {
-        if (currentId === 'all') {
-          return 'all'
-        }
+      const isValidBranch = (branchId) =>
+        branchId === 'all' ||
+        availableBranches.some(
+          (branch) =>
+            String(branch._id || branch.id) === String(branchId),
+        )
 
-        if (availableBranches.some((branch) => branch._id === currentId || branch.id === currentId)) {
-          return currentId
-        }
+      setSelectedBranchId((currentId) =>
+        isValidBranch(currentId) ? currentId : 'all',
+      )
 
-        return 'all'
-      })
+      setOrdersBranchId((currentId) =>
+        isValidBranch(currentId) ? currentId : 'all',
+      )
+
+      setReservationsBranchId((currentId) =>
+        isValidBranch(currentId) ? currentId : 'all',
+      )
 
       if (availableBranches.length === 0) {
         setBranchError('No active branches are available to your account.')
@@ -226,19 +237,29 @@ const [branchError, setBranchError] = useState('')
     loadBranches()
   }, [loadBranches])
 
+  useEffect(() => {
+  if (activePage !== 'Orders') {
+    setOrdersBranchId('all')
+  }
+
+  if (activePage !== 'Reservations') {
+    setReservationsBranchId('all')
+  }
+}, [activePage])
 
   const [expandedGroups, setExpandedGroups] = useState({
     'People & HR': false,
     'Restaurant Operations': false,
     'Inventory & Supply Chain': false,
     'Customer Experience': false,
-  });
+  })
 
   const visibleNavigation = navigation.filter((item) =>
     item.roles.includes(user?.role),
   )
 
   const displayName = user?.name || user?.email || 'Team member'
+
   const initials = displayName
     .split(' ')
     .filter(Boolean)
@@ -262,344 +283,348 @@ const [branchError, setBranchError] = useState('')
         />
       )}
 
-      
-<aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
-  <div className="sidebar-brand">
-  <img className="brand-logo" src={Logo1} alt="Anova emblem" />
+      <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
+        <div className="sidebar-brand">
+          <img className="brand-logo" src={Logo1} alt="Anova emblem" />
 
-  <div className="brand-lockup">
-    <div className="brand-name">Anova</div>
-    <div className="brand-tagline">
-      The Art of Intelligent Hospitality
-    </div>
-  </div>
-</div>
+          <div className="brand-lockup">
+            <div className="brand-name">Anova</div>
+            <div className="brand-tagline">
+              The Art of Intelligent Hospitality
+            </div>
+          </div>
+        </div>
 
-  
-<nav className="side-nav" aria-label="Workspace navigation">
-
-  {/* Standalone pages */}
-  {visibleNavigation
-    .filter((item) => item.group === 'Main')
-    .map((item) => (
-      <button
-        key={item.label}
-        type="button"
-        className={`nav-item ${
-          activePage === item.label ? 'nav-active' : ''
-        }`}
-        aria-current={activePage === item.label ? 'page' : undefined}
-        onClick={() => selectPage(item.label)}
-      >
-        <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-        <span className="nav-item-label">{item.label}</span>
-      </button>
-    ))}
-
-  {/* Expandable groups */}
-  {navigationGroups.map((group) => {
-    const items = visibleNavigation.filter(
-      (item) => item.group === group.label,
-    )
-
-    if (!items.length) return null
-
-    const containsActivePage = items.some(
-      (item) => item.label === activePage,
-    )
-    const isExpanded = expandedGroups[group.label] !== undefined ? Boolean(expandedGroups[group.label]) : containsActivePage
-    const groupId = `menu-${group.label
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')}`
-
-    return (
-      <div className="nav-group" key={group.label}>
-        <button
-          type="button"
-          className={`nav-group-toggle ${
-            containsActivePage ? 'group-has-active' : ''
-          }`}
-          aria-expanded={isExpanded}
-          aria-controls={groupId}
-          onClick={() =>
-            setExpandedGroups((previous) => ({
-              ...previous,
-              [group.label]: !(previous[group.label] !== undefined ? previous[group.label] : containsActivePage),
-            }))
-          }
-        >
-          <span className="nav-icon" aria-hidden="true">
-            {group.icon}
-          </span>
-          <span className="nav-item-label">{group.label}</span>
-          <span className={`nav-chevron ${isExpanded ? 'is-open' : ''}`}>
-            ▾
-          </span>
-        </button>
-
-        {isExpanded && (
-          <div className="nav-submenu" id={groupId}>
-            {items.map((item) => (
+        <nav className="side-nav" aria-label="Workspace navigation">
+          {visibleNavigation
+            .filter((item) => item.group === 'Main')
+            .map((item) => (
               <button
                 key={item.label}
                 type="button"
-                className={`nav-subitem ${
-                  activePage === item.label ? 'nav-subitem-active' : ''
+                className={`nav-item ${
+                  activePage === item.label ? 'nav-active' : ''
                 }`}
-                aria-current={
-                  activePage === item.label ? 'page' : undefined
-                }
+                aria-current={activePage === item.label ? 'page' : undefined}
                 onClick={() => selectPage(item.label)}
               >
-                <span className="nav-subitem-dot" aria-hidden="true" />
-                <span>{item.label}</span>
+                <span className="nav-icon" aria-hidden="true">
+                  {item.icon}
+                </span>
+                <span className="nav-item-label">{item.label}</span>
               </button>
             ))}
-          </div>
-        )}
-      </div>
-    )
-  })}
-</nav>
 
+          {navigationGroups.map((group) => {
+            const items = visibleNavigation.filter(
+              (item) => item.group === group.label,
+            )
 
-  <div className="sidebar-bottom">
+            if (!items.length) return null
 
+            const containsActivePage = items.some(
+              (item) => item.label === activePage,
+            )
 
-    <button
-      className="sidebar-logout"
-      type="button"
-      onClick={onLogout}
-    >
-      <span aria-hidden="true">↪</span>
-      <span>Sign out</span>
-    </button>
-  </div>
-</aside>
+            const isExpanded =
+              expandedGroups[group.label] !== undefined
+                ? Boolean(expandedGroups[group.label])
+                : containsActivePage
+
+            const groupId = `menu-${group.label
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')}`
+
+            return (
+              <div className="nav-group" key={group.label}>
+                <button
+                  type="button"
+                  className={`nav-group-toggle ${
+                    containsActivePage ? 'group-has-active' : ''
+                  }`}
+                  aria-expanded={isExpanded}
+                  aria-controls={groupId}
+                  onClick={() =>
+                    setExpandedGroups((previous) => ({
+                      ...previous,
+                      [group.label]: !(
+                        previous[group.label] !== undefined
+                          ? previous[group.label]
+                          : containsActivePage
+                      ),
+                    }))
+                  }
+                >
+                  <span className="nav-icon" aria-hidden="true">
+                    {group.icon}
+                  </span>
+                  <span className="nav-item-label">{group.label}</span>
+                  <span
+                    className={`nav-chevron ${isExpanded ? 'is-open' : ''}`}
+                  >
+                    ▾
+                  </span>
+                </button>
+
+                {isExpanded && (
+                  <div className="nav-submenu" id={groupId}>
+                    {items.map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        className={`nav-subitem ${
+                          activePage === item.label
+                            ? 'nav-subitem-active'
+                            : ''
+                        }`}
+                        aria-current={
+                          activePage === item.label ? 'page' : undefined
+                        }
+                        onClick={() => selectPage(item.label)}
+                      >
+                        <span
+                          className="nav-subitem-dot"
+                          aria-hidden="true"
+                        />
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </nav>
+
+        <div className="sidebar-bottom">
+          <button
+            className="sidebar-logout"
+            type="button"
+            onClick={onLogout}
+          >
+            <span aria-hidden="true">↪</span>
+            <span>Sign out</span>
+          </button>
+        </div>
+      </aside>
 
       <main className="main-panel">
         <header className="topbar">
-          
-
-
-
-          
-
-<div className="breadcrumb">
-  <span>Anova</span>
-  <span className="breadcrumb-divider">/</span>
-
-  {activePage === 'Overview' ? (
-    <strong>Overview</strong>
-  ) : (
-    <>
-      {(() => {
-        const group = visibleNavigation.find(
-          (item) => item.label === activePage,
-        )?.group
-
-        return group && group !== 'Main' ? (
-          <>
-            <span>{group}</span>
+          <div className="breadcrumb">
+            <span>Anova</span>
             <span className="breadcrumb-divider">/</span>
-          </>
-        ) : null
-      })()}
 
-      <strong>{activePage}</strong>
-    </>
-  )}
-</div>
+            {activePage === 'Overview' ? (
+              <strong>Overview</strong>
+            ) : (
+              <>
+                {(() => {
+                  const group = visibleNavigation.find(
+                    (item) => item.label === activePage,
+                  )?.group
 
+                  return group && group !== 'Main' ? (
+                    <>
+                      <span>{group}</span>
+                      <span className="breadcrumb-divider">/</span>
+                    </>
+                  ) : null
+                })()}
 
+                <strong>{activePage}</strong>
+              </>
+            )}
+          </div>
 
+          <div className="topbar-user">
+            <div className="user-avatar">
+              {user?.profileImage || user?.avatarUrl ? (
+                <img
+                  src={user.profileImage || user.avatarUrl}
+                  alt={`${displayName} profile`}
+                />
+              ) : (
+                initials || 'U'
+              )}
+            </div>
 
-<div className="topbar-user">
-  <div className="user-avatar">
-    {user?.profileImage || user?.avatarUrl ? (
-      <img
-        src={user.profileImage || user.avatarUrl}
-        alt={`${displayName} profile`}
-      />
-    ) : (
-      initials || 'U'
-    )}
-  </div>
-
-  <div className="user-details">
-    <strong>{displayName}</strong>
-    <span>{(user?.role || 'Team member').replaceAll('_', ' ')}</span>
-  </div>
-</div>
-
+            <div className="user-details">
+              <strong>{displayName}</strong>
+              <span>
+                {(user?.role || 'Team member').replaceAll('_', ' ')}
+              </span>
+            </div>
+          </div>
         </header>
 
         <div className="page-content">
           <div className="page-intro">
             <div>
-
               <h1>{activePage === 'Overview' ? '' : activePage}</h1>
-              <p>
-                {activePage === 'Overview'
-                  ? ''
-                  : ""}
-              </p>
+              <p>{activePage === 'Overview' ? '' : ''}</p>
             </div>
             <div className="heading-period">
               <span className="live-dot" />
             </div>
-          </div>        
+          </div>
 
-{activePage === 'Overview' ? (
-  <>
-  
-<section
-  className="welcome-banner"
-  style={{ backgroundImage: `url(${banner})` }}
->
-  <div className="banner-overlay" />
-  <div className="banner-content">
-    <div className="banner-label">
-      <span className="banner-label-line" />
-      ANOVA
-    </div>
+          {activePage === 'Overview' ? (
+            <>
+              <section
+                className="welcome-banner"
+                style={{ backgroundImage: `url(${banner})` }}
+              >
+                <div className="banner-overlay" />
+                <div className="banner-content">
+                  <div className="banner-label">
+                    <span className="banner-label-line" />
+                    ANOVA
+                  </div>
 
-    <h2>Welcome, {displayName}</h2>
-    <p>Everything you need, all in one place.</p>
-  </div>
-</section>
+                  <h2>Welcome, {displayName}</h2>
+                  <p>Everything you need, all in one place.</p>
+                </div>
+              </section>
 
-<DashboardStatistics
-  selectedBranch={selectedBranchId}
-  branches={branches}
-  onBranchChange={setSelectedBranchId}
-/>
+              <DashboardStatistics
+                selectedBranch={selectedBranchId}
+                branches={branches}
+                onBranchChange={setSelectedBranchId}
+              />
 
-<OverviewInventoryStatistics
-  selectedBranch={selectedBranchId || 'all'}
-  branches={branches}
-/>
-
-
-  </>
-) : activePage === 'Ingredients & Stock' || activePage === 'Inventory' || activePage === 'Inventory & Supply Chain' ? (
-  <InventoryModule
-    activeSubpage="inv-ingredients"
-    showSubnav={false}
-    selectedBranch={selectedBranchId || 'all'}
-    branches={branches}
-    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
-  />
-) : activePage === 'Suppliers' ? (
-  <InventoryModule
-    activeSubpage="inv-suppliers"
-    showSubnav={false}
-    selectedBranch={selectedBranchId || 'all'}
-    branches={branches}
-    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
-  />
-) : activePage === 'Purchase Orders & Receiving' ? (
-  <InventoryModule
-    activeSubpage="inv-orders"
-    showSubnav={false}
-    selectedBranch={selectedBranchId || 'all'}
-    branches={branches}
-    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
-  />
-) : activePage === 'Branch Transfers' ? (
-  <InventoryModule
-    activeSubpage="inv-transfers"
-    showSubnav={false}
-    selectedBranch={selectedBranchId || 'all'}
-    branches={branches}
-    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
-  />
-) : activePage === 'Wastage & Spoilage' ? (
-  <InventoryModule
-    activeSubpage="inv-wastage"
-    showSubnav={false}
-    selectedBranch={selectedBranchId || 'all'}
-    branches={branches}
-    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
-  />
-) : activePage === 'Valuation & Reports' ? (
-  <InventoryModule
-    activeSubpage="inv-reports"
-    showSubnav={false}
-    selectedBranch={selectedBranchId || 'all'}
-    branches={branches}
-    onSubpageChange={(subId) => selectPage(inventorySubpageMap[subId] || subId)}
-  />
-) : activePage === 'Menu' ? (
-  <MenuManagement
-  branchId={selectedBranchId}
-  branches={branches}
-  onBranchChange={setSelectedBranchId}
-  branchLoading={branchLoading}
-  branchError={branchError}
-/>
-
-) : activePage === 'Tables' ? (
-  <TableManagement
-    branchId={selectedBranchId}
-    branches={branches}
-    onBranchChange={setSelectedBranchId}
-    branchLoading={branchLoading}
-    branchError={branchError}
-  />
-
-) : activePage === 'Reservations' ? (
-<Reservations
-  branchId={selectedBranchId}
-  branches={branches}
-  onBranchChange={setSelectedBranchId}
-  branchLoading={branchLoading}
-  branchError={branchError}
-/>
-
-) : activePage === 'Orders' ? (
-  <Orders
-  branchId={selectedBranchId}
-  branches={branches}
-  onBranchChange={setSelectedBranchId}
-  branchLoading={branchLoading}
-  branchError={branchError}
-/>
-) : activePage === 'Kitchen Workflow' ? (
-  <KitchenWorkflow branchId={selectedBranchId} />
-) : activePage === 'Billing & Payments' ? (
-  <BillingPayments branchId={selectedBranchId} />
-) : activePage === 'Food Recommendations' ? (
-  <FoodRecommendations branchId={selectedBranchId} />
-) : activePage === 'Branches' ? (
-  <Branches user={user} onBranchesChange={loadBranches} />
-) : activePage === 'Employees' ? (
-  <Employees user={user} />
-) : activePage === 'Shifts' ? (
-  <Shifts user={user} />
-) : activePage === 'Attendance' ? (
-  <Attendance user={user} />
-) : activePage === 'Leave requests' ? (
-  <Leave user={user} />
-) : activePage === "Payroll" ? (
-  <Payroll user={user} />
-) : (
-  <section className="module-placeholder">
-    <div className="placeholder-icon">✳</div>
-    <h2>{activePage}</h2>
-    <p>
-      This section is ready for its module interface. The next step
-      is to connect it to the existing backend API.
-    </p>
-    <button
-      className="secondary-button"
-      onClick={() => selectPage('Overview')}
-    >
-      Back to overview
-    </button>
-  </section>
-)}
-
+              <OverviewInventoryStatistics
+                selectedBranch={selectedBranchId || 'all'}
+                branches={branches}
+              />
+            </>
+          ) : activePage === 'Ingredients & Stock' ||
+            activePage === 'Inventory' ||
+            activePage === 'Inventory & Supply Chain' ? (
+            <InventoryModule
+              activeSubpage="inv-ingredients"
+              showSubnav={false}
+              selectedBranch={selectedBranchId || 'all'}
+              branches={branches}
+              onSubpageChange={(subId) =>
+                selectPage(inventorySubpageMap[subId] || subId)
+              }
+            />
+          ) : activePage === 'Suppliers' ? (
+            <InventoryModule
+              activeSubpage="inv-suppliers"
+              showSubnav={false}
+              selectedBranch={selectedBranchId || 'all'}
+              branches={branches}
+              onSubpageChange={(subId) =>
+                selectPage(inventorySubpageMap[subId] || subId)
+              }
+            />
+          ) : activePage === 'Purchase Orders & Receiving' ? (
+            <InventoryModule
+              activeSubpage="inv-orders"
+              showSubnav={false}
+              selectedBranch={selectedBranchId || 'all'}
+              branches={branches}
+              onSubpageChange={(subId) =>
+                selectPage(inventorySubpageMap[subId] || subId)
+              }
+            />
+          ) : activePage === 'Branch Transfers' ? (
+            <InventoryModule
+              activeSubpage="inv-transfers"
+              showSubnav={false}
+              selectedBranch={selectedBranchId || 'all'}
+              branches={branches}
+              onSubpageChange={(subId) =>
+                selectPage(inventorySubpageMap[subId] || subId)
+              }
+            />
+          ) : activePage === 'Wastage & Spoilage' ? (
+            <InventoryModule
+              activeSubpage="inv-wastage"
+              showSubnav={false}
+              selectedBranch={selectedBranchId || 'all'}
+              branches={branches}
+              onSubpageChange={(subId) =>
+                selectPage(inventorySubpageMap[subId] || subId)
+              }
+            />
+          ) : activePage === 'Valuation & Reports' ? (
+            <InventoryModule
+              activeSubpage="inv-reports"
+              showSubnav={false}
+              selectedBranch={selectedBranchId || 'all'}
+              branches={branches}
+              onSubpageChange={(subId) =>
+                selectPage(inventorySubpageMap[subId] || subId)
+              }
+            />
+          ) : activePage === 'Menu' ? (
+            <MenuManagement
+              branchId={selectedBranchId}
+              branches={branches}
+              onBranchChange={setSelectedBranchId}
+              branchLoading={branchLoading}
+              branchError={branchError}
+            />
+          ) : activePage === 'Tables' ? (
+            <TableManagement
+              branchId={selectedBranchId}
+              branches={branches}
+              onBranchChange={setSelectedBranchId}
+              branchLoading={branchLoading}
+              branchError={branchError}
+            />
+          ) : activePage === 'Reservations' ? (
+            <Reservations
+              branchId={reservationsBranchId}
+              branches={branches}
+              onBranchChange={setReservationsBranchId}
+              branchLoading={branchLoading}
+              branchError={branchError}
+            />
+          ) : activePage === 'Orders' ? (
+            <Orders
+              branchid={ordersBranchId}
+              branches={branches}
+              onBranchChange={setOrdersBranchId}
+              branchLoading={branchLoading}
+              branchError={branchError}
+            />
+          ) : activePage === 'Kitchen Workflow' ? (
+            <KitchenWorkflow branchId={selectedBranchId} />
+          ) : activePage === 'Billing & Payments' ? (
+            <BillingPayments branchId={selectedBranchId} />
+          ) : activePage === 'Food Recommendations' ? (
+            <FoodRecommendations branchId={selectedBranchId} />
+          ) : activePage === 'Branches' ? (
+            <Branches user={user} onBranchesChange={loadBranches} />
+          ) : activePage === 'Employees' ? (
+            <Employees user={user} />
+          ) : activePage === 'Shifts' ? (
+            <Shifts user={user} />
+          ) : activePage === 'Attendance' ? (
+            <Attendance user={user} />
+          ) : activePage === 'Leave requests' ? (
+            <Leave user={user} />
+          ) : activePage === 'Payroll' ? (
+            <Payroll user={user} />
+          ) : (
+            <section className="module-placeholder">
+              <div className="placeholder-icon">✳</div>
+              <h2>{activePage}</h2>
+              <p>
+                This section is ready for its module interface. The next step
+                is to connect it to the existing backend API.
+              </p>
+              <button
+                className="secondary-button"
+                onClick={() => selectPage('Overview')}
+              >
+                Back to overview
+              </button>
+            </section>
+          )}
         </div>
       </main>
     </div>

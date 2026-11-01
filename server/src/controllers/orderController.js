@@ -16,10 +16,14 @@ const ORDER_STATUSES = [
   "Cancelled",
 ];
 
-// Validate and normalize order items using actual menu data.
+
 const prepareOrderItems = async (items, branchId) => {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error("An order must contain at least one item.");
+  }
+
+  if (!mongoose.isValidObjectId(branchId)) {
+    throw new Error("A valid branch is required to create an order.");
   }
 
   const combinedItems = new Map();
@@ -42,8 +46,8 @@ const prepareOrderItems = async (items, branchId) => {
     }
 
     const menuItemId = String(item.menuItemId);
-    const existingQuantity = combinedItems.get(menuItemId) || 0;
-    const newQuantity = existingQuantity + quantity;
+    const newQuantity =
+      (combinedItems.get(menuItemId) || 0) + quantity;
 
     if (newQuantity > 99) {
       throw new Error(
@@ -58,11 +62,27 @@ const prepareOrderItems = async (items, branchId) => {
 
   const menuItems = await MenuItem.find({
     _id: { $in: menuItemIds },
-    branchId,
     available: true,
+    $or: [
+      { branchId: new mongoose.Types.ObjectId(branchId) },
+      { branchIds: new mongoose.Types.ObjectId(branchId) },
+    ],
   });
 
   if (menuItems.length !== menuItemIds.length) {
+    const foundIds = new Set(
+      menuItems.map((item) => String(item._id))
+    );
+
+    const rejectedIds = menuItemIds.filter(
+      (id) => !foundIds.has(id)
+    );
+
+    console.error("[Order validation] Rejected menu items:", {
+      branchId: String(branchId),
+      rejectedIds,
+    });
+
     throw new Error(
       "One or more menu items are unavailable or do not belong to this branch."
     );
@@ -83,6 +103,7 @@ const prepareOrderItems = async (items, branchId) => {
     };
   });
 };
+
 
 // Calculate totals using server-validated prices.
 const calculateTotal = (items) =>
