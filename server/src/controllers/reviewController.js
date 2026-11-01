@@ -25,7 +25,8 @@ const wholeRating = (v) => {
 exports.createReview = async (req, res, next) => {
   try {
     const b = req.body || {};
-    if (!mongoose.isValidObjectId(b.order)) return fail(res, 400, 'Choose an order to review');
+    const orderId = b.order || b.orderId;
+    if (!mongoose.isValidObjectId(orderId)) return fail(res, 400, 'Choose an order to review');
     const food = wholeRating(b.foodRating);
     if (food === null) return fail(res, 400, 'Give the food a rating from 1 to 5');
 
@@ -34,7 +35,7 @@ exports.createReview = async (req, res, next) => {
     if (hasDelivery && delivery === null) return fail(res, 400, 'Give the delivery a rating from 1 to 5');
 
     // Ownership and status are checked on the server, never taken from the request.
-    const order = await gateway.findCustomerOrder(b.order, req.user.id);
+    const order = await gateway.findCustomerOrder(orderId, req.user.id);
     if (!order) return fail(res, 404, 'Order not found');
     if (!gateway.isCompleted(order)) return fail(res, 409, 'You can review an order after it is delivered or collected');
     if (hasDelivery && String(order.orderType).toLowerCase() !== 'delivery') {

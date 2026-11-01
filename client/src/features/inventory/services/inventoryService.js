@@ -416,61 +416,57 @@ export const InventoryService = {
 
     const endpoint = isUpdate ? `/api/inventory/ingredients/${targetId}` : '/api/inventory/ingredients';
     const method = isUpdate ? 'PUT' : 'POST';
-    try {
-      const res = await apiClient(endpoint, { method, body: payload });
-      if (res && res.success && res.data) {
-        const normalized = normalizeIngredient(res.data);
-        const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
-        const idx = items.findIndex(i => i.id === normalized.id);
-        if (idx !== -1) {
-          items[idx] = normalized;
-        } else {
-          items.unshift(normalized);
-        }
-        setStored(STORAGE_KEYS.INGREDIENTS, items);
-        return normalized;
+    const res = await apiClient(endpoint, { method, body: payload });
+    if (res && res.success && res.data) {
+      const normalized = normalizeIngredient(res.data);
+      const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
+      const idx = items.findIndex(i => i.id === normalized.id);
+      if (idx !== -1) {
+        items[idx] = normalized;
+      } else {
+        items.unshift(normalized);
       }
-    } catch (err) {
-      console.warn('[InventoryService] Remote save ingredient failed, saving locally:', err.message);
-      return this.saveIngredient(ingredientData);
+      setStored(STORAGE_KEYS.INGREDIENTS, items);
+      return normalized;
+    }
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to save ingredient to database');
     }
     return this.saveIngredient(ingredientData);
   },
 
   async deleteIngredientRemote(id) {
-    try {
-      await apiClient(`/api/inventory/ingredients/${id}`, { method: 'DELETE' });
-    } catch (err) {
-      console.warn('[InventoryService] Remote delete ingredient failed, deleting locally:', err.message);
+    const res = await apiClient(`/api/inventory/ingredients/${id}`, { method: 'DELETE' });
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to delete ingredient from database');
     }
-    return this.deleteIngredient(id);
+    this.deleteIngredient(id);
+    return res?.data || true;
   },
 
   async adjustStockRemote({ ingredientId, branchId, newQty, reason, notes, user = 'Store Manager' }) {
-    try {
-      const res = await apiClient(`/api/inventory/ingredients/${ingredientId}/adjust`, {
-        method: 'POST',
-        body: {
-          branch: branchId,
-          newQuantity: Number(newQty),
-          reason,
-          notes,
-          user
-        }
-      });
-      if (res && res.success && res.data) {
-        const updatedIng = normalizeIngredient(res.data.ingredient);
-        const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
-        const idx = items.findIndex(i => i.id === updatedIng.id);
-        if (idx !== -1) {
-          items[idx] = updatedIng;
-          setStored(STORAGE_KEYS.INGREDIENTS, items);
-        }
-        return { item: updatedIng, movement: res.data.movement };
+    const res = await apiClient(`/api/inventory/ingredients/${ingredientId}/adjust`, {
+      method: 'POST',
+      body: {
+        branch: branchId,
+        newQuantity: Number(newQty),
+        reason,
+        notes,
+        user
       }
-    } catch (err) {
-      console.warn('[InventoryService] Remote adjust stock failed, adjusting locally:', err.message);
-      return this.adjustStock({ ingredientId, branchId, newQty, reason, notes, user });
+    });
+    if (res && res.success && res.data) {
+      const updatedIng = normalizeIngredient(res.data.ingredient);
+      const items = getStored(STORAGE_KEYS.INGREDIENTS, []);
+      const idx = items.findIndex(i => i.id === updatedIng.id);
+      if (idx !== -1) {
+        items[idx] = updatedIng;
+        setStored(STORAGE_KEYS.INGREDIENTS, items);
+      }
+      return { item: updatedIng, movement: res.data.movement };
+    }
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to adjust stock');
     }
     return this.adjustStock({ ingredientId, branchId, newQty, reason, notes, user });
   },

@@ -115,6 +115,7 @@ export default function WastagePage({ branchId, branches = [] }) {
     setNotice('');
     try {
       await MovementService.deleteWastageRemote(w.id || w._id);
+      setWastageList(prev => prev.filter(item => item.id !== w.id && item._id !== w._id && item.wasteNumber !== w.wasteNumber));
       setDeleteConfirmTarget(null);
       setNotice(`Wastage record ${w.wasteNumber} deleted.`);
       await loadData();
@@ -243,6 +244,13 @@ export default function WastagePage({ branchId, branches = [] }) {
   });
 
   const totalItems = filteredWastage.length;
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalItems, currentPage]);
+
   const paginatedWastage = filteredWastage.slice(
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE

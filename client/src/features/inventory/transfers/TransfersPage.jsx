@@ -139,6 +139,7 @@ export default function TransfersPage({ branchId, branches = [] }) {
     setNotice('');
     try {
       await MovementService.deleteTransferRemote(tr.id || tr._id);
+      setTransfers(prev => prev.filter(t => t.id !== tr.id && t._id !== tr._id && t.transferNumber !== tr.transferNumber));
       setDeleteConfirmTarget(null);
       setNotice(`Transfer ${tr.transferNumber} deleted.`);
       await loadData();
@@ -269,6 +270,13 @@ export default function TransfersPage({ branchId, branches = [] }) {
   });
 
   const totalItems = filteredTransfers.length;
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalItems, currentPage]);
+
   const paginatedTransfers = filteredTransfers.slice(
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE

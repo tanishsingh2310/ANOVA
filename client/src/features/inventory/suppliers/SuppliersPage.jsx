@@ -22,6 +22,14 @@ export default function SuppliersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 10;
 
+  const totalItems = suppliers.length;
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalItems, currentPage]);
+
   useEffect(() => {
     setCurrentPage(1);
   }, [search, categoryFilter, statusFilter]);
@@ -177,6 +185,7 @@ export default function SuppliersPage() {
     setNotice('');
     try {
       await SupplierService.deleteSupplierRemote(sup.id || sup._id);
+      setSuppliers(prev => prev.filter(s => s.id !== sup.id && s._id !== sup._id));
       setDeleteConfirmTarget(null);
       setNotice(`Supplier "${sup.name}" deleted successfully.`);
       await loadData();

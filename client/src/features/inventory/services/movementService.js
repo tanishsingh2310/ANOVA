@@ -545,57 +545,49 @@ export const MovementService = {
       }))
     };
 
-    try {
-      const res = await apiClient('/api/inventory/transfers/dispatch', {
-        method: 'POST',
-        body: payload
-      });
-      if (res && res.success && res.data) {
-        const normalized = normalizeTransfer(res.data);
-        const list = getTransfersData();
-        list.unshift(normalized);
-        saveTransfersData(list);
-        return normalized;
-      }
-    } catch (err) {
-      console.warn('[MovementService] Remote transfer dispatch failed, dispatching locally:', err.message);
-      return this.dispatchTransfer({ fromBranchId, toBranchId, items, notes, dispatchedBy });
+    const res = await apiClient('/api/inventory/transfers/dispatch', {
+      method: 'POST',
+      body: payload
+    });
+    if (res && res.success && res.data) {
+      const normalized = normalizeTransfer(res.data);
+      const list = getTransfersData();
+      list.unshift(normalized);
+      saveTransfersData(list);
+      return normalized;
+    }
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to dispatch transfer');
     }
     return this.dispatchTransfer({ fromBranchId, toBranchId, items, notes, dispatchedBy });
   },
 
   async deleteTransferRemote(id) {
-    try {
-      const res = await apiClient(`/api/inventory/transfers/${id}`, { method: 'DELETE' });
-      if (res && res.success === false) {
-        throw new Error(res.message || 'Failed to delete transfer from database');
-      }
-    } catch (err) {
-      console.warn('[MovementService] Remote delete transfer failed, deleting locally:', err.message);
+    const res = await apiClient(`/api/inventory/transfers/${id}`, { method: 'DELETE' });
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to delete transfer from database');
     }
     this.deleteTransfer(id);
-    return true;
+    return res?.data || true;
   },
 
   async receiveTransferRemote({ transferId, receivedBy = 'Receiver' }) {
-    try {
-      const res = await apiClient(`/api/inventory/transfers/${transferId}/receive`, {
-        method: 'POST',
-        body: { receivedBy }
-      });
-      if (res && res.success && res.data) {
-        const normalized = normalizeTransfer(res.data);
-        const list = getTransfersData();
-        const idx = list.findIndex(t => t.id === normalized.id);
-        if (idx !== -1) {
-          list[idx] = normalized;
-          saveTransfersData(list);
-        }
-        return normalized;
+    const res = await apiClient(`/api/inventory/transfers/${transferId}/receive`, {
+      method: 'POST',
+      body: { receivedBy }
+    });
+    if (res && res.success && res.data) {
+      const normalized = normalizeTransfer(res.data);
+      const list = getTransfersData();
+      const idx = list.findIndex(t => t.id === normalized.id);
+      if (idx !== -1) {
+        list[idx] = normalized;
+        saveTransfersData(list);
       }
-    } catch (err) {
-      console.warn('[MovementService] Remote receive transfer failed, receiving locally:', err.message);
-      return this.receiveTransfer({ transferId, receivedBy });
+      return normalized;
+    }
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to receive transfer');
     }
     return this.receiveTransfer({ transferId, receivedBy });
   },
@@ -626,31 +618,29 @@ export const MovementService = {
       loggedBy
     };
 
-    try {
-      const res = await apiClient('/api/inventory/wastage', {
-        method: 'POST',
-        body: payload
-      });
-      if (res && res.success && res.data) {
-        const normalized = normalizeWastage(res.data);
-        const list = getWastageData();
-        list.unshift(normalized);
-        saveWastageData(list);
-        return normalized;
-      }
-    } catch (err) {
-      console.warn('[MovementService] Remote wastage log failed, logging locally:', err.message);
-      return this.logWastage({ branchId, ingredientId, batchNumber, qty, reason, notes, loggedBy });
+    const res = await apiClient('/api/inventory/wastage', {
+      method: 'POST',
+      body: payload
+    });
+    if (res && res.success && res.data) {
+      const normalized = normalizeWastage(res.data);
+      const list = getWastageData();
+      list.unshift(normalized);
+      saveWastageData(list);
+      return normalized;
+    }
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to record wastage');
     }
     return this.logWastage({ branchId, ingredientId, batchNumber, qty, reason, notes, loggedBy });
   },
 
   async deleteWastageRemote(id) {
-    try {
-      await apiClient(`/api/inventory/wastage/${id}`, { method: 'DELETE' });
-    } catch (err) {
-      console.warn('[MovementService] Remote delete wastage failed, deleting locally:', err.message);
+    const res = await apiClient(`/api/inventory/wastage/${id}`, { method: 'DELETE' });
+    if (res && res.success === false) {
+      throw new Error(res.message || 'Failed to delete wastage record');
     }
-    return this.deleteWastage(id);
+    this.deleteWastage(id);
+    return res?.data || true;
   }
 };

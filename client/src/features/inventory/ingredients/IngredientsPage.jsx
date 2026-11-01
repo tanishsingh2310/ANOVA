@@ -26,6 +26,14 @@ export default function IngredientsPage({ branchId, branches = [] }) {
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 10;
 
+  const totalItems = ingredients.length;
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalItems, currentPage]);
+
   useEffect(() => {
     setCurrentPage(1);
   }, [search, categoryFilter, statusFilter, selectedBranch]);
@@ -179,6 +187,7 @@ export default function IngredientsPage({ branchId, branches = [] }) {
     setNotice('');
     try {
       await InventoryService.deleteIngredientRemote(ing.id || ing._id);
+      setIngredients(prev => prev.filter(i => i.id !== ing.id && i._id !== ing._id));
       setDeleteConfirmTarget(null);
       setNotice(`Ingredient "${ing.name}" deleted successfully.`);
       await loadData();
