@@ -165,20 +165,32 @@ const navigationGroups = [
 ]
 
 export default function Dashboard({ user, onLogout }) {
-  const [activePage, setActivePage] = useState('Overview')
-  const [mobileMenu, setMobileMenu] = useState(false)
+  const isEnterprise = user?.role === 'owner' || (user?.role === 'admin' && !user?.branch);
+  const userBranchId = user?.branch ? String(user.branch) : null;
 
-  const [branches, setBranches] = useState([])
-  const [selectedBranchId, setSelectedBranchId] = useState('all')
+  const initialPage = () => {
+    const userRole = user?.role;
+    const allowed = navigation.filter(item => item.roles.includes(userRole));
+    if (allowed.some(item => item.label === 'Overview')) return 'Overview';
+    return allowed[0]?.label || 'Overview';
+  };
+
+  const [activePage, setActivePage] = useState(initialPage);
+  const [mobileMenu, setMobileMenu] = useState(false);
+
+  const [branches, setBranches] = useState([]);
+  const [selectedBranchId, setSelectedBranchId] = useState(
+    !isEnterprise && userBranchId ? userBranchId : 'all'
+  );
 
   // Independent branch selections for restaurant modules.
-  const [ordersBranchId, setOrdersBranchId] = useState('all')
-  const [reservationsBranchId, setReservationsBranchId] = useState('all')
-  const [kitchenBranchId, setKitchenBranchId] = useState('all')
-  const [billingBranchId, setBillingBranchId] = useState('')
+  const [ordersBranchId, setOrdersBranchId] = useState(!isEnterprise && userBranchId ? userBranchId : 'all');
+  const [reservationsBranchId, setReservationsBranchId] = useState(!isEnterprise && userBranchId ? userBranchId : 'all');
+  const [kitchenBranchId, setKitchenBranchId] = useState(!isEnterprise && userBranchId ? userBranchId : 'all');
+  const [billingBranchId, setBillingBranchId] = useState(!isEnterprise && userBranchId ? userBranchId : '');
 
-  const [branchLoading, setBranchLoading] = useState(true)
-  const [branchError, setBranchError] = useState('')
+  const [branchLoading, setBranchLoading] = useState(true);
+  const [branchError, setBranchError] = useState('');
 
   const isValidBranch = useCallback(
     (branchId, availableBranches = branches) =>
@@ -189,37 +201,37 @@ export default function Dashboard({ user, onLogout }) {
           String(branch._id || branch.id) === String(branchId),
       ),
     [branches],
-  )
+  );
 
   const loadBranches = useCallback(async () => {
-    setBranchLoading(true)
-    setBranchError('')
+    setBranchLoading(true);
+    setBranchError('');
 
     try {
-      const token = sessionStorage.getItem('mbrems_token')
+      const token = sessionStorage.getItem('mbrems_token');
       const apiBase = (
         import.meta.env.VITE_API_URL || 'http://localhost:5000'
-      ).replace(/\/+$/, '')
+      ).replace(/\/+$/, '');
 
       const response = await fetch(`${apiBase}/api/branches`, {
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-      })
+      });
 
-      const data = await response.json()
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Unable to load branches.')
+        throw new Error(data.message || 'Unable to load branches.');
       }
 
       const availableBranches = Array.isArray(data.branches)
         ? data.branches
         : Array.isArray(data.data)
           ? data.data
-          : []
+          : [];
 
-      setBranches(availableBranches)
+      setBranches(availableBranches);
 
       const validForLoadedBranches = (branchId) =>
         branchId === 'all' ||
@@ -227,11 +239,19 @@ export default function Dashboard({ user, onLogout }) {
         availableBranches.some(
           (branch) =>
             String(branch._id || branch.id) === String(branchId),
-        )
+        );
 
-      setSelectedBranchId((currentId) =>
-        validForLoadedBranches(currentId) ? currentId : 'all',
-      )
+      if (!isEnterprise && userBranchId) {
+        setSelectedBranchId(userBranchId);
+        setOrdersBranchId(userBranchId);
+        setReservationsBranchId(userBranchId);
+        setKitchenBranchId(userBranchId);
+        setBillingBranchId(userBranchId);
+      } else {
+        setSelectedBranchId((currentId) =>
+          validForLoadedBranches(currentId) ? currentId : 'all',
+        );
+      }
 
       setOrdersBranchId((currentId) =>
         validForLoadedBranches(currentId) ? currentId : 'all',
@@ -583,6 +603,7 @@ export default function Dashboard({ user, onLogout }) {
             activePage === 'Inventory' ||
             activePage === 'Inventory & Supply Chain' ? (
             <InventoryModule
+              user={user}
               activeSubpage="inv-ingredients"
               showSubnav={false}
               selectedBranch={selectedBranchId || 'all'}
@@ -593,6 +614,7 @@ export default function Dashboard({ user, onLogout }) {
             />
           ) : activePage === 'Suppliers' ? (
             <InventoryModule
+              user={user}
               activeSubpage="inv-suppliers"
               showSubnav={false}
               selectedBranch={selectedBranchId || 'all'}
@@ -603,6 +625,7 @@ export default function Dashboard({ user, onLogout }) {
             />
           ) : activePage === 'Purchase Orders & Receiving' ? (
             <InventoryModule
+              user={user}
               activeSubpage="inv-orders"
               showSubnav={false}
               selectedBranch={selectedBranchId || 'all'}
@@ -613,6 +636,7 @@ export default function Dashboard({ user, onLogout }) {
             />
           ) : activePage === 'Branch Transfers' ? (
             <InventoryModule
+              user={user}
               activeSubpage="inv-transfers"
               showSubnav={false}
               selectedBranch={selectedBranchId || 'all'}
@@ -623,6 +647,7 @@ export default function Dashboard({ user, onLogout }) {
             />
           ) : activePage === 'Wastage & Spoilage' ? (
             <InventoryModule
+              user={user}
               activeSubpage="inv-wastage"
               showSubnav={false}
               selectedBranch={selectedBranchId || 'all'}
@@ -633,6 +658,7 @@ export default function Dashboard({ user, onLogout }) {
             />
           ) : activePage === 'Valuation & Reports' ? (
             <InventoryModule
+              user={user}
               activeSubpage="inv-reports"
               showSubnav={false}
               selectedBranch={selectedBranchId || 'all'}

@@ -25,6 +25,7 @@ if (typeof window !== 'undefined' && !localStorage.getItem(MOCK_PURGE_FLAG)) {
 }
 
 export default function InventoryModule({
+  user,
   activeSubpage = 'inv-ingredients',
   onSubpageChange = () => {},
   selectedBranch = 'all',
@@ -102,17 +103,21 @@ export default function InventoryModule({
 
       {currentTab === 'inv-ingredients' && (
         <IngredientsPage
+          user={user}
           branchId={selectedBranch}
           branches={branches}
         />
       )}
 
       {currentTab === 'inv-suppliers' && (
-        <SuppliersPage />
+        <SuppliersPage
+          user={user}
+        />
       )}
 
       {currentTab === 'inv-orders' && (
         <PurchaseOrdersPage
+          user={user}
           branchId={selectedBranch}
           branches={branches}
         />
@@ -120,6 +125,7 @@ export default function InventoryModule({
 
       {currentTab === 'inv-transfers' && (
         <TransfersPage
+          user={user}
           branchId={selectedBranch}
           branches={branches}
         />
@@ -127,6 +133,7 @@ export default function InventoryModule({
 
       {currentTab === 'inv-wastage' && (
         <WastagePage
+          user={user}
           branchId={selectedBranch}
           branches={branches}
         />
@@ -134,6 +141,7 @@ export default function InventoryModule({
 
       {currentTab === 'inv-reports' && (
         <ReportsPage
+          user={user}
           branchId={selectedBranch}
           branches={branches}
         />

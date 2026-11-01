@@ -19,11 +19,13 @@ function createToken(user) {
 }
 
 function publicUser(user) {
+  const branchId = user.branch?._id || user.branch || null;
   return {
     id: user._id,
     name: user.name,
     email: user.email,
     role: user.role,
+    branch: branchId ? String(branchId) : null,
   };
 }
 

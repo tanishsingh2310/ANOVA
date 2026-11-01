@@ -13,22 +13,28 @@ import { MovementService } from '../services/movementService';
 import { InventoryService } from '../services/inventoryService';
 import InventoryPagination from '../components/InventoryPagination';
 
-export default function WastagePage({ branchId, branches = [] }) {
+export default function WastagePage({ branchId, branches = [], user }) {
+  const isEnterprise = user?.role === 'owner' || (user?.role === 'admin' && !user?.branch);
+  const userBranchId = user?.branch ? String(user.branch) : null;
+  const effectiveBranch = (!isEnterprise && userBranchId) ? userBranchId : (branchId || 'all');
+
   const [wastageList, setWastageList] = useState(() => {
-    const list = MovementService.getWastage({ branchId });
+    const list = MovementService.getWastage({ branchId: effectiveBranch });
     return Array.isArray(list) ? list : [];
   });
   const [ingredients, setIngredients] = useState(() => InventoryService.getIngredients());
   const [search, setSearch] = useState('');
   const [reasonFilter, setReasonFilter] = useState('ALL');
-  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
+  const [selectedBranch, setSelectedBranch] = useState(effectiveBranch);
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [targetBranch, setTargetBranch] = useState(
-    branchId && branchId !== 'all'
-      ? branchId
-      : (Array.isArray(branches) && branches[0] ? (branches[0].id || branches[0]._id || '') : '')
+    (!isEnterprise && userBranchId)
+      ? userBranchId
+      : (branchId && branchId !== 'all'
+          ? branchId
+          : (Array.isArray(branches) && branches[0] ? (branches[0].id || branches[0]._id || '') : ''))
   );
   const [selectedIngId, setSelectedIngId] = useState('');
   const [wasteQty, setWasteQty] = useState('');
@@ -43,13 +49,18 @@ export default function WastagePage({ branchId, branches = [] }) {
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
-    setSelectedBranch(branchId || 'all');
-    if (branchId && branchId !== 'all') {
-      setTargetBranch(branchId);
-    } else if (Array.isArray(branches) && branches.length > 0 && !targetBranch) {
-      setTargetBranch(branches[0].id || branches[0]._id || '');
+    if (!isEnterprise && userBranchId) {
+      setSelectedBranch(userBranchId);
+      setTargetBranch(userBranchId);
+    } else {
+      setSelectedBranch(branchId || 'all');
+      if (branchId && branchId !== 'all') {
+        setTargetBranch(branchId);
+      } else if (Array.isArray(branches) && branches.length > 0 && !targetBranch) {
+        setTargetBranch(branches[0].id || branches[0]._id || '');
+      }
     }
-  }, [branchId, branches]);
+  }, [branchId, branches, isEnterprise, userBranchId]);
 
   const loadData = async (refresh = false) => {
     setIsSyncing(true);
@@ -315,15 +326,26 @@ export default function WastagePage({ branchId, branches = [] }) {
 
         <label className="employees-filter">
           <span>Branch</span>
-          <select
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-          >
-            <option value="all">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
-            ))}
-          </select>
+          {!isEnterprise && userBranchId ? (
+            <select value={userBranchId} disabled title="Locked to your assigned branch">
+              {branches.filter(b => String(b.id || b._id) === userBranchId).map((b) => (
+                <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+              ))}
+              {branches.every(b => String(b.id || b._id) !== userBranchId) && (
+                <option value={userBranchId}>Assigned Branch</option>
+              )}
+            </select>
+          ) : (
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+            >
+              <option value="all">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+              ))}
+            </select>
+          )}
         </label>
 
         <label className="employees-filter">
@@ -481,15 +503,26 @@ export default function WastagePage({ branchId, branches = [] }) {
               <div className="employees-form-grid">
                 <label>
                   Branch Location *
-                  <select
-                    value={targetBranch}
-                    onChange={(e) => setTargetBranch(e.target.value)}
-                    required
-                  >
-                    {Array.isArray(branches) && branches.map((b) => (
-                      <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
-                    ))}
-                  </select>
+                  {!isEnterprise && userBranchId ? (
+                    <select value={userBranchId} disabled title="Locked to your assigned branch">
+                      {branches.filter(b => String(b.id || b._id) === userBranchId).map((b) => (
+                        <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                      ))}
+                      {branches.every(b => String(b.id || b._id) !== userBranchId) && (
+                        <option value={userBranchId}>Assigned Branch</option>
+                      )}
+                    </select>
+                  ) : (
+                    <select
+                      value={targetBranch}
+                      onChange={(e) => setTargetBranch(e.target.value)}
+                      required
+                    >
+                      {Array.isArray(branches) && branches.map((b) => (
+                        <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </label>
 
                 <label>

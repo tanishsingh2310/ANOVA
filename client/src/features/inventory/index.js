@@ -30,7 +30,7 @@ export { UnitConversion } from './services/unitConversion';
 export const inventoryNavigation = {
   id: 'inventory-supply-chain',
   title: 'Inventory & Supply Chain',
-  roleRequired: ['owner', 'admin', 'inventory_manager', 'branch_manager'],
+  roleRequired: ['owner', 'admin', 'inventory_manager', 'branch_manager', 'manager'],
   items: [
     { id: 'inv-ingredients', label: 'Ingredients & Stock', path: '/inventory/ingredients' },
     { id: 'inv-suppliers', label: 'Supplier Directory', path: '/inventory/suppliers' },

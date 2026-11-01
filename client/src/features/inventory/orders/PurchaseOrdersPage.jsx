@@ -14,8 +14,12 @@ import { SupplierService } from '../services/supplierService';
 import { InventoryService } from '../services/inventoryService';
 import InventoryPagination from '../components/InventoryPagination';
 
-export default function PurchaseOrdersPage({ branchId, branches = [] }) {
-  const [orders, setOrders] = useState(() => PurchaseOrderService.getPurchaseOrders({ branchId }, branches));
+export default function PurchaseOrdersPage({ branchId, branches = [], user }) {
+  const isEnterprise = user?.role === 'owner' || (user?.role === 'admin' && !user?.branch);
+  const userBranchId = user?.branch ? String(user.branch) : null;
+  const effectiveBranch = (!isEnterprise && userBranchId) ? userBranchId : (branchId || 'all');
+
+  const [orders, setOrders] = useState(() => PurchaseOrderService.getPurchaseOrders({ branchId: effectiveBranch }, branches));
   const [suppliers, setSuppliers] = useState(() => SupplierService.getSuppliers());
   const [ingredients, setIngredients] = useState(() => InventoryService.getIngredients());
 
@@ -23,7 +27,7 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [supplierFilter, setSupplierFilter] = useState('ALL');
-  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
+  const [selectedBranch, setSelectedBranch] = useState(effectiveBranch);
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -34,7 +38,11 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   const [error, setError] = useState('');
 
   // Create PO Form
-  const [newPoBranch, setNewPoBranch] = useState(branchId === 'all' ? (branches[0]?.id || branches[0]?._id || '') : branchId);
+  const [newPoBranch, setNewPoBranch] = useState(
+    (!isEnterprise && userBranchId)
+      ? userBranchId
+      : (branchId === 'all' ? (branches[0]?.id || branches[0]?._id || '') : branchId)
+  );
   const [newPoSupplier, setNewPoSupplier] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
   const [lineItems, setLineItems] = useState([
@@ -52,9 +60,14 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
-    setSelectedBranch(branchId);
-    if (branchId !== 'all') setNewPoBranch(branchId);
-  }, [branchId]);
+    if (!isEnterprise && userBranchId) {
+      setSelectedBranch(userBranchId);
+      setNewPoBranch(userBranchId);
+    } else {
+      setSelectedBranch(branchId || 'all');
+      if (branchId !== 'all') setNewPoBranch(branchId);
+    }
+  }, [branchId, isEnterprise, userBranchId]);
 
   const loadData = async (refresh = false) => {
     setIsSyncing(true);
@@ -434,15 +447,26 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
 
         <label className="employees-filter">
           <span>Branch</span>
-          <select
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-          >
-            <option value="all">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
-            ))}
-          </select>
+          {!isEnterprise && userBranchId ? (
+            <select value={userBranchId} disabled title="Locked to your assigned branch">
+              {branches.filter(b => String(b.id || b._id) === userBranchId).map((b) => (
+                <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+              ))}
+              {branches.every(b => String(b.id || b._id) !== userBranchId) && (
+                <option value={userBranchId}>Assigned Branch</option>
+              )}
+            </select>
+          ) : (
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+            >
+              <option value="all">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+              ))}
+            </select>
+          )}
         </label>
 
         <label className="employees-filter">
@@ -679,18 +703,29 @@ export default function PurchaseOrdersPage({ branchId, branches = [] }) {
                 </label>
 
                 <label>
-                  Receiving Branch *
-                  <select
-                    value={newPoBranch}
-                    onChange={(e) => setNewPoBranch(e.target.value)}
-                    required
-                  >
-                    <option value="">Select a branch</option>
-                    {branches.map((b) => (
-                      <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
-                    ))}
-                  </select>
-                </label>
+                   Receiving Branch *
+                   {!isEnterprise && userBranchId ? (
+                     <select value={userBranchId} disabled title="Locked to your assigned branch">
+                       {branches.filter(b => String(b.id || b._id) === userBranchId).map((b) => (
+                         <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                       ))}
+                       {branches.every(b => String(b.id || b._id) !== userBranchId) && (
+                         <option value={userBranchId}>Assigned Branch</option>
+                       )}
+                     </select>
+                   ) : (
+                     <select
+                       value={newPoBranch}
+                       onChange={(e) => setNewPoBranch(e.target.value)}
+                       required
+                     >
+                       <option value="">Select a branch</option>
+                       {branches.map((b) => (
+                         <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                       ))}
+                     </select>
+                   )}
+                 </label>
 
                 <label className="employees-field-full">
                   Expected Delivery Date

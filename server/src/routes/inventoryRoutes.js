@@ -15,6 +15,9 @@ const inventoryController = require('../controllers/inventoryController');
 // Enforce authentication across all inventory routes
 router.use(protect);
 
+// Active branch directory for inventory staff (e.g. transfers, branch filters)
+router.get('/branches', authorize(INVENTORY_READ_ROLES), inventoryController.getInventoryBranches);
+
 // ==========================================
 // 1. INGREDIENTS & STOCK
 // ==========================================
@@ -31,7 +34,7 @@ router.delete('/ingredients/:id', authorize(SENSITIVE_ADMIN_ROLES), inventoryCon
 // ==========================================
 router.get('/suppliers', inventoryController.getSuppliers);
 router.post('/suppliers', authorize(PROCUREMENT_WRITE_ROLES), inventoryController.createSupplier);
-router.patch('/suppliers/:id/status', authorize(SENSITIVE_ADMIN_ROLES), inventoryController.updateSupplierStatus);
+router.patch('/suppliers/:id/status', authorize(PROCUREMENT_WRITE_ROLES), inventoryController.updateSupplierStatus);
 router.get('/suppliers/:id', inventoryController.getSupplierById);
 router.put('/suppliers/:id', authorize(PROCUREMENT_WRITE_ROLES), inventoryController.updateSupplier);
 router.delete('/suppliers/:id', authorize(PROCUREMENT_WRITE_ROLES), inventoryController.deleteSupplier);
@@ -41,8 +44,8 @@ router.delete('/suppliers/:id', authorize(PROCUREMENT_WRITE_ROLES), inventoryCon
 // ==========================================
 router.get('/purchase-orders', inventoryController.getPurchaseOrders);
 router.post('/purchase-orders', authorize(INVENTORY_WRITE_ROLES), branchGuard, inventoryController.createPurchaseOrder);
-router.patch('/purchase-orders/:id/approve', authorize(ENTERPRISE_ROLES), inventoryController.approvePurchaseOrder);
-router.patch('/purchase-orders/:id/status', authorize(ENTERPRISE_ROLES), inventoryController.updatePurchaseOrderStatus);
+router.patch('/purchase-orders/:id/approve', authorize(INVENTORY_WRITE_ROLES), inventoryController.approvePurchaseOrder);
+router.patch('/purchase-orders/:id/status', authorize(INVENTORY_WRITE_ROLES), inventoryController.updatePurchaseOrderStatus);
 router.post('/purchase-orders/:id/receive', authorize(INVENTORY_WRITE_ROLES), inventoryController.receivePurchaseOrder);
 router.get('/purchase-orders/:id', inventoryController.getPurchaseOrderById);
 router.delete('/purchase-orders/:id', authorize(INVENTORY_WRITE_ROLES), inventoryController.deletePurchaseOrder);

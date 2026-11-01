@@ -13,17 +13,27 @@ import { MovementService } from '../services/movementService';
 import { InventoryService } from '../services/inventoryService';
 import InventoryPagination from '../components/InventoryPagination';
 
-export default function TransfersPage({ branchId, branches = [] }) {
-  const [transfers, setTransfers] = useState(() => MovementService.getTransfers({ branchId }, branches));
+export default function TransfersPage({ branchId, branches = [], user }) {
+  const isEnterprise = user?.role === 'owner' || (user?.role === 'admin' && !user?.branch);
+  const userBranchId = user?.branch ? String(user.branch) : null;
+  const effectiveBranch = (!isEnterprise && userBranchId) ? userBranchId : (branchId || 'all');
+
+  const [transfers, setTransfers] = useState(() => MovementService.getTransfers({ branchId: effectiveBranch }, branches));
   const [ingredients, setIngredients] = useState(() => InventoryService.getIngredients());
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
+  const [selectedBranch, setSelectedBranch] = useState(effectiveBranch);
 
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [fromBranch, setFromBranch] = useState(branches[0]?.id || branches[0]?._id || '');
-  const [toBranch, setToBranch] = useState(branches[1]?.id || branches[1]?._id || branches[0]?.id || branches[0]?._id || '');
+  const initialFrom = (!isEnterprise && userBranchId)
+    ? userBranchId
+    : (branches[0]?.id || branches[0]?._id || '');
+  const [fromBranch, setFromBranch] = useState(initialFrom);
+  const [toBranch, setToBranch] = useState(() => {
+    const other = branches.find(b => String(b.id || b._id) !== String(initialFrom));
+    return other ? String(other.id || other._id) : (branches[1]?.id || branches[1]?._id || '');
+  });
   const [transferLines, setTransferLines] = useState([{ ingredientId: '', qty: '' }]);
   const [transferNotes, setTransferNotes] = useState('');
   const [error, setError] = useState('');
@@ -35,9 +45,14 @@ export default function TransfersPage({ branchId, branches = [] }) {
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
-    setSelectedBranch(branchId);
-    if (branchId !== 'all') setFromBranch(branchId);
-  }, [branchId]);
+    if (!isEnterprise && userBranchId) {
+      setSelectedBranch(userBranchId);
+      setFromBranch(userBranchId);
+    } else {
+      setSelectedBranch(branchId || 'all');
+      if (branchId !== 'all') setFromBranch(branchId);
+    }
+  }, [branchId, isEnterprise, userBranchId]);
 
   const loadData = async (refresh = false) => {
     setIsSyncing(true);
@@ -341,15 +356,26 @@ export default function TransfersPage({ branchId, branches = [] }) {
 
         <label className="employees-filter">
           <span>Branch</span>
-          <select
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-          >
-            <option value="all">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
-            ))}
-          </select>
+          {!isEnterprise && userBranchId ? (
+            <select value={userBranchId} disabled title="Locked to your assigned branch">
+              {branches.filter(b => String(b.id || b._id) === userBranchId).map((b) => (
+                <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+              ))}
+              {branches.every(b => String(b.id || b._id) !== userBranchId) && (
+                <option value={userBranchId}>Assigned Branch</option>
+              )}
+            </select>
+          ) : (
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+            >
+              <option value="all">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+              ))}
+            </select>
+          )}
         </label>
 
         <label className="employees-filter">
@@ -519,15 +545,33 @@ export default function TransfersPage({ branchId, branches = [] }) {
               <div className="employees-form-grid">
                 <label>
                   Origin Branch (Source) *
-                  <select
-                    value={fromBranch}
-                    onChange={(e) => setFromBranch(e.target.value)}
-                    required
-                  >
-                    {branches.map((b) => (
-                      <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
-                    ))}
-                  </select>
+                  {!isEnterprise && userBranchId ? (
+                    <select value={userBranchId} disabled title="Locked to your assigned branch">
+                      {branches.filter(b => String(b.id || b._id) === userBranchId).map((b) => (
+                        <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                      ))}
+                      {branches.every(b => String(b.id || b._id) !== userBranchId) && (
+                        <option value={userBranchId}>Assigned Branch</option>
+                      )}
+                    </select>
+                  ) : (
+                    <select
+                      value={fromBranch}
+                      onChange={(e) => {
+                        const newFrom = e.target.value;
+                        setFromBranch(newFrom);
+                        if (toBranch === newFrom) {
+                          const nextTo = branches.find(b => String(b.id || b._id) !== String(newFrom));
+                          if (nextTo) setToBranch(String(nextTo.id || nextTo._id));
+                        }
+                      }}
+                      required
+                    >
+                      {branches.map((b) => (
+                        <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                      ))}
+                    </select>
+                  )}
                 </label>
 
                 <label>
@@ -537,9 +581,11 @@ export default function TransfersPage({ branchId, branches = [] }) {
                     onChange={(e) => setToBranch(e.target.value)}
                     required
                   >
-                    {branches.map((b) => (
-                      <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
-                    ))}
+                    {branches
+                      .filter(b => String(b.id || b._id) !== String(fromBranch))
+                      .map((b) => (
+                        <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+                      ))}
                   </select>
                 </label>
 

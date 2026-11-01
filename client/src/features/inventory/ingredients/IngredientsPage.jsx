@@ -15,14 +15,18 @@ import StockAdjustmentModal from './StockAdjustmentModal';
 import BatchTrackerModal from './BatchTrackerModal';
 import InventoryPagination from '../components/InventoryPagination';
 
-export default function IngredientsPage({ branchId, branches = [] }) {
+export default function IngredientsPage({ branchId, branches = [], user }) {
+  const isEnterprise = user?.role === 'owner' || (user?.role === 'admin' && !user?.branch);
+  const userBranchId = user?.branch ? String(user.branch) : null;
+  const effectiveBranch = (!isEnterprise && userBranchId) ? userBranchId : (branchId || 'all');
+
   const [ingredients, setIngredients] = useState([]);
   const [categories, setCategories] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
+  const [selectedBranch, setSelectedBranch] = useState(effectiveBranch);
   const [currentPage, setCurrentPage] = useState(1);
   const PAGE_SIZE = 10;
 
@@ -64,8 +68,12 @@ export default function IngredientsPage({ branchId, branches = [] }) {
   const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
-    setSelectedBranch(branchId);
-  }, [branchId]);
+    if (!isEnterprise && userBranchId) {
+      setSelectedBranch(userBranchId);
+    } else {
+      setSelectedBranch(branchId || 'all');
+    }
+  }, [branchId, isEnterprise, userBranchId]);
 
   const loadData = async (refresh = false) => {
     const ings = InventoryService.getIngredients({
@@ -303,17 +311,30 @@ export default function IngredientsPage({ branchId, branches = [] }) {
 
         <label className="employees-filter">
           <span>Branch</span>
-          <select
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-          >
-            <option value="all">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id || b._id} value={b.id || b._id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+          {!isEnterprise && userBranchId ? (
+            <select value={userBranchId} disabled title="Locked to your assigned branch">
+              {branches.filter(b => String(b.id || b._id) === userBranchId).map((b) => (
+                <option key={b.id || b._id} value={b.id || b._id}>
+                  {b.name}
+                </option>
+              ))}
+              {branches.every(b => String(b.id || b._id) !== userBranchId) && (
+                <option value={userBranchId}>Assigned Branch</option>
+              )}
+            </select>
+          ) : (
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+            >
+              <option value="all">All branches</option>
+              {branches.map((b) => (
+                <option key={b.id || b._id} value={b.id || b._id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
 
         <label className="employees-filter">

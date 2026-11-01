@@ -52,23 +52,68 @@ const findStockTransfer = async (idOrNumber) => {
   });
 };
 
+function isEnterpriseUser(req) {
+  if (!req.user) return false;
+  if (req.user.role === ROLES.OWNER) return true;
+  if (req.user.role === ROLES.ADMIN && !req.user.branchId && !req.user.branch) return true;
+  return false;
+}
+
 // Enforce authentication across all inventory routes
 async function resolveInventoryBranch(req, requestedBranch) {
-  const isEnterprise = ENTERPRISE_ROLES.includes(req.user.role);
+  const isEnterprise = isEnterpriseUser(req);
 
   if (isEnterprise &&
       (!requestedBranch || String(requestedBranch).toLowerCase() === 'all')) {
     return { isEnterprise, all: true, branchDoc: null, keys: [] };
   }
 
-  const value = isEnterprise ? requestedBranch : req.user.branchId;
-  if (!value) {
-    const error = new Error('A valid assigned branch is required');
-    error.statusCode = 403;
-    throw error;
+  const Branch = mongoose.model('Branch');
+
+  if (!isEnterprise) {
+    const assignedBranchId = req.user.branchId;
+    if (!assignedBranchId) {
+      const error = new Error('A valid assigned branch is required');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    // If non-enterprise user tries to target a different branch, reject
+    if (requestedBranch && String(requestedBranch).toLowerCase() !== 'all') {
+      const reqVal = String(requestedBranch).trim();
+      let reqBranchDoc = null;
+      if (mongoose.isValidObjectId(reqVal)) {
+        reqBranchDoc = await Branch.findById(reqVal).select('_id code isActive');
+      }
+      if (!reqBranchDoc && typeof reqVal === 'string') {
+        reqBranchDoc = await Branch.findOne({ code: reqVal.toUpperCase() }).select('_id code isActive');
+      }
+      if (reqBranchDoc && String(reqBranchDoc._id) !== String(assignedBranchId)) {
+        const error = new Error('You cannot access a different branch');
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+
+    let branchDoc = null;
+    if (mongoose.isValidObjectId(assignedBranchId)) {
+      branchDoc = await Branch.findById(assignedBranchId).select('_id code isActive');
+    }
+    if (!branchDoc || !branchDoc.isActive) {
+      const error = new Error('Your assigned branch is invalid or inactive');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    return {
+      isEnterprise: false,
+      all: false,
+      branchDoc,
+      keys: [String(branchDoc._id), String(branchDoc.code)]
+    };
   }
 
-  const Branch = mongoose.model('Branch');
+  const value = requestedBranch;
   let branchDoc = null;
 
   if (mongoose.isValidObjectId(value)) {
@@ -87,15 +132,8 @@ async function resolveInventoryBranch(req, requestedBranch) {
     throw error;
   }
 
-  if (!isEnterprise &&
-      String(branchDoc._id) !== String(req.user.branchId)) {
-    const error = new Error('You cannot access a different branch');
-    error.statusCode = 403;
-    throw error;
-  }
-
   return {
-    isEnterprise,
+    isEnterprise: true,
     all: false,
     branchDoc,
     keys: [String(branchDoc._id), String(branchDoc.code)]
@@ -154,35 +192,8 @@ function applyBranchStringFilter(query, field, scope) {
 const getIngredients = async (req, res, next) => {
   try {
     const { branch, category, search } = req.query;
-    const isEnterprise = ENTERPRISE_ROLES.includes(req.user.role);
-    const Branch = mongoose.model('Branch');
-    let branchDoc = null;
-
-    if (!(isEnterprise && (!branch || String(branch).toLowerCase() === 'all'))) {
-      const requestedBranch = isEnterprise ? branch : req.user.branchId;
-
-      if (!requestedBranch) {
-        return sendResponse(res, 403, false, null, 'A valid assigned branch is required');
-      }
-
-      if (mongoose.isValidObjectId(requestedBranch)) {
-        branchDoc = await Branch.findById(requestedBranch).select('_id code isActive');
-      }
-
-      if (!branchDoc && typeof requestedBranch === 'string') {
-        branchDoc = await Branch.findOne({
-          code: requestedBranch.trim().toUpperCase()
-        }).select('_id code isActive');
-      }
-
-      if (!branchDoc || !branchDoc.isActive) {
-        return sendResponse(res, 403, false, null, 'The requested branch is invalid or inactive');
-      }
-
-      if (!isEnterprise && String(branchDoc._id) !== String(req.user.branchId)) {
-        return sendResponse(res, 403, false, null, 'You cannot access a different branch');
-      }
-    }
+    const scope = await resolveInventoryBranch(req, branch);
+    const branchDoc = scope.branchDoc;
 
     const query = {};
     if (category && category !== 'ALL') query.category = category;
@@ -228,6 +239,9 @@ const getIngredients = async (req, res, next) => {
 
     sendResponse(res, 200, true, result, 'Ingredients retrieved successfully');
   } catch (err) {
+    if (err.statusCode) {
+      return sendResponse(res, err.statusCode, false, null, err.message);
+    }
     next(err);
   }
 };
@@ -482,34 +496,8 @@ const getIngredientById = async (req, res, next) => {
       return sendResponse(res, 400, false, null, 'Invalid ingredient ID');
     }
 
-    const isEnterprise = ENTERPRISE_ROLES.includes(req.user.role);
-    const requestedBranch = isEnterprise ? req.query.branch : req.user.branchId;
-    const Branch = mongoose.model('Branch');
-    let branchDoc = null;
-
-    if (!(isEnterprise && (!requestedBranch || String(requestedBranch).toLowerCase() === 'all'))) {
-      if (!requestedBranch) {
-        return sendResponse(res, 403, false, null, 'A valid assigned branch is required');
-      }
-
-      if (mongoose.isValidObjectId(requestedBranch)) {
-        branchDoc = await Branch.findById(requestedBranch).select('_id code isActive');
-      }
-
-      if (!branchDoc && typeof requestedBranch === 'string') {
-        branchDoc = await Branch.findOne({
-          code: requestedBranch.trim().toUpperCase()
-        }).select('_id code isActive');
-      }
-
-      if (!branchDoc || !branchDoc.isActive) {
-        return sendResponse(res, 403, false, null, 'The requested branch is invalid or inactive');
-      }
-
-      if (!isEnterprise && String(branchDoc._id) !== String(req.user.branchId)) {
-        return sendResponse(res, 403, false, null, 'You cannot access a different branch');
-      }
-    }
+    const scope = await resolveInventoryBranch(req, req.query.branch);
+    const branchDoc = scope.branchDoc;
 
     const ingredient = await Ingredient.findById(req.params.id)
       .populate('primarySupplier', 'name code city');
@@ -545,6 +533,9 @@ const getIngredientById = async (req, res, next) => {
 
     sendResponse(res, 200, true, item, 'Ingredient retrieved successfully');
   } catch (err) {
+    if (err.statusCode) {
+      return sendResponse(res, err.statusCode, false, null, err.message);
+    }
     next(err);
   }
 };
@@ -933,6 +924,15 @@ const approvePurchaseOrder = async (req, res, next) => {
     const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
 
+    if (!isEnterpriseUser(req)) {
+      const scope = await resolveInventoryBranch(req, req.user.branchId);
+      const matches = scope.keys.includes(String(po.branch)) ||
+        String(po.branchRef || '') === String(scope.branchDoc?._id || '');
+      if (!matches) {
+        return sendResponse(res, 403, false, null, 'You cannot approve a purchase order for a different branch');
+      }
+    }
+
     if (po.status !== 'SUBMITTED') {
       return sendResponse(res, 400, false, null, 'Only submitted purchase orders can be approved');
     }
@@ -945,6 +945,9 @@ const approvePurchaseOrder = async (req, res, next) => {
 
     return sendResponse(res, 200, true, po, 'Purchase order approved');
   } catch (err) {
+    if (err.statusCode) {
+      return sendResponse(res, err.statusCode, false, null, err.message);
+    }
     next(err);
   }
 };
@@ -966,6 +969,15 @@ const updatePurchaseOrderStatus = async (req, res, next) => {
     const po = await findPurchaseOrder(req.params.id);
     if (!po) return sendResponse(res, 404, false, null, 'Purchase order not found');
 
+    if (!isEnterpriseUser(req)) {
+      const scope = await resolveInventoryBranch(req, req.user.branchId);
+      const matches = scope.keys.includes(String(po.branch)) ||
+        String(po.branchRef || '') === String(scope.branchDoc?._id || '');
+      if (!matches) {
+        return sendResponse(res, 403, false, null, 'You cannot manage a purchase order for a different branch');
+      }
+    }
+
     if (!(allowedTransitions[po.status] || []).includes(status)) {
       return sendResponse(res, 400, false, null, `Status transition from ${po.status} to ${status} is not allowed`);
     }
@@ -975,6 +987,9 @@ const updatePurchaseOrderStatus = async (req, res, next) => {
 
     return sendResponse(res, 200, true, po, `Purchase order status updated to ${status}`);
   } catch (err) {
+    if (err.statusCode) {
+      return sendResponse(res, err.statusCode, false, null, err.message);
+    }
     next(err);
   }
 };
@@ -1023,7 +1038,7 @@ const receivePurchaseOrder = async (req, res, next) => {
       return sendResponse(res, 400, false, null, 'The purchase order references an invalid or inactive branch');
     }
 
-    if (!ENTERPRISE_ROLES.includes(req.user.role) &&
+    if (!isEnterpriseUser(req) &&
         String(branchDoc._id) !== String(req.user.branchId || '')) {
       return sendResponse(res, 403, false, null, 'You cannot receive goods for a different branch');
     }
@@ -1213,7 +1228,7 @@ const deletePurchaseOrder = async (req, res, next) => {
       return sendResponse(res, 403, false, null, 'You do not have permission to delete purchase orders');
     }
 
-    if (!ENTERPRISE_ROLES.includes(req.user.role)) {
+    if (!isEnterpriseUser(req)) {
       const scope = await resolveInventoryBranch(req, req.user.branchId);
       if (!scope.all) {
         const matches = scope.keys.includes(String(po.branch)) ||
@@ -1563,7 +1578,7 @@ const receiveTransfer = async (req, res, next) => {
         fail(400, 'Transfer destination is invalid or inactive');
       }
 
-      if (!ENTERPRISE_ROLES.includes(req.user.role) &&
+      if (!isEnterpriseUser(req) &&
           String(destinationBranch._id) !== String(req.user.branchId || '')) {
         fail(403, 'You can only receive transfers for your assigned branch');
       }
@@ -1721,7 +1736,7 @@ const deleteTransfer = async (req, res, next) => {
       return sendResponse(res, 403, false, null, 'You do not have permission to delete transfers');
     }
 
-    if (!ENTERPRISE_ROLES.includes(req.user.role)) {
+    if (!isEnterpriseUser(req)) {
       const scope = await resolveInventoryBranch(req, req.user.branchId);
       if (!scope.all) {
         const id = String(scope.branchDoc?._id || '');
@@ -2140,6 +2155,15 @@ const deleteWastage = async (req, res, next) => {
       });
     }
     if (!wastage) return sendResponse(res, 404, false, null, 'Wastage record not found');
+
+    if (!isEnterpriseUser(req)) {
+      const scope = await resolveInventoryBranch(req, req.user.branchId);
+      const matches = scope.keys.includes(String(wastage.branch)) ||
+        String(wastage.branchRef || '') === String(scope.branchDoc?._id || '');
+      if (!matches) {
+        return sendResponse(res, 403, false, null, 'You cannot delete a wastage record from a different branch');
+      }
+    }
 
     session = await mongoose.startSession();
     await session.withTransaction(async () => {
@@ -2719,12 +2743,25 @@ const consumeRecipe = async (req, res, next) => {
   }
 };
 
+const getInventoryBranches = async (req, res, next) => {
+  try {
+    const Branch = mongoose.model('Branch');
+    const branches = await Branch.find({ isActive: true })
+      .select('_id name code address isActive')
+      .sort({ name: 1 });
+    return sendResponse(res, 200, true, branches, 'Branches retrieved successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   // Internal / Helper Utilities
   resolveInventoryBranch,
   getScopedBranchStock,
   inventoryRecordMatchesBranch,
   applyBranchStringFilter,
+  getInventoryBranches,
 
   // Ingredients & Stock
   getIngredients,

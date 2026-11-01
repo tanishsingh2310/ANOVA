@@ -10,10 +10,15 @@ import { AnalyticsService } from '../services/analyticsService';
 import { InventoryService } from '../services/inventoryService';
 import InventoryPagination from '../components/InventoryPagination';
 
-export default function ReportsPage({ branchId, branches = [] }) {
+export default function ReportsPage({ branchId, branches = [], user }) {
+  const isEnterprise = user?.role === 'owner' || (user?.role === 'admin' && !user?.branch && !user?.branchId);
+  const userBranchId = user?.branch ? (typeof user.branch === 'object' ? String(user.branch._id || user.branch.id) : String(user.branch)) : null;
+
   const [reportType, setReportType] = useState('VALUATION'); // VALUATION, LOW_STOCK, EXPIRY, AUDIT_TRAIL
   const [valuationMethod, setValuationMethod] = useState('FIFO'); // FIFO or WEIGHTED_AVG
-  const [selectedBranch, setSelectedBranch] = useState(branchId || 'all');
+  const [selectedBranch, setSelectedBranch] = useState(
+    !isEnterprise && userBranchId ? userBranchId : (branchId || 'all')
+  );
   const [search, setSearch] = useState('');
 
   const [valuationData, setValuationData] = useState(() => AnalyticsService.getInventoryValuation(branchId || 'all', 'FIFO', branches));
@@ -36,8 +41,12 @@ export default function ReportsPage({ branchId, branches = [] }) {
   }, [reportType, search, selectedBranch, valuationMethod]);
 
   useEffect(() => {
-    setSelectedBranch(branchId);
-  }, [branchId]);
+    if (!isEnterprise && userBranchId) {
+      setSelectedBranch(userBranchId);
+    } else {
+      setSelectedBranch(branchId || 'all');
+    }
+  }, [branchId, isEnterprise, userBranchId]);
 
   const loadData = async (refresh = false) => {
     setIsSyncing(true);
@@ -298,11 +307,14 @@ export default function ReportsPage({ branchId, branches = [] }) {
           <select
             value={selectedBranch}
             onChange={(e) => setSelectedBranch(e.target.value)}
+            disabled={!isEnterprise && Boolean(userBranchId)}
           >
-            <option value="all">All branches</option>
-            {branches.map((b) => (
-              <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
-            ))}
+            {isEnterprise && <option value="all">All branches</option>}
+            {branches
+              .filter(b => isEnterprise || !userBranchId || String(b.id || b._id) === userBranchId)
+              .map((b) => (
+                <option key={b.id || b._id} value={b.id || b._id}>{b.name}</option>
+              ))}
           </select>
         </label>
       </div>

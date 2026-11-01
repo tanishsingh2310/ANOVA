@@ -1,6 +1,6 @@
-﻿const mongoose = require("mongoose");
+const mongoose = require("mongoose");
 const Branch = require("../models/Branch");
-const { ENTERPRISE_ROLES } = require("../config/roles");
+const { ROLES } = require("../config/roles");
 
 function respond(res, status, message) {
   return res.status(status).json({
@@ -15,7 +15,10 @@ module.exports = async (req, res, next) => {
       return respond(res, 401, "Authentication required.");
     }
 
-    if (ENTERPRISE_ROLES.includes(req.user.role)) {
+    const isEnterprise = req.user.role === ROLES.OWNER ||
+      (req.user.role === ROLES.ADMIN && !req.user.branchId && !req.user.branch);
+
+    if (isEnterprise) {
       return next();
     }
 
@@ -25,14 +28,20 @@ module.exports = async (req, res, next) => {
       return respond(res, 403, "Your account has no valid assigned branch.");
     }
 
-    const target = req.body?.branch
+    let target = req.body?.branch
       || req.body?.branchId
       || req.body?.fromBranch
       || req.query?.branch
       || req.params?.branch;
 
     if (!target || String(target).toLowerCase() === "all") {
-      return respond(res, 403, "A specific assigned branch is required.");
+      if (req.body) {
+        req.body.branch = assignedBranchId;
+      }
+      if (req.query) {
+        req.query.branch = assignedBranchId;
+      }
+      target = assignedBranchId;
     }
 
     const targetValue = String(target).trim();
@@ -56,6 +65,7 @@ module.exports = async (req, res, next) => {
       return respond(res, 403, "You cannot access a different branch.");
     }
 
+    req.branchDoc = targetBranch;
     next();
   } catch (error) {
     next(error);

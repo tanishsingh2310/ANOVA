@@ -108,6 +108,8 @@ export default function StockAdjustmentModal({
               <select
                 value={selectedBranch}
                 onChange={(e) => handleBranchChange(e.target.value)}
+                disabled={Boolean(branchId && branchId !== 'all')}
+                title={branchId && branchId !== 'all' ? 'Locked to current branch' : undefined}
               >
                 {branches.map(b => (
                   <option key={b.id || b._id} value={b.id || b._id}>{b.name} ({b.city})</option>

@@ -104,7 +104,15 @@ export const InventoryService = {
 
   async getBranchesRemote() {
     try {
-      const res = await apiClient('/api/branches');
+      let res;
+      try {
+        res = await apiClient('/api/inventory/branches');
+      } catch {
+        res = await apiClient('/api/branches');
+      }
+      if (!res || (!res.success && !Array.isArray(res) && !res.branches && !res.data)) {
+        res = await apiClient('/api/branches');
+      }
       const rawList = Array.isArray(res)
         ? res
         : (Array.isArray(res?.branches) ? res.branches : (Array.isArray(res?.data) ? res.data : []));
