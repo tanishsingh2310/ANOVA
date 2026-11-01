@@ -94,6 +94,8 @@ function normalizeReservation(reservation, fallbackBranchId = "") {
     customerName: reservation?.customerName || "",
     phone: reservation?.phone || "",
     email: reservation?.email || "",
+    date: reservation?.date || "",
+    time: reservation?.time || "",
     guests: Number(reservation?.guests || 0),
     tableNumber: reservation?.tableNumber || "Unassigned",
     status: reservation?.status || "Pending",
@@ -137,20 +139,11 @@ function getPaginationPages(currentPage, totalPages) {
   ];
 }
 
-/*
- * Supports common API response shapes:
- *   [ ... ]
- *   { data: [ ... ] }
- *   { tables: [ ... ] }
- *   { data: { tables: [ ... ] } }
- */
 function extractTables(response) {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.tables)) return response.tables;
   if (Array.isArray(response?.data)) return response.data;
-  if (Array.isArray(response?.data?.tables)) {
-    return response.data.tables;
-  }
+  if (Array.isArray(response?.data?.tables)) return response.data.tables;
 
   return [];
 }
@@ -215,7 +208,8 @@ function Reservations({
   const [deleting, setDeleting] = useState(false);
   const [formError, setFormError] = useState("");
 
-  // Each table is stored as { tableNumber, capacity }.
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
+
   const [branchTables, setBranchTables] = useState([]);
   const [tablesLoading, setTablesLoading] = useState(false);
   const [tablesError, setTablesError] = useState("");
@@ -245,14 +239,12 @@ function Reservations({
     return names;
   }, [branchOptions]);
 
-  // Only show tables that can accommodate the current guest count.
   const suitableTables = useMemo(() => {
     const guestCount = Number(form.guests) || 1;
 
     return branchTables.filter(
       (table) =>
-        table.capacity !== null &&
-        table.capacity >= guestCount
+        table.capacity !== null && table.capacity >= guestCount
     );
   }, [branchTables, form.guests]);
 
@@ -265,20 +257,23 @@ function Reservations({
   }, []);
 
   // Load reservations for the selected branch or all branches.
-  useEffect(() => {
-    let active = true;
+  const loadReservations = useCallback(
+    async (active = () => true) => {
+      if (branchLoading) return;
 
-    async function loadReservations() {
-      setLoading(true);
+      if (branchError) {
+        setReservations([]);
+        setLoadError(branchError);
+        setLoading(false);
+        return;
+      }
+
       setLoadError("");
 
       try {
-        if (branchLoading) return;
-        if (branchError) throw new Error(branchError);
-
         if (selectedBranchId === ALL_BRANCHES) {
           if (!branchOptions.length) {
-            if (active) setReservations([]);
+            if (active()) setReservations([]);
             return;
           }
 
@@ -306,20 +301,20 @@ function Reservations({
             })
           );
 
-          if (active) {
-            const unique = new Map();
+          if (!active()) return;
 
-            results.flat().forEach((item) => {
-              if (!item.id) return;
+          const unique = new Map();
 
-              unique.set(item.id, {
-                ...unique.get(item.id),
-                ...item,
-              });
+          results.flat().forEach((item) => {
+            if (!item.id) return;
+
+            unique.set(item.id, {
+              ...unique.get(item.id),
+              ...item,
             });
+          });
 
-            setReservations(Array.from(unique.values()));
-          }
+          setReservations(Array.from(unique.values()));
         } else {
           const data = await apiRequest(
             `/api/reservations/${selectedBranchId}`
@@ -331,7 +326,7 @@ function Reservations({
             );
           }
 
-          if (active) {
+          if (active()) {
             setReservations(
               data.map((item) =>
                 normalizeReservation(item, selectedBranchId)
@@ -340,29 +335,29 @@ function Reservations({
           }
         }
       } catch (error) {
-        if (active) {
-          setReservations([]);
+        if (active()) {
           setLoadError(
             getErrorMessage(error, "Unable to load reservations.")
           );
         }
       } finally {
-        if (active) setLoading(false);
+        if (active()) setLoading(false);
       }
-    }
+    },
+    [selectedBranchId, branchOptions, branchLoading, branchError]
+  );
 
-    loadReservations();
+  useEffect(() => {
+    let active = true;
+    const isActive = () => active;
+
+    setLoading(true);
+    loadReservations(isActive);
 
     return () => {
       active = false;
     };
-  }, [
-    selectedBranchId,
-    branchOptions,
-    branchLoading,
-    branchError,
-    refreshKey,
-  ]);
+  }, [loadReservations, refreshKey]);
 
   // Load tables for the branch selected in the reservation form.
   useEffect(() => {
@@ -392,10 +387,7 @@ function Reservations({
 
             if (!tableNumber) return null;
 
-            return {
-              tableNumber,
-              capacity,
-            };
+            return { tableNumber, capacity };
           })
           .filter(Boolean);
 
@@ -413,9 +405,7 @@ function Reservations({
           })
         );
 
-        if (active) {
-          setBranchTables(uniqueTables);
-        }
+        if (active) setBranchTables(uniqueTables);
       } catch (error) {
         if (active) {
           setBranchTables([]);
@@ -438,7 +428,6 @@ function Reservations({
     };
   }, [form.branchId, showForm]);
 
-  // Clear a selected table if it cannot accommodate the current guest count.
   useEffect(() => {
     if (!form.tableNumber || tablesLoading || tablesError) return;
 
@@ -453,10 +442,7 @@ function Reservations({
       (selectedTable.capacity === null ||
         selectedTable.capacity < Number(form.guests))
     ) {
-      setForm((current) => ({
-        ...current,
-        tableNumber: "",
-      }));
+      setForm((current) => ({ ...current, tableNumber: "" }));
     }
   }, [
     form.tableNumber,
@@ -487,6 +473,9 @@ function Reservations({
             .toLowerCase()
             .includes(query) ||
           String(reservation.tableNumber || "Unassigned")
+            .toLowerCase()
+            .includes(query) ||
+          String(reservation.occasion || "")
             .toLowerCase()
             .includes(query);
 
@@ -527,6 +516,81 @@ function Reservations({
   function refreshReservations() {
     setNotice(null);
     setRefreshKey((current) => current + 1);
+  }
+
+  // Update the status directly from the table.
+  async function handleStatusChange(reservation, newStatus) {
+    if (
+      !reservation?.id ||
+      !reservation?.branchId ||
+      reservation.branchId === ALL_BRANCHES ||
+      !statusOptions.includes(newStatus) ||
+      newStatus === reservation.status ||
+      statusUpdatingId !== null
+    ) {
+      return;
+    }
+
+    const previousStatus = reservation.status;
+
+    setStatusUpdatingId(reservation.id);
+    setNotice(null);
+
+    try {
+      const response = await apiRequest(
+        `/api/reservations/${reservation.branchId}/${reservation.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ status: newStatus }),
+        }
+      );
+
+      // Support APIs that return either the reservation directly
+      // or wrap it inside a data property.
+      const responseData = response?.data ?? response;
+
+      const normalized = normalizeReservation(
+        {
+          ...reservation,
+          ...(responseData && typeof responseData === "object"
+            ? responseData
+            : {}),
+          status:
+            responseData?.status &&
+            statusOptions.includes(responseData.status)
+              ? responseData.status
+              : newStatus,
+        },
+        reservation.branchId
+      );
+
+      setReservations((current) =>
+        current.map((item) =>
+          String(item.id) === String(reservation.id)
+            ? normalized
+            : item
+        )
+      );
+
+      notify(
+        "success",
+        `Reservation status changed to ${normalized.status}.`
+      );
+
+      // Reload the saved reservation from the backend.
+      // This is a one-time refresh after the change, not auto-refresh.
+      setRefreshKey((current) => current + 1);
+    } catch (error) {
+      notify(
+        "error",
+        getErrorMessage(
+          error,
+          `Unable to change reservation status from ${previousStatus}.`
+        )
+      );
+    } finally {
+      setStatusUpdatingId(null);
+    }
   }
 
   function openAddForm() {
@@ -619,10 +683,7 @@ function Reservations({
         };
       });
     } else {
-      setForm((current) => ({
-        ...current,
-        [name]: value,
-      }));
+      setForm((current) => ({ ...current, [name]: value }));
     }
 
     if (formError) setFormError("");
@@ -773,7 +834,6 @@ function Reservations({
       return;
     }
 
-    // Validate both branch membership and seating capacity.
     if (normalizedTable) {
       const selectedTable = branchTables.find(
         (table) =>
@@ -836,7 +896,10 @@ function Reservations({
           }
         );
 
-        const normalized = normalizeReservation(updated, targetBranchId);
+        const normalized = normalizeReservation(
+          updated?.data ?? updated,
+          targetBranchId
+        );
 
         setReservations((current) =>
           current.map((item) =>
@@ -847,7 +910,6 @@ function Reservations({
         setShowForm(false);
         setEditingId(null);
         setForm(emptyForm);
-
         notify("success", "Reservation updated successfully.");
       } else {
         const created = await apiRequest("/api/reservations", {
@@ -855,7 +917,10 @@ function Reservations({
           body: JSON.stringify(reservationData),
         });
 
-        const normalized = normalizeReservation(created, form.branchId);
+        const normalized = normalizeReservation(
+          created?.data ?? created,
+          form.branchId
+        );
 
         setReservations((current) => [
           normalized,
@@ -867,7 +932,6 @@ function Reservations({
         setShowForm(false);
         setEditingId(null);
         setForm(emptyForm);
-
         notify("success", "Reservation created successfully.");
       }
 
@@ -908,12 +972,11 @@ function Reservations({
       );
 
       setReservations((current) =>
-        current.filter(
-          (item) => String(item.id) !== String(reservation.id)
-        )
+        current.filter((item) => String(item.id) !== String(reservation.id))
       );
 
       setDeletingReservation(null);
+      setRefreshKey((current) => current + 1);
 
       notify(
         "success",
@@ -997,15 +1060,13 @@ function Reservations({
         <div className="reservations-toolbar">
           <label className="reservations-search">
             <Search size={17} aria-hidden="true" />
-
             <input
               type="search"
-              placeholder="Search guest, phone, email or table..."
+              placeholder="Search guest, phone, email, table or occasion..."
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               aria-label="Search reservations"
             />
-
             {search && (
               <button
                 type="button"
@@ -1020,7 +1081,6 @@ function Reservations({
 
           <label className="reservations-filter">
             <span>Branch</span>
-
             <select
               value={selectedBranchId}
               onChange={(event) => {
@@ -1035,10 +1095,8 @@ function Reservations({
               aria-label="Filter by branch"
             >
               <option value={ALL_BRANCHES}>All Branches</option>
-
               {branchOptions.map((branch) => {
                 const id = String(branch._id || branch.id);
-
                 return (
                   <option key={id} value={id}>
                     {branch.name || branch.branchName || id}
@@ -1046,7 +1104,6 @@ function Reservations({
                 );
               })}
             </select>
-
             {branchError && (
               <small className="reservations-filter-error" role="alert">
                 {branchError}
@@ -1056,14 +1113,12 @@ function Reservations({
 
           <label className="reservations-filter">
             <span>Status</span>
-
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
               aria-label="Filter by status"
             >
               <option value="All">All statuses</option>
-
               {statusOptions.map((status) => (
                 <option key={status} value={status}>
                   {status}
@@ -1074,7 +1129,6 @@ function Reservations({
 
           <label className="reservations-filter">
             <span>Reservation date</span>
-
             <input
               type="date"
               value={dateFilter}
@@ -1089,7 +1143,6 @@ function Reservations({
         <div className="reservations-table-heading">
           <div>
             <h2>Guest Reservations</h2>
-
             <p>
               {loading
                 ? "Loading reservations..."
@@ -1102,7 +1155,6 @@ function Reservations({
                     } found`}
             </p>
           </div>
-
           <span className="reservations-current-branch">
             {currentBranchLabel}
           </span>
@@ -1112,7 +1164,6 @@ function Reservations({
           <div className="reservations-inline-error" role="alert">
             <AlertCircle size={18} />
             <span>{loadError}</span>
-
             <button
               type="button"
               className="reservations-secondary-button"
@@ -1131,6 +1182,7 @@ function Reservations({
               <col className="reservations-col-date" />
               <col className="reservations-col-guests" />
               <col className="reservations-col-table" />
+              <col className="reservations-col-occasion" />
               <col className="reservations-col-status" />
               <col className="reservations-col-actions" />
             </colgroup>
@@ -1142,6 +1194,7 @@ function Reservations({
                 <th scope="col">Date &amp; Time</th>
                 <th scope="col">Guests</th>
                 <th scope="col">Table</th>
+                <th scope="col">Occasion</th>
                 <th scope="col">Status</th>
                 <th scope="col" className="reservations-actions-heading">
                   Actions
@@ -1152,20 +1205,18 @@ function Reservations({
             <tbody>
               {loading || branchLoading ? (
                 <tr>
-                  <td colSpan={7} className="reservations-state-cell">
+                  <td colSpan={8} className="reservations-state-cell">
                     <div className="reservations-loading-state">
                       <LoaderCircle
                         size={25}
                         className="reservations-spin"
                         aria-hidden="true"
                       />
-
                       <strong>
                         {branchLoading
                           ? "Loading branches"
                           : "Loading reservations"}
                       </strong>
-
                       <span>
                         Please wait while we retrieve your bookings.
                       </span>
@@ -1174,12 +1225,11 @@ function Reservations({
                 </tr>
               ) : loadError || branchError ? (
                 <tr>
-                  <td colSpan={7} className="reservations-state-cell">
+                  <td colSpan={8} className="reservations-state-cell">
                     <div className="reservations-error-state">
                       <AlertCircle size={26} aria-hidden="true" />
                       <strong>Unable to load reservations</strong>
                       <p>{loadError || branchError}</p>
-
                       <button
                         type="button"
                         className="reservations-secondary-button"
@@ -1192,7 +1242,7 @@ function Reservations({
                 </tr>
               ) : !branchOptions.length ? (
                 <tr>
-                  <td colSpan={7} className="reservations-state-cell">
+                  <td colSpan={8} className="reservations-state-cell">
                     <div className="reservations-empty-state">
                       <strong>No branches available</strong>
                       <p>
@@ -1203,24 +1253,21 @@ function Reservations({
                 </tr>
               ) : filteredReservations.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="reservations-state-cell">
+                  <td colSpan={8} className="reservations-state-cell">
                     <div className="reservations-empty-state">
                       <div className="reservations-empty-icon">
                         <Search size={23} />
                       </div>
-
                       <strong>
                         {reservations.length
                           ? "No matching reservations"
                           : "No reservations yet"}
                       </strong>
-
                       <p>
                         {reservations.length
                           ? "Try another search term or adjust your filters."
                           : "Create a reservation to get started."}
                       </p>
-
                       {!reservations.length && (
                         <button
                           type="button"
@@ -1244,6 +1291,9 @@ function Reservations({
                       .slice(0, 2)
                       .toUpperCase() || "?";
 
+                  const isUpdatingStatus =
+                    String(statusUpdatingId) === String(reservation.id);
+
                   return (
                     <tr key={reservation.id}>
                       <td>
@@ -1254,16 +1304,13 @@ function Reservations({
                           >
                             {initials}
                           </div>
-
                           <div className="reservations-guest-copy">
                             <strong>
                               {reservation.customerName || "Unnamed guest"}
                             </strong>
-
                             <span>
                               {reservation.phone || "No phone number"}
                             </span>
-
                             {reservation.email && (
                               <span>{reservation.email}</span>
                             )}
@@ -1281,7 +1328,6 @@ function Reservations({
                       <td>
                         <div className="reservations-date-cell">
                           <strong>{formatDate(reservation.date)}</strong>
-
                           <span>
                             <Clock3 size={12} aria-hidden="true" />
                             {formatTime(reservation.time)}
@@ -1303,13 +1349,47 @@ function Reservations({
                       </td>
 
                       <td>
-                        <span
-                          className={`reservations-status-badge ${String(
-                            reservation.status
-                          ).toLowerCase()}`}
-                        >
-                          {reservation.status}
+                        <span className="reservations-occasion">
+                          {reservation.occasion || "Regular Dining"}
                         </span>
+                      </td>
+
+                      <td>
+                        <div className="reservations-status-cell">
+                          <select
+                            className={`reservations-status-select ${String(
+                              reservation.status
+                            ).toLowerCase()}`}
+                            value={reservation.status}
+                            onChange={(event) =>
+                              handleStatusChange(
+                                reservation,
+                                event.target.value
+                              )
+                            }
+                            disabled={
+                              isUpdatingStatus ||
+                              statusUpdatingId !== null ||
+                              saving ||
+                              deleting
+                            }
+                            aria-label={`Change status for reservation by ${reservation.customerName}`}
+                          >
+                            {statusOptions.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+
+                          {isUpdatingStatus && (
+                            <LoaderCircle
+                              size={14}
+                              className="reservations-spin"
+                              aria-label="Saving status"
+                            />
+                          )}
+                        </div>
                       </td>
 
                       <td>
@@ -1318,21 +1398,26 @@ function Reservations({
                             type="button"
                             className="reservations-action-button"
                             onClick={() => openEditForm(reservation)}
-                            disabled={deleting || saving}
+                            disabled={
+                              deleting ||
+                              saving ||
+                              statusUpdatingId !== null
+                            }
                             aria-label={`Edit reservation for ${reservation.customerName}`}
                             title="Edit reservation"
                           >
                             <Pencil size={14} aria-hidden="true" />
                             <span>Edit</span>
                           </button>
-
                           <button
                             type="button"
                             className="reservations-action-button reservations-delete-button"
-                            onClick={() =>
-                              setDeletingReservation(reservation)
+                            onClick={() => setDeletingReservation(reservation)}
+                            disabled={
+                              deleting ||
+                              saving ||
+                              statusUpdatingId !== null
                             }
-                            disabled={deleting || saving}
                             aria-label={`Delete reservation for ${reservation.customerName}`}
                             title="Delete reservation"
                           >
@@ -1428,23 +1513,18 @@ function Reservations({
           >
             <div className="reservations-modal-heading">
               <div>
-                <span className="reservations-eyebrow">
-                  BOOKING DETAILS
-                </span>
-
+                <span className="reservations-eyebrow">BOOKING DETAILS</span>
                 <h2 id="reservation-modal-title">
                   {editingId !== null
                     ? "Edit Reservation"
                     : "New Reservation"}
                 </h2>
-
                 <p>
                   {editingId !== null
                     ? "Update the guest and booking details."
                     : "Add guest and booking details for a branch."}
                 </p>
               </div>
-
               <button
                 type="button"
                 className="reservations-modal-close"
@@ -1463,16 +1543,10 @@ function Reservations({
               </div>
             )}
 
-            <form
-              className="reservations-modal-form"
-              onSubmit={handleSubmit}
-            >
+            <form className="reservations-modal-form" onSubmit={handleSubmit}>
               <div className="reservations-form-grid">
                 <label className="reservations-form-field">
-                  <span>
-                    Branch <b>*</b>
-                  </span>
-
+                  <span>Branch <b>*</b></span>
                   <select
                     name="branchId"
                     value={form.branchId}
@@ -1481,10 +1555,8 @@ function Reservations({
                     disabled={editingId !== null || saving}
                   >
                     <option value="">Select branch</option>
-
                     {branchOptions.map((branch) => {
                       const id = String(branch._id || branch.id);
-
                       return (
                         <option key={id} value={id}>
                           {branch.name || branch.branchName || id}
@@ -1495,10 +1567,7 @@ function Reservations({
                 </label>
 
                 <label className="reservations-form-field">
-                  <span>
-                    Guest name <b>*</b>
-                  </span>
-
+                  <span>Guest name <b>*</b></span>
                   <input
                     name="customerName"
                     value={form.customerName}
@@ -1512,10 +1581,7 @@ function Reservations({
                 </label>
 
                 <label className="reservations-form-field">
-                  <span>
-                    Phone number <b>*</b>
-                  </span>
-
+                  <span>Phone number <b>*</b></span>
                   <input
                     name="phone"
                     type="tel"
@@ -1530,7 +1596,6 @@ function Reservations({
 
                 <label className="reservations-form-field">
                   <span>Email address</span>
-
                   <input
                     name="email"
                     type="email"
@@ -1543,10 +1608,7 @@ function Reservations({
                 </label>
 
                 <label className="reservations-form-field">
-                  <span>
-                    Reservation date <b>*</b>
-                  </span>
-
+                  <span>Reservation date <b>*</b></span>
                   <input
                     name="date"
                     type="date"
@@ -1559,10 +1621,7 @@ function Reservations({
                 </label>
 
                 <label className="reservations-form-field">
-                  <span>
-                    Reservation time <b>*</b>
-                  </span>
-
+                  <span>Reservation time <b>*</b></span>
                   <input
                     name="time"
                     type="time"
@@ -1574,10 +1633,7 @@ function Reservations({
                 </label>
 
                 <label className="reservations-form-field">
-                  <span>
-                    Number of guests <b>*</b>
-                  </span>
-
+                  <span>Number of guests <b>*</b></span>
                   <input
                     name="guests"
                     type="number"
@@ -1592,7 +1648,6 @@ function Reservations({
 
                 <label className="reservations-form-field">
                   <span>Assigned table</span>
-
                   <select
                     name="tableNumber"
                     value={form.tableNumber}
@@ -1615,12 +1670,8 @@ function Reservations({
                               ? "Unassigned"
                               : `No tables for ${form.guests || 1} guests`}
                     </option>
-
                     {suitableTables.map((table) => (
-                      <option
-                        key={table.tableNumber}
-                        value={table.tableNumber}
-                      >
+                      <option key={table.tableNumber} value={table.tableNumber}>
                         {table.tableNumber} — Capacity {table.capacity}
                       </option>
                     ))}
@@ -1629,16 +1680,11 @@ function Reservations({
                   {tablesLoading && (
                     <small>Loading tables for the selected branch...</small>
                   )}
-
                   {tablesError && (
-                    <small
-                      className="reservations-filter-error"
-                      role="alert"
-                    >
+                    <small className="reservations-filter-error" role="alert">
                       {tablesError}
                     </small>
                   )}
-
                   {!tablesLoading &&
                     !tablesError &&
                     form.branchId &&
@@ -1652,7 +1698,6 @@ function Reservations({
 
                 <label className="reservations-form-field">
                   <span>Occasion</span>
-
                   <select
                     name="occasion"
                     value={form.occasion}
@@ -1676,7 +1721,6 @@ function Reservations({
 
                 <label className="reservations-form-field">
                   <span>Booking status</span>
-
                   <select
                     name="status"
                     value={form.status}
@@ -1701,7 +1745,6 @@ function Reservations({
                 >
                   Cancel
                 </button>
-
                 <button
                   type="submit"
                   className="reservations-primary-button"
@@ -1709,10 +1752,7 @@ function Reservations({
                 >
                   {saving ? (
                     <>
-                      <LoaderCircle
-                        size={16}
-                        className="reservations-spin"
-                      />
+                      <LoaderCircle size={16} className="reservations-spin" />
                       Saving...
                     </>
                   ) : editingId !== null ? (
@@ -1737,10 +1777,7 @@ function Reservations({
         <div
           className="reservations-modal-backdrop reservations-confirm-backdrop"
           onMouseDown={(event) => {
-            if (
-              event.target === event.currentTarget &&
-              !deleting
-            ) {
+            if (event.target === event.currentTarget && !deleting) {
               setDeletingReservation(null);
             }
           }}
@@ -1755,11 +1792,7 @@ function Reservations({
             <div className="reservations-confirm-icon">
               <Trash2 size={23} aria-hidden="true" />
             </div>
-
-            <h2 id="reservation-delete-title">
-              Delete Reservation?
-            </h2>
-
+            <h2 id="reservation-delete-title">Delete Reservation?</h2>
             <p id="reservation-delete-description">
               Delete the reservation for{" "}
               <strong>
@@ -1767,7 +1800,6 @@ function Reservations({
               </strong>
               ? This action cannot be undone.
             </p>
-
             <div className="reservations-confirm-actions">
               <button
                 type="button"
@@ -1777,7 +1809,6 @@ function Reservations({
               >
                 Cancel
               </button>
-
               <button
                 type="button"
                 className="reservations-danger-button"
@@ -1786,10 +1817,7 @@ function Reservations({
               >
                 {deleting ? (
                   <>
-                    <LoaderCircle
-                      size={16}
-                      className="reservations-spin"
-                    />
+                    <LoaderCircle size={16} className="reservations-spin" />
                     Deleting...
                   </>
                 ) : (

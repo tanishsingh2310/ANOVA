@@ -24,7 +24,6 @@ const emptyForm = {
   number: "",
   capacity: "2",
   location: "Indoor",
-  status: "Available",
   branchId: "",
 };
 
@@ -62,6 +61,7 @@ function normalizeTable(table, fallbackBranchId = "") {
 function getErrorMessage(error, fallback) {
   return error?.message || fallback;
 }
+
 function getPaginationPages(currentPage, totalPages) {
   if (totalPages <= 7) {
     return Array.from({ length: totalPages }, (_, index) => index + 1);
@@ -93,6 +93,7 @@ function getPaginationPages(currentPage, totalPages) {
     totalPages,
   ];
 }
+
 function TableManagement({
   branchId = ALL_BRANCHES,
   branches = [],
@@ -120,7 +121,6 @@ function TableManagement({
   const [saving, setSaving] = useState(false);
   const [deletingItem, setDeletingItem] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [busyItemId, setBusyItemId] = useState(null);
 
   const selectedBranchId = String(branchId || ALL_BRANCHES);
 
@@ -158,11 +158,7 @@ function TableManagement({
       const rawBranch = table.branch;
 
       if (rawBranch && typeof rawBranch === "object") {
-        return (
-          rawBranch.name ||
-          rawBranch.branchName ||
-          "Unknown Branch"
-        );
+        return rawBranch.name || rawBranch.branchName || "Unknown Branch";
       }
 
       return "Unknown Branch";
@@ -180,7 +176,6 @@ function TableManagement({
 
   // Reset filters when the selected branch changes.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSearch("");
     setStatusFilter("All Statuses");
     setLocationFilter("All Locations");
@@ -188,127 +183,127 @@ function TableManagement({
     setCurrentPage(1);
   }, [selectedBranchId]);
 
-  // Reset the branch and filters when this page mounts.
+  // Preserve the original behavior of selecting All Branches on mount.
   useEffect(() => {
     onBranchChange?.(ALL_BRANCHES);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSearch("");
-    setStatusFilter("All Statuses");
-    setLocationFilter("All Locations");
-    setCapacityFilter("All Capacities");
-    setCurrentPage(1);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadTables = useCallback(async () => {
-    if (branchLoading) {
-      setLoading(true);
-      return;
-    }
-
-    if (branchError) {
-      setTables([]);
-      setLoadError(branchError);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setLoadError("");
-
-    try {
-      let data = [];
-
-      if (selectedBranchId === ALL_BRANCHES) {
-        if (branchOptions.length > 0) {
-          const results = await Promise.all(
-            branchOptions.map(async (branch) => {
-              const currentBranchId = String(
-                branch._id || branch.id || ""
-              );
-
-              if (!currentBranchId) return [];
-
-              const response = await apiRequest(
-                `/api/tables/${currentBranchId}`
-              );
-
-              if (!Array.isArray(response)) {
-                throw new Error(
-                  `Invalid table data received for ${
-                    branch.name || branch.branchName || "a branch"
-                  }.`
-                );
-              }
-
-              return response
-                .map((table) =>
-                  normalizeTable(table, currentBranchId)
-                )
-                .filter(Boolean);
-            })
-          );
-
-          const uniqueTables = new Map();
-
-          results.flat().forEach((table) => {
-            const key =
-              table.id || `${table.branchId}-${table.number}`;
-
-            if (key) {
-              uniqueTables.set(key, table);
-            }
-          });
-
-          data = Array.from(uniqueTables.values());
-        }
-      } else {
-        const response = await apiRequest(
-          `/api/tables/${selectedBranchId}`
-        );
-
-        if (!Array.isArray(response)) {
-          throw new Error(
-            "Invalid table data received from the server."
-          );
-        }
-
-        data = response
-          .map((table) =>
-            normalizeTable(table, selectedBranchId)
-          )
-          .filter(Boolean);
+  const loadTables = useCallback(
+    async (background = false) => {
+      if (branchLoading) {
+        if (!background) setLoading(true);
+        return;
       }
 
-      setTables(data);
-      setLoadError("");
-    } catch (error) {
-      setTables([]);
-      setLoadError(
-        getErrorMessage(error, "Unable to load restaurant tables.")
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    selectedBranchId,
-    branchOptions,
-    branchLoading,
-    branchError,
-  ]);
+      if (branchError) {
+        setTables([]);
+        setLoadError(branchError);
+        setLoading(false);
+        return;
+      }
 
+      if (!background) {
+        setLoading(true);
+        setLoadError("");
+      }
+
+      try {
+        let data = [];
+
+        if (selectedBranchId === ALL_BRANCHES) {
+          if (branchOptions.length > 0) {
+            const results = await Promise.all(
+              branchOptions.map(async (branch) => {
+                const currentBranchId = String(
+                  branch._id || branch.id || ""
+                );
+
+                if (!currentBranchId) return [];
+
+                const response = await apiRequest(
+                  `/api/tables/${currentBranchId}`
+                );
+
+                if (!Array.isArray(response)) {
+                  throw new Error(
+                    `Invalid table data received for ${
+                      branch.name || branch.branchName || "a branch"
+                    }.`
+                  );
+                }
+
+                return response
+                  .map((table) =>
+                    normalizeTable(table, currentBranchId)
+                  )
+                  .filter(Boolean);
+              })
+            );
+
+            const uniqueTables = new Map();
+
+            results.flat().forEach((table) => {
+              const key =
+                table.id || `${table.branchId}-${table.number}`;
+
+              if (key) uniqueTables.set(key, table);
+            });
+
+            data = Array.from(uniqueTables.values());
+          }
+        } else {
+          const response = await apiRequest(
+            `/api/tables/${selectedBranchId}`
+          );
+
+          if (!Array.isArray(response)) {
+            throw new Error(
+              "Invalid table data received from the server."
+            );
+          }
+
+          data = response
+            .map((table) =>
+              normalizeTable(table, selectedBranchId)
+            )
+            .filter(Boolean);
+        }
+
+        setTables(data);
+        setLoadError("");
+      } catch (error) {
+        if (!background) {
+          setTables([]);
+          setLoadError(
+            getErrorMessage(error, "Unable to load restaurant tables.")
+          );
+        }
+      } finally {
+        if (!background) setLoading(false);
+      }
+    },
+    [
+      selectedBranchId,
+      branchOptions,
+      branchLoading,
+      branchError,
+    ]
+  );
+
+  // Fetch when the branch is ready or when the user requests a refresh.
+  // There is deliberately no setInterval or automatic polling.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadTables();
-  }, [loadTables, refreshKey]);
+    if (branchLoading) return;
+
+    loadTables(false);
+  }, [loadTables, branchLoading, refreshKey]);
 
   const filteredTables = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     return tables.filter((table) => {
-      const matchesSearch = table.number
-        .toLowerCase()
-        .includes(query);
+      const matchesSearch = table.number.toLowerCase().includes(query);
 
       const matchesStatus =
         statusFilter === "All Statuses" ||
@@ -329,8 +324,7 @@ function TableManagement({
         (capacityFilter === "5-6 Seats" &&
           table.capacity >= 5 &&
           table.capacity <= 6) ||
-        (capacityFilter === "7+ Seats" &&
-          table.capacity >= 7);
+        (capacityFilter === "7+ Seats" && table.capacity >= 7);
 
       return (
         matchesSearch &&
@@ -347,9 +341,7 @@ function TableManagement({
     capacityFilter,
   ]);
 
-  // Reset pagination whenever the search or any filter changes.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentPage(1);
   }, [
     search,
@@ -362,10 +354,11 @@ function TableManagement({
   const totalPages = Math.ceil(
     filteredTables.length / ITEMS_PER_PAGE
   );
+
   const paginationPages = getPaginationPages(
-  currentPage,
-  totalPages
-);
+    currentPage,
+    totalPages
+  );
 
   const paginatedTables = filteredTables.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
@@ -418,7 +411,6 @@ function TableManagement({
       number: table.number,
       capacity: String(table.capacity),
       location: table.location,
-      status: table.status,
       branchId: table.branchId,
     });
 
@@ -435,9 +427,7 @@ function TableManagement({
       [name]: value,
     }));
 
-    if (formError) {
-      setFormError("");
-    }
+    if (formError) setFormError("");
   }
 
   async function handleSubmit(event) {
@@ -479,11 +469,6 @@ function TableManagement({
       return;
     }
 
-    if (!statuses.includes(form.status)) {
-      setFormError("Please select a valid table status.");
-      return;
-    }
-
     const existingTable = editingId
       ? tables.find((table) => table.id === editingId)
       : null;
@@ -519,11 +504,11 @@ function TableManagement({
       return;
     }
 
+    // The backend owns the table status.
     const tableData = {
       number,
       capacity,
       location: form.location,
-      status: form.status,
     };
 
     setSaving(true);
@@ -594,70 +579,14 @@ function TableManagement({
 
         notify("success", "Table added successfully.");
       }
+
+      setRefreshKey((current) => current + 1);
     } catch (error) {
       setFormError(
         getErrorMessage(error, "Unable to save the table.")
       );
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function updateStatus(id, status) {
-    const table = tables.find((item) => item.id === id);
-
-    if (
-      !table ||
-      table.status === status ||
-      busyItemId ||
-      deleting ||
-      saving
-    ) {
-      return;
-    }
-
-    if (!table.branchId || table.branchId === ALL_BRANCHES) {
-      notify("error", "Unable to identify this table's branch.");
-      return;
-    }
-
-    setBusyItemId(id);
-    setNotice(null);
-
-    try {
-      const response = await apiRequest(
-        `/api/tables/${table.branchId}/${id}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({ status }),
-        }
-      );
-
-      const updatedTable = normalizeTable(
-        response,
-        table.branchId
-      );
-
-      if (!updatedTable?.id) {
-        throw new Error(
-          "The server did not return the updated table."
-        );
-      }
-
-      setTables((current) =>
-        current.map((item) =>
-          item.id === id ? updatedTable : item
-        )
-      );
-
-      notify("success", `Table ${table.number} status updated.`);
-    } catch (error) {
-      notify(
-        "error",
-        getErrorMessage(error, "Unable to change table status.")
-      );
-    } finally {
-      setBusyItemId(null);
     }
   }
 
@@ -687,6 +616,8 @@ function TableManagement({
       );
 
       setDeletingItem(null);
+      setRefreshKey((current) => current + 1);
+
       notify(
         "success",
         `Table ${table.number} was deleted successfully.`
@@ -922,7 +853,6 @@ function TableManagement({
               <col className="table-col-capacity" />
               <col className="table-col-location" />
               <col className="table-col-status" />
-              <col className="table-col-change-status" />
               <col className="table-col-actions" />
             </colgroup>
 
@@ -933,7 +863,6 @@ function TableManagement({
                 <th scope="col">Capacity</th>
                 <th scope="col">Location</th>
                 <th scope="col">Status</th>
-                <th scope="col">Change Status</th>
                 <th scope="col" className="table-actions-heading">
                   Actions
                 </th>
@@ -943,7 +872,7 @@ function TableManagement({
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="table-state-cell">
+                  <td colSpan={6} className="table-state-cell">
                     <div className="table-loading-state">
                       <LoaderCircle
                         size={24}
@@ -959,7 +888,7 @@ function TableManagement({
                 </tr>
               ) : loadError ? (
                 <tr>
-                  <td colSpan={7} className="table-state-cell">
+                  <td colSpan={6} className="table-state-cell">
                     <div className="table-error-state">
                       <AlertCircle size={27} aria-hidden="true" />
                       <strong>Unable to load tables</strong>
@@ -978,7 +907,7 @@ function TableManagement({
                 </tr>
               ) : branchLoading ? (
                 <tr>
-                  <td colSpan={7} className="table-state-cell">
+                  <td colSpan={6} className="table-state-cell">
                     <div className="table-loading-state">
                       <LoaderCircle
                         size={24}
@@ -994,7 +923,7 @@ function TableManagement({
                 </tr>
               ) : branchOptions.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="table-state-cell">
+                  <td colSpan={6} className="table-state-cell">
                     <div className="table-empty-state">
                       <strong>No branches available</strong>
                       <p>
@@ -1006,7 +935,7 @@ function TableManagement({
                 </tr>
               ) : filteredTables.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="table-state-cell">
+                  <td colSpan={6} className="table-state-cell">
                     <div className="table-empty-state">
                       <div className="table-empty-icon">
                         <Search size={23} aria-hidden="true" />
@@ -1097,38 +1026,12 @@ function TableManagement({
                     </td>
 
                     <td>
-                      <select
-                        className="table-status-select"
-                        aria-label={`Change status for ${table.number}`}
-                        value={table.status}
-                        disabled={
-                          busyItemId === table.id ||
-                          Boolean(deletingItem) ||
-                          saving
-                        }
-                        onChange={(event) =>
-                          updateStatus(table.id, event.target.value)
-                        }
-                      >
-                        {statuses.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-
-                    <td>
                       <div className="table-row-actions">
                         <button
                           type="button"
                           className="table-action-button"
                           onClick={() => openEditForm(table)}
-                          disabled={
-                            Boolean(busyItemId) ||
-                            Boolean(deletingItem) ||
-                            saving
-                          }
+                          disabled={Boolean(deletingItem) || saving}
                           aria-label={`Edit table ${table.number}`}
                           title="Edit table"
                         >
@@ -1140,11 +1043,7 @@ function TableManagement({
                           type="button"
                           className="table-action-button table-delete-button"
                           onClick={() => setDeletingItem(table)}
-                          disabled={
-                            Boolean(busyItemId) ||
-                            Boolean(deletingItem) ||
-                            saving
-                          }
+                          disabled={Boolean(deletingItem) || saving}
                           aria-label={`Delete table ${table.number}`}
                           title="Delete table"
                         >
@@ -1161,82 +1060,78 @@ function TableManagement({
         </div>
       </div>
 
-      
-{totalPages > 1 && !loading && !loadError && (
-  <div className="table-pagination">
-    <span className="table-pagination-info">
-      Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
-      {Math.min(
-        currentPage * ITEMS_PER_PAGE,
-        filteredTables.length
-      )}{" "}
-      of {filteredTables.length} tables
-    </span>
-
-    <div className="table-pagination-buttons">
-      <button
-        type="button"
-        className="table-pagination-button"
-        disabled={currentPage === 1}
-        onClick={() =>
-          setCurrentPage((page) => Math.max(1, page - 1))
-        }
-      >
-        <ChevronLeft size={16} />
-        Previous
-      </button>
-
-      {paginationPages.map((page, index) =>
-        page === "..." ? (
-          <span
-            key={`ellipsis-${index}`}
-            className="table-pagination-ellipsis"
-            aria-hidden="true"
-          >
-            ...
+      {totalPages > 1 && !loading && !loadError && (
+        <div className="table-pagination">
+          <span className="table-pagination-info">
+            Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
+            {Math.min(
+              currentPage * ITEMS_PER_PAGE,
+              filteredTables.length
+            )}{" "}
+            of {filteredTables.length} tables
           </span>
-        ) : (
-          <button
-            key={page}
-            type="button"
-            className={`table-pagination-button ${
-              currentPage === page ? "active" : ""
-            }`}
-            onClick={() => setCurrentPage(page)}
-            aria-current={
-              currentPage === page ? "page" : undefined
-            }
-          >
-            {page}
-          </button>
-        )
+
+          <div className="table-pagination-buttons">
+            <button
+              type="button"
+              className="table-pagination-button"
+              disabled={currentPage === 1}
+              onClick={() =>
+                setCurrentPage((page) => Math.max(1, page - 1))
+              }
+            >
+              <ChevronLeft size={16} />
+              Previous
+            </button>
+
+            {paginationPages.map((page, index) =>
+              page === "..." ? (
+                <span
+                  key={`ellipsis-${index}`}
+                  className="table-pagination-ellipsis"
+                  aria-hidden="true"
+                >
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={page}
+                  type="button"
+                  className={`table-pagination-button ${
+                    currentPage === page ? "active" : ""
+                  }`}
+                  onClick={() => setCurrentPage(page)}
+                  aria-current={
+                    currentPage === page ? "page" : undefined
+                  }
+                >
+                  {page}
+                </button>
+              )
+            )}
+
+            <button
+              type="button"
+              className="table-pagination-button"
+              disabled={currentPage === totalPages}
+              onClick={() =>
+                setCurrentPage((page) =>
+                  Math.min(totalPages, page + 1)
+                )
+              }
+            >
+              Next
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
       )}
-
-      <button
-        type="button"
-        className="table-pagination-button"
-        disabled={currentPage === totalPages}
-        onClick={() =>
-          setCurrentPage((page) =>
-            Math.min(totalPages, page + 1)
-          )
-        }
-      >
-        Next
-        <ChevronRight size={16} />
-      </button>
-    </div>
-  </div>
-)}
-
 
       {showForm && (
         <div
           className="table-modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closeForm();
-            }
+            if (event.target === event.currentTarget) closeForm();
           }}
         >
           <section
@@ -1284,8 +1179,7 @@ function TableManagement({
               <div className="table-form-grid">
                 <label className="table-form-field">
                   <span>
-                    Table Number{" "}
-                    <span className="table-required">*</span>
+                    Table Number <span className="table-required">*</span>
                   </span>
 
                   <input
@@ -1319,8 +1213,7 @@ function TableManagement({
 
                 <label className="table-form-field">
                   <span>
-                    Location{" "}
-                    <span className="table-required">*</span>
+                    Location <span className="table-required">*</span>
                   </span>
 
                   <select
@@ -1337,30 +1230,9 @@ function TableManagement({
                   </select>
                 </label>
 
-                <label className="table-form-field">
-                  <span>
-                    Status{" "}
-                    <span className="table-required">*</span>
-                  </span>
-
-                  <select
-                    name="status"
-                    value={form.status}
-                    onChange={handleFormChange}
-                    required
-                  >
-                    {statuses.map((status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
                 <label className="table-form-field table-form-field-full">
                   <span>
-                    Branch{" "}
-                    <span className="table-required">*</span>
+                    Branch <span className="table-required">*</span>
                   </span>
 
                   {editingId ? (
@@ -1401,6 +1273,11 @@ function TableManagement({
                   )}
                 </label>
               </div>
+
+              <p className="table-modal-subtitle">
+                Table status is managed automatically from reservation
+                updates.
+              </p>
 
               <div className="table-modal-actions">
                 <button

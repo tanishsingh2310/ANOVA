@@ -1,5 +1,7 @@
+
 const mongoose = require("mongoose");
 const Reservation = require("../models/Reservation");
+const RestaurantTable = require("../models/Table");
 
 const VALID_STATUSES = [
   "Pending",
@@ -29,9 +31,22 @@ const ALLOWED_FIELDS = [
   "occasion",
 ];
 
-// Validate YYYY-MM-DD calendar dates.
+const ACTIVE_RESERVATION_STATUSES = ["Pending", "Confirmed"];
+
+function getTodayDate() {
+  const now = new Date();
+
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 function isValidCalendarDate(value) {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
     return false;
   }
 
@@ -45,7 +60,6 @@ function isValidCalendarDate(value) {
   );
 }
 
-// Validate HH:mm time values.
 function isValidTime(value) {
   return (
     typeof value === "string" &&
@@ -53,66 +67,61 @@ function isValidTime(value) {
   );
 }
 
-// Normalize phone numbers for comparison.
 function normalizePhone(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
-// Normalize table numbers.
 function normalizeTableNumber(value) {
-  const normalized = String(value || "").trim().toUpperCase();
+  const normalized = String(value ?? "").trim().toUpperCase();
   return normalized || "Unassigned";
 }
 
-// Extract permitted fields and normalize text values.
-function getReservationData(body, isCreate = false) {
-  const data = {};
+async function syncTableStatus(branchId, tableNumber) {
+  const normalizedNumber = normalizeTableNumber(tableNumber);
 
-  for (const field of ALLOWED_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(body, field)) {
-      data[field] = body[field];
-    }
+  if (
+    !branchId ||
+    normalizedNumber === "Unassigned" ||
+    !mongoose.isValidObjectId(branchId)
+  ) {
+    return;
   }
 
-  if (isCreate) {
-    data.customerName =
-      typeof data.customerName === "string"
-        ? data.customerName.trim()
-        : data.customerName;
+  const table = await RestaurantTable.findOne({
+    branchId,
+    number: normalizedNumber,
+  });
 
-    data.phone =
-      typeof data.phone === "string"
-        ? data.phone.trim()
-        : data.phone;
-
-    data.email =
-      typeof data.email === "string"
-        ? data.email.trim()
-        : data.email;
-
-    data.tableNumber = normalizeTableNumber(data.tableNumber);
-  } else {
-    if (typeof data.customerName === "string") {
-      data.customerName = data.customerName.trim();
-    }
-
-    if (typeof data.phone === "string") {
-      data.phone = data.phone.trim();
-    }
-
-    if (typeof data.email === "string") {
-      data.email = data.email.trim();
-    }
-
-    if (Object.prototype.hasOwnProperty.call(data, "tableNumber")) {
-      data.tableNumber = normalizeTableNumber(data.tableNumber);
-    }
+  if (!table) {
+    console.warn(
+      `[Reservation Sync] Table not found: branch=${branchId}, table=${normalizedNumber}`
+    );
+    return;
   }
 
-  return data;
+  // An occupied table must remain occupied.
+  if (table.status === "Occupied") {
+    return;
+  }
+
+  const confirmedReservation = await Reservation.findOne({
+    branchId,
+    tableNumber: normalizedNumber,
+    status: "Confirmed",
+    date: { $gte: getTodayDate() },
+  }).lean();
+
+  const nextStatus = confirmedReservation ? "Reserved" : "Available";
+
+  if (table.status !== nextStatus) {
+    table.status = nextStatus;
+    await table.save();
+
+    console.log(
+      `[Reservation Sync] Branch ${branchId}, table ${normalizedNumber}: ${nextStatus}`
+    );
+  }
 }
-
-// Validate reservation dates, times, guest counts, statuses and occasions.
 function validateReservationData(data, res) {
   if (
     Object.prototype.hasOwnProperty.call(data, "date") &&
@@ -169,14 +178,12 @@ function validateReservationData(data, res) {
   return true;
 }
 
-// Prevent conflicting active bookings for the same guest or table.
 async function validateBookingConflicts({
   branchId,
   data,
   excludeId,
 }) {
-  const date = data.date;
-  const time = data.time;
+  const { date, time } = data;
 
   if (!date || !time) {
     return null;
@@ -184,8 +191,7 @@ async function validateBookingConflicts({
 
   const status = data.status || "Pending";
   const tableNumber = normalizeTableNumber(data.tableNumber);
-
-  const isActive = !["Cancelled", "Completed"].includes(status);
+  const isActive = ACTIVE_RESERVATION_STATUSES.includes(status);
 
   const baseQuery = {
     branchId,
@@ -199,9 +205,9 @@ async function validateBookingConflicts({
   }
 
   if (isActive && data.phone) {
-    const sameGuest = await Reservation.find(baseQuery);
+    const sameTimeReservations = await Reservation.find(baseQuery).lean();
 
-    const phoneConflict = sameGuest.some(
+    const phoneConflict = sameTimeReservations.some(
       (reservation) =>
         normalizePhone(reservation.phone) === normalizePhone(data.phone)
     );
@@ -216,12 +222,25 @@ async function validateBookingConflicts({
   }
 
   if (isActive && tableNumber !== "Unassigned") {
-    const tableConflict = await Reservation.findOne({
+    const sameTableReservation = await Reservation.findOne({
       ...baseQuery,
-      tableNumber,
-    });
+      $expr: {
+        $eq: [
+          {
+            $toUpper: {
+              $trim: {
+                input: {
+                  $ifNull: ["$tableNumber", ""],
+                },
+              },
+            },
+          },
+          tableNumber,
+        ],
+      },
+    }).lean();
 
-    if (tableConflict) {
+    if (sameTableReservation) {
       return {
         status: 409,
         message:
@@ -231,6 +250,38 @@ async function validateBookingConflicts({
   }
 
   return null;
+}
+
+// Extract only fields accepted by the reservation API.
+function getReservationData(body, isCreate = false) {
+  const data = {};
+
+  for (const field of ALLOWED_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) {
+      data[field] = body[field];
+    }
+  }
+
+  if (typeof data.customerName === "string") {
+    data.customerName = data.customerName.trim();
+  }
+
+  if (typeof data.phone === "string") {
+    data.phone = data.phone.trim();
+  }
+
+  if (typeof data.email === "string") {
+    data.email = data.email.trim();
+  }
+
+  if (
+    isCreate ||
+    Object.prototype.hasOwnProperty.call(data, "tableNumber")
+  ) {
+    data.tableNumber = normalizeTableNumber(data.tableNumber);
+  }
+
+  return data;
 }
 
 // GET: Retrieve reservations belonging to a branch.
@@ -251,14 +302,19 @@ const createReservation = async (req, res, next) => {
   try {
     const data = getReservationData(req.body, true);
 
-    if (!data.customerName || !data.phone || !data.date || !data.time) {
+    if (
+      !data.customerName ||
+      !data.phone ||
+      !data.date ||
+      !data.time
+    ) {
       return res.status(400).json({
         message:
           "Guest name, phone number, reservation date and time are required.",
       });
     }
 
-    if (data.date < new Date().toLocaleDateString("en-CA")) {
+    if (data.date < getTodayDate()) {
       return res.status(400).json({
         message: "Reservation date cannot be in the past.",
       });
@@ -284,7 +340,12 @@ const createReservation = async (req, res, next) => {
       branchId: req.branchId,
     });
 
-    res.status(201).json(reservation);
+    await syncTableStatus(
+      req.branchId,
+      reservation.tableNumber
+    );
+
+    return res.status(201).json(reservation);
   } catch (error) {
     next(error);
   }
@@ -342,7 +403,7 @@ const updateReservation = async (req, res, next) => {
     }
 
     if (
-      effectiveData.date < new Date().toLocaleDateString("en-CA") &&
+      effectiveData.date < getTodayDate() &&
       effectiveData.status !== "Completed" &&
       effectiveData.status !== "Cancelled"
     ) {
@@ -363,11 +424,31 @@ const updateReservation = async (req, res, next) => {
       });
     }
 
+    const previousTableNumber = existingReservation.tableNumber;
+    const previousStatus = existingReservation.status;
+
     Object.assign(existingReservation, updates);
 
     const updatedReservation = await existingReservation.save();
 
-    res.json(updatedReservation);
+    // Synchronize the previous table if the assignment changed or the
+    // reservation stopped being confirmed.
+    await syncTableStatus(
+      req.branchId,
+      previousTableNumber
+    );
+
+    // Synchronize the currently assigned table after the update.
+    await syncTableStatus(
+      req.branchId,
+      updatedReservation.tableNumber
+    );
+
+    console.log(
+      `[Reservation Update] ${reservationId}: ${previousStatus} -> ${updatedReservation.status}`
+    );
+
+    return res.json(updatedReservation);
   } catch (error) {
     next(error);
   }
@@ -384,7 +465,7 @@ const deleteReservation = async (req, res, next) => {
       });
     }
 
-    const reservation = await Reservation.findOneAndDelete({
+    const reservation = await Reservation.findOne({
       _id: reservationId,
       branchId: req.branchId,
     });
@@ -395,7 +476,16 @@ const deleteReservation = async (req, res, next) => {
       });
     }
 
-    res.json({
+    const tableNumber = reservation.tableNumber;
+
+    await Reservation.deleteOne({
+      _id: reservationId,
+      branchId: req.branchId,
+    });
+
+    await syncTableStatus(req.branchId, tableNumber);
+
+    return res.json({
       message: "Reservation deleted successfully.",
       reservation,
     });
