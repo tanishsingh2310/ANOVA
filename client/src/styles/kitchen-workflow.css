@@ -1257,10 +1257,11 @@
 
 .kitchen-pagination-buttons {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+  color: #7b877f;
+  font-size: 12px;
 }
 
 .kitchen-pagination-button {
@@ -1282,14 +1283,10 @@
     color 0.2s ease;
 }
 
-.kitchen-pagination-button:hover:not(:disabled) {
-  border-color: var(--primary-color, #2563eb);
-  color: var(--primary-color, #2563eb);
-}
 
 .kitchen-pagination-button.active {
-  border-color: var(--primary-color, #2563eb);
-  background: var(--primary-color, #2563eb);
+  border-color: var(--primary-color, #000000);
+  background: var(--primary-color, #000000);
   color: #ffffff;
 }
 

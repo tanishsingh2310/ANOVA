@@ -21,6 +21,9 @@ const getOrderBranchFilter = (branchId) => ({
   $or: [{ branch: branchId }, { branchId }],
 });
 
+const getRouteOrderId = (req) =>
+  req.params.orderId || req.params.id;
+
 const releaseTableIfEligible = async (order) => {
   if (
     !order ||
@@ -31,7 +34,6 @@ const releaseTableIfEligible = async (order) => {
     return;
   }
 
-  // An invoice must exist and be fully paid.
   const invoice = await Payment.findOne({
     branchId: order.branchId,
     orderId: order._id,
@@ -191,7 +193,6 @@ const prepareItems = async (items, branchId) => {
 
     total += price * quantity;
 
-    // The Order schema does not define a subtotal per item.
     preparedItems.push({
       menuItemId: menuItem._id,
       name: menuItem.name,
@@ -254,7 +255,6 @@ const createOrder = async (req, res) => {
       customerName,
     } = req.body;
 
-    // The Order schema requires a customer ObjectId.
     const customerId = req.user?._id;
 
     if (
@@ -263,7 +263,8 @@ const createOrder = async (req, res) => {
     ) {
       return res.status(401).json({
         success: false,
-        message: "Authenticated customer is required to create an order.",
+        message:
+          "Authenticated customer is required to create an order.",
       });
     }
 
@@ -284,7 +285,8 @@ const createOrder = async (req, res) => {
     if (status === "Completed") {
       return res.status(400).json({
         success: false,
-        message: "An order cannot be created as already Completed.",
+        message:
+          "An order cannot be created as already Completed.",
       });
     }
 
@@ -305,7 +307,6 @@ const createOrder = async (req, res) => {
         .slice(-6)
         .toUpperCase()}`;
 
-    // Claim the table atomically before creating the order.
     if (orderType === "Dine-in") {
       await claimTable(preparedTable.tableId, req.branchId);
       claimedTableId = preparedTable.tableId;
@@ -322,6 +323,8 @@ const createOrder = async (req, res) => {
       total: prepared.total,
       totalAmount: prepared.total,
       status: status || "Pending",
+      outForDeliveryAt:
+        status === "Out for Delivery" ? new Date() : null,
       notes: notes || "",
       customerName: customerName || "",
     });
@@ -356,9 +359,10 @@ const updateOrder = async (req, res) => {
   let updateSucceeded = false;
 
   try {
-    const { id } = req.params;
+    // FIX: Route parameter is :orderId, not :id.
+    const orderId = getRouteOrderId(req);
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid order ID.",
@@ -366,7 +370,7 @@ const updateOrder = async (req, res) => {
     }
 
     const existingOrder = await Order.findOne({
-      _id: id,
+      _id: orderId,
       ...getOrderBranchFilter(req.branchId),
     });
 
@@ -491,13 +495,29 @@ const updateOrder = async (req, res) => {
       ...preparedTable,
     };
 
+    // Start the 15-minute timer only when entering this status.
+    if (
+      nextStatus === "Out for Delivery" &&
+      existingOrder.status !== "Out for Delivery"
+    ) {
+      updates.outForDeliveryAt = new Date();
+    }
+
+    // Clear the timer if the order leaves this status.
+    if (
+      nextStatus !== "Out for Delivery" &&
+      existingOrder.status === "Out for Delivery"
+    ) {
+      updates.outForDeliveryAt = null;
+    }
+
     if (notes !== undefined) updates.notes = notes;
+
     if (customerName !== undefined) {
       updates.customerName = customerName;
     }
 
     if (items !== undefined) {
-      // Do not change the amount of an already invoiced order.
       const existingInvoice = await Payment.findOne({
         branchId: req.branchId,
         orderId: existingOrder._id,
@@ -523,7 +543,7 @@ const updateOrder = async (req, res) => {
 
     const updatedOrder = await Order.findOneAndUpdate(
       {
-        _id: id,
+        _id: orderId,
         ...getOrderBranchFilter(req.branchId),
       },
       { $set: updates },
@@ -539,7 +559,6 @@ const updateOrder = async (req, res) => {
 
     updateSucceeded = true;
 
-    // Release the previous table only after the old order is eligible.
     if (
       existingOrder.tableId &&
       String(existingOrder.tableId) !==
@@ -548,8 +567,6 @@ const updateOrder = async (req, res) => {
       await releaseTableIfEligible(existingOrder);
     }
 
-    // Handles both completion-before-payment and
-    // payment-before-completion.
     await releaseTableIfEligible(updatedOrder);
 
     return res.json({
@@ -577,9 +594,10 @@ const updateOrder = async (req, res) => {
 
 const deleteOrder = async (req, res) => {
   try {
-    const { id } = req.params;
+    // FIX: Route parameter is :orderId, not :id.
+    const orderId = getRouteOrderId(req);
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({
         success: false,
         message: "Invalid order ID.",
@@ -587,7 +605,7 @@ const deleteOrder = async (req, res) => {
     }
 
     const order = await Order.findOne({
-      _id: id,
+      _id: orderId,
       ...getOrderBranchFilter(req.branchId),
     });
 
@@ -607,17 +625,16 @@ const deleteOrder = async (req, res) => {
       invoice &&
       (
         Number(invoice.amountPaid || 0) > 0 ||
-        invoice.transactions.length > 0
+        (invoice.transactions?.length || 0) > 0
       )
     ) {
       return res.status(400).json({
         success: false,
-        message: "Orders with payment history cannot be deleted.",
+        message:
+          "Orders with payment history cannot be deleted.",
       });
     }
 
-    // Deleting an active dine-in order must not bypass the
-    // Completed + Paid table-release rule.
     if (
       order.orderType === "Dine-in" &&
       order.tableId &&
@@ -632,8 +649,6 @@ const deleteOrder = async (req, res) => {
 
     await Order.deleteOne({ _id: order._id });
 
-    // Completed orders should already have released their table
-    // through releaseTableIfEligible when their invoice was paid.
     return res.json({
       success: true,
       message: "Order deleted successfully.",
@@ -645,6 +660,7 @@ const deleteOrder = async (req, res) => {
     });
   }
 };
+
 const syncTableOccupancy = async (branchId) => {
   const tables = await RestaurantTable.find({ branchId });
 
@@ -665,13 +681,12 @@ const syncTableOccupancy = async (branchId) => {
           branchId,
           status: "Available",
         },
-        {
-          $set: { status: "Occupied" },
-        }
+        { $set: { status: "Occupied" } }
       );
     }
   }
 };
+
 module.exports = {
   getMyOrders,
   getOrders,

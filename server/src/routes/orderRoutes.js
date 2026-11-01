@@ -1,3 +1,4 @@
+
 const express = require("express");
 const mongoose = require("mongoose");
 
@@ -8,6 +9,7 @@ const {
   updateOrder,
   deleteOrder,
 } = require("../controllers/orderController");
+
 const { protect, authorize } = require("../middleware/authMiddleware");
 
 const router = express.Router();
@@ -21,16 +23,19 @@ const verifyBranch = async (req, res, next) => {
       req.body.branch ||
       req.query.branchId ||
       req.query.branch ||
-      (req.user && req.user.branch);
+      req.user?.branchId ||
+      req.user?.branch;
 
     if (!branchId) {
       return res.status(400).json({
+        success: false,
         message: "Branch ID is required.",
       });
     }
 
     if (!mongoose.isValidObjectId(branchId)) {
       return res.status(400).json({
+        success: false,
         message: "Invalid branch ID.",
       });
     }
@@ -44,43 +49,61 @@ const verifyBranch = async (req, res, next) => {
 
     if (!branch) {
       return res.status(404).json({
+        success: false,
         message: "Active branch not found.",
       });
     }
 
     req.branch = branch;
     req.branchId = branch._id;
+
     next();
   } catch (error) {
     next(error);
   }
 };
 
-// GET: Retrieve authenticated customer's own past orders.
+// GET: Retrieve authenticated customer's own orders.
 router.get("/my", protect, getMyOrders);
 
-// GET: Retrieve orders belonging to a branch (staff only).
+// GET: Retrieve orders belonging to a branch.
 router.get(
   "/:branchId",
   protect,
-  authorize("owner", "admin", "manager", "cashier", "chef", "delivery_personnel", "employee"),
+  authorize(
+    "owner",
+    "admin",
+    "manager",
+    "cashier",
+    "chef",
+    "delivery_personnel",
+    "employee"
+  ),
   verifyBranch,
   getOrders
 );
 
-// POST: Create an order (authenticated customers and staff).
+// POST: Create an order.
 router.post("/", protect, verifyBranch, createOrder);
 
 // PUT: Update an existing order.
+// The controller must read req.params.orderId.
 router.put(
   "/:branchId/:orderId",
   protect,
-  authorize("owner", "admin", "manager", "cashier", "chef", "delivery_personnel"),
+  authorize(
+    "owner",
+    "admin",
+    "manager",
+    "cashier",
+    "chef",
+    "delivery_personnel"
+  ),
   verifyBranch,
   updateOrder
 );
 
-// DELETE: Remove an order belonging to a branch.
+// DELETE: Delete an order.
 router.delete(
   "/:branchId/:orderId",
   protect,
