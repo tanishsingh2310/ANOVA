@@ -351,6 +351,7 @@ function Reservations({
     let active = true;
     const isActive = () => active;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     loadReservations(isActive);
 
@@ -442,6 +443,7 @@ function Reservations({
       (selectedTable.capacity === null ||
         selectedTable.capacity < Number(form.guests))
     ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm((current) => ({ ...current, tableNumber: "" }));
     }
   }, [
@@ -453,6 +455,7 @@ function Reservations({
   ]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSearch("");
     setStatusFilter("All");
     setDateFilter("");
@@ -494,6 +497,7 @@ function Reservations({
   }, [reservations, search, statusFilter, dateFilter]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentPage(1);
   }, [search, statusFilter, dateFilter, selectedBranchId]);
 

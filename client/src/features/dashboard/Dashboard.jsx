@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useCallback } from 'react'
 import './dashboard.css'
 import InventoryModule from '../inventory/InventoryModule.jsx'
@@ -41,7 +40,16 @@ const navigation = [
     label: 'Branches',
     icon: '⌂',
     group: 'Main',
-    roles: ['owner', 'admin', 'manager', 'hr', 'inventory_manager', 'chef', 'cashier', 'employee'],
+    roles: [
+      'owner',
+      'admin',
+      'manager',
+      'hr',
+      'inventory_manager',
+      'chef',
+      'cashier',
+      'employee',
+    ],
   },
   {
     label: 'Employees',
@@ -167,12 +175,23 @@ export default function Dashboard({ user, onLogout }) {
   const [branches, setBranches] = useState([])
   const [selectedBranchId, setSelectedBranchId] = useState('all')
 
-  // Independent filters for Orders and Reservations
+  // Independent branch filters for each module.
   const [ordersBranchId, setOrdersBranchId] = useState('all')
   const [reservationsBranchId, setReservationsBranchId] = useState('all')
+  const [kitchenBranchId, setKitchenBranchId] = useState('all')
 
   const [branchLoading, setBranchLoading] = useState(true)
   const [branchError, setBranchError] = useState('')
+
+  const isValidBranch = useCallback(
+    (branchId, availableBranches = branches) =>
+      branchId === 'all' ||
+      availableBranches.some(
+        (branch) =>
+          String(branch._id || branch.id) === String(branchId),
+      ),
+    [branches],
+  )
 
   const loadBranches = useCallback(async () => {
     setBranchLoading(true)
@@ -204,7 +223,7 @@ export default function Dashboard({ user, onLogout }) {
 
       setBranches(availableBranches)
 
-      const isValidBranch = (branchId) =>
+      const validForLoadedBranches = (branchId) =>
         branchId === 'all' ||
         availableBranches.some(
           (branch) =>
@@ -212,15 +231,19 @@ export default function Dashboard({ user, onLogout }) {
         )
 
       setSelectedBranchId((currentId) =>
-        isValidBranch(currentId) ? currentId : 'all',
+        validForLoadedBranches(currentId) ? currentId : 'all',
       )
 
       setOrdersBranchId((currentId) =>
-        isValidBranch(currentId) ? currentId : 'all',
+        validForLoadedBranches(currentId) ? currentId : 'all',
       )
 
       setReservationsBranchId((currentId) =>
-        isValidBranch(currentId) ? currentId : 'all',
+        validForLoadedBranches(currentId) ? currentId : 'all',
+      )
+
+      setKitchenBranchId((currentId) =>
+        validForLoadedBranches(currentId) ? currentId : 'all',
       )
 
       if (availableBranches.length === 0) {
@@ -237,15 +260,48 @@ export default function Dashboard({ user, onLogout }) {
     loadBranches()
   }, [loadBranches])
 
+  // Reset module filters when leaving their pages.
   useEffect(() => {
-  if (activePage !== 'Orders') {
-    setOrdersBranchId('all')
-  }
+    if (activePage !== 'Orders') {
+      setOrdersBranchId('all')
+    }
 
-  if (activePage !== 'Reservations') {
-    setReservationsBranchId('all')
-  }
-}, [activePage])
+    if (activePage !== 'Reservations') {
+      setReservationsBranchId('all')
+    }
+
+    if (activePage !== 'Kitchen Workflow') {
+      setKitchenBranchId('all')
+    }
+  }, [activePage])
+
+  // Keep filters valid if the available branches change.
+  useEffect(() => {
+    if (branches.length === 0) return
+
+    if (!isValidBranch(selectedBranchId)) {
+      setSelectedBranchId('all')
+    }
+
+    if (!isValidBranch(ordersBranchId)) {
+      setOrdersBranchId('all')
+    }
+
+    if (!isValidBranch(reservationsBranchId)) {
+      setReservationsBranchId('all')
+    }
+
+    if (!isValidBranch(kitchenBranchId)) {
+      setKitchenBranchId('all')
+    }
+  }, [
+    branches,
+    selectedBranchId,
+    ordersBranchId,
+    reservationsBranchId,
+    kitchenBranchId,
+    isValidBranch,
+  ])
 
   const [expandedGroups, setExpandedGroups] = useState({
     'People & HR': false,
@@ -592,7 +648,13 @@ export default function Dashboard({ user, onLogout }) {
               branchError={branchError}
             />
           ) : activePage === 'Kitchen Workflow' ? (
-            <KitchenWorkflow branchId={selectedBranchId} />
+            <KitchenWorkflow
+              branchId={kitchenBranchId}
+              branches={branches}
+              onBranchChange={setKitchenBranchId}
+              branchLoading={branchLoading}
+              branchError={branchError}
+            />
           ) : activePage === 'Billing & Payments' ? (
             <BillingPayments branchId={selectedBranchId} />
           ) : activePage === 'Food Recommendations' ? (
