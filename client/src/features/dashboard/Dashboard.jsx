@@ -45,11 +45,6 @@ const navigation = [
       'owner',
       'admin',
       'manager',
-      'hr',
-      'inventory_manager',
-      'chef',
-      'cashier',
-      'employee',
     ],
   },
   {
@@ -80,7 +75,7 @@ const navigation = [
     label: 'Payroll',
     icon: '₹',
     group: 'People & HR',
-    roles: ['owner', 'admin', 'hr'],
+    roles: ['owner', 'admin','hr'],
   },
   {
     label: 'Menu',

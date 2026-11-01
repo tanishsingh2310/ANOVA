@@ -1,7 +1,7 @@
 
 import { useState } from 'react'
 import './auth.css'
-import Logo from '../../assets/Logo1.png'
+import Logo from '../../assets/logo2.jpeg'
 import login_banner from '../../assets/login_banner.jpeg'
 
 const API_URL = 'http://localhost:5000/api'
@@ -110,11 +110,10 @@ export default function Login({ onLogin }) {
         style={{ backgroundImage: `url(${login_banner})` }}
         aria-hidden="true"
       />
-
+      <div className="login-logo-circle">
+      <img src={Logo} alt="ANOVA logo" className="login-logo" />
+    </div>
       <section className="login-panel">
-        <div className="login-panel-logo">
-          <img className="login-logo" src={Logo} alt="ANOVA logo" />
-        </div>
 
         <div className="login-form-wrap">
           <div className="auth-account-switch" aria-label="Account type">

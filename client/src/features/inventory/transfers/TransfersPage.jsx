@@ -408,11 +408,26 @@ export default function TransfersPage({ branchId, branches = [] }) {
                       {(tr.items || []).map((it) => `${formatItemName(it)}: ${it.qty} ${it.unit}`).join(' • ') || '—'}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <span>{tr.dispatchedAt ? tr.dispatchedAt.replace('T', ' ').slice(0, 16) : '—'}</span>
-                      <span style={{ fontSize: '10.5px', color: '#748078', marginLeft: '5px' }}>
-                        (by {formatStaff(tr.dispatchedBy)})
-                      </span>
-                    </td>
+  <span>
+    {tr.dispatchedAt && !Number.isNaN(new Date(tr.dispatchedAt).getTime())
+      ? new Date(tr.dispatchedAt).toLocaleString()
+      : '—'}
+  </span>
+  {tr.dispatchedBy &&
+    typeof tr.dispatchedBy === 'string' &&
+    !/^[a-f\d]{24}$/i.test(tr.dispatchedBy) &&
+    !tr.dispatchedBy.startsWith('b_') && (
+      <span
+        style={{
+          fontSize: '10.5px',
+          color: '#748078',
+          marginLeft: '5px',
+        }}
+      >
+        (by {formatStaff(tr.dispatchedBy)})
+      </span>
+    )}
+</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <span
                         className={`employees-status ${
