@@ -1,8 +1,9 @@
-const mongoose = require("mongoose");
 
+const mongoose = require("mongoose");
 const Order = require("../models/Order");
 const MenuItem = require("../models/MenuItem");
 const RestaurantTable = require("../models/Table");
+const Payment = require("../models/Payment");
 
 const ORDER_TYPES = ["Dine-in", "Takeaway", "Delivery"];
 
@@ -16,21 +17,156 @@ const ORDER_STATUSES = [
   "Cancelled",
 ];
 
+const getOrderBranchFilter = (branchId) => ({
+  $or: [{ branch: branchId }, { branchId }],
+});
 
-const prepareOrderItems = async (items, branchId) => {
+const releaseTableIfEligible = async (order) => {
+  if (
+    !order ||
+    order.orderType !== "Dine-in" ||
+    order.status !== "Completed" ||
+    !order.tableId
+  ) {
+    return;
+  }
+
+  // An invoice must exist and be fully paid.
+  const invoice = await Payment.findOne({
+    branchId: order.branchId,
+    orderId: order._id,
+  });
+
+  if (!invoice || invoice.status !== "Paid") {
+    return;
+  }
+
+  const otherActiveOrder = await Order.exists({
+    _id: { $ne: order._id },
+    tableId: order.tableId,
+    ...getOrderBranchFilter(order.branchId),
+    status: { $nin: ["Completed", "Cancelled"] },
+  });
+
+  if (otherActiveOrder) return;
+
+  await RestaurantTable.updateOne(
+    {
+      _id: order.tableId,
+      branchId: order.branchId,
+      status: "Occupied",
+    },
+    { $set: { status: "Available" } }
+  );
+};
+
+const prepareTable = async (
+  orderType,
+  tableId,
+  branchId,
+  existingOrder = null
+) => {
+  if (!ORDER_TYPES.includes(orderType)) {
+    throw new Error("Invalid order type.");
+  }
+
+  if (orderType !== "Dine-in") {
+    if (tableId) {
+      throw new Error(
+        "Tables can only be assigned to dine-in orders."
+      );
+    }
+
+    return { tableId: null, table: "" };
+  }
+
+  if (
+    !tableId ||
+    !mongoose.Types.ObjectId.isValid(tableId)
+  ) {
+    throw new Error(
+      "A valid table is required for dine-in orders."
+    );
+  }
+
+  const restaurantTable = await RestaurantTable.findOne({
+    _id: tableId,
+    branchId,
+  });
+
+  if (!restaurantTable) {
+    throw new Error("Table not found in this branch.");
+  }
+
+  if (restaurantTable.status === "Reserved") {
+    throw new Error("This table is reserved.");
+  }
+
+  const keepingExistingTable =
+    existingOrder &&
+    existingOrder.orderType === "Dine-in" &&
+    String(existingOrder.tableId) === String(tableId);
+
+  if (
+    restaurantTable.status === "Occupied" &&
+    !keepingExistingTable
+  ) {
+    throw new Error(
+      "This table is already occupied by another order."
+    );
+  }
+
+  return {
+    tableId: restaurantTable._id,
+    table: restaurantTable.number,
+  };
+};
+
+const claimTable = async (tableId, branchId) => {
+  const table = await RestaurantTable.findOneAndUpdate(
+    {
+      _id: tableId,
+      branchId,
+      status: "Available",
+    },
+    { $set: { status: "Occupied" } },
+    { new: true }
+  );
+
+  if (!table) {
+    throw new Error(
+      "This table is no longer available. Refresh and try again."
+    );
+  }
+
+  return table;
+};
+
+const prepareItems = async (items, branchId) => {
   if (!Array.isArray(items) || items.length === 0) {
-    throw new Error("An order must contain at least one item.");
+    throw new Error("At least one order item is required.");
   }
 
-  if (!mongoose.isValidObjectId(branchId)) {
-    throw new Error("A valid branch is required to create an order.");
-  }
-
-  const combinedItems = new Map();
+  const preparedItems = [];
+  let total = 0;
 
   for (const item of items) {
-    if (!item || !mongoose.isValidObjectId(item.menuItemId)) {
-      throw new Error("An order contains an invalid menu item.");
+    if (
+      !item.menuItemId ||
+      !mongoose.Types.ObjectId.isValid(item.menuItemId)
+    ) {
+      throw new Error("Invalid menu item ID.");
+    }
+
+    const menuItem = await MenuItem.findOne({
+      _id: item.menuItemId,
+      branchId,
+    });
+
+    if (!menuItem) {
+      throw new Error(
+        `Menu item not found: ${item.menuItemId}`
+      );
     }
 
     const quantity = Number(item.quantity);
@@ -41,253 +177,116 @@ const prepareOrderItems = async (items, branchId) => {
       quantity > 99
     ) {
       throw new Error(
-        "Each item quantity must be a whole number between 1 and 99."
+        "Item quantity must be a whole number between 1 and 99."
       );
     }
 
-    const menuItemId = String(item.menuItemId);
-    const newQuantity =
-      (combinedItems.get(menuItemId) || 0) + quantity;
+    const price = Number(menuItem.price);
 
-    if (newQuantity > 99) {
+    if (!Number.isFinite(price) || price < 0.01) {
       throw new Error(
-        "The combined quantity of an item cannot exceed 99."
+        `Invalid price for menu item: ${menuItem.name}`
       );
     }
 
-    combinedItems.set(menuItemId, newQuantity);
-  }
+    total += price * quantity;
 
-  const menuItemIds = [...combinedItems.keys()];
-
-  const menuItems = await MenuItem.find({
-    _id: { $in: menuItemIds },
-    available: true,
-    $or: [
-      { branchId: new mongoose.Types.ObjectId(branchId) },
-      { branchIds: new mongoose.Types.ObjectId(branchId) },
-    ],
-  });
-
-  if (menuItems.length !== menuItemIds.length) {
-    const foundIds = new Set(
-      menuItems.map((item) => String(item._id))
-    );
-
-    const rejectedIds = menuItemIds.filter(
-      (id) => !foundIds.has(id)
-    );
-
-    console.error("[Order validation] Rejected menu items:", {
-      branchId: String(branchId),
-      rejectedIds,
-    });
-
-    throw new Error(
-      "One or more menu items are unavailable or do not belong to this branch."
-    );
-  }
-
-  const menuItemMap = new Map(
-    menuItems.map((item) => [String(item._id), item])
-  );
-
-  return menuItemIds.map((menuItemId) => {
-    const menuItem = menuItemMap.get(menuItemId);
-
-    return {
+    // The Order schema does not define a subtotal per item.
+    preparedItems.push({
       menuItemId: menuItem._id,
       name: menuItem.name,
-      price: menuItem.price,
-      quantity: combinedItems.get(menuItemId),
-    };
-  });
-};
-
-
-// Calculate totals using server-validated prices.
-const calculateTotal = (items) =>
-  Number(
-    items
-      .reduce((total, item) => {
-        return total + item.price * item.quantity;
-      }, 0)
-      .toFixed(2)
-  );
-
-// Validate table selection for dine-in orders.
-const prepareTable = async (orderType, tableId, branchId) => {
-  if (orderType !== "Dine-in") {
-    if (tableId) {
-      throw new Error(
-        "Only dine-in orders can be assigned to a restaurant table."
-      );
-    }
-
-    return { tableId: null, table: "" };
-  }
-
-  if (!tableId || !mongoose.isValidObjectId(tableId)) {
-    throw new Error(
-      "Select a valid restaurant table for a dine-in order."
-    );
-  }
-
-  const restaurantTable = await RestaurantTable.findOne({
-    _id: tableId,
-    branchId,
-  });
-
-  if (!restaurantTable) {
-    throw new Error(
-      "The selected table does not belong to this branch."
-    );
-  }
-
-  if (restaurantTable.status === "Reserved") {
-    throw new Error(
-      "This table is reserved and cannot be assigned to a new order."
-    );
-  }
-
-  return {
-    tableId: restaurantTable._id,
-    table: restaurantTable.number,
-  };
-};
-
-// Generate a readable order number within the branch.
-const generateOrderNumber = async (branchId) => {
-  const latestOrder = await Order.findOne({ branchId })
-    .sort({ createdAt: -1, _id: -1 })
-    .select("orderNumber");
-
-  const lastNumber = latestOrder?.orderNumber?.match(/^ORD-(\d+)$/);
-  const nextNumber = lastNumber ? Number(lastNumber[1]) + 1 : 1001;
-
-  return `ORD-${nextNumber}`;
-};
-
-// Convert known order-validation errors into HTTP 400 responses.
-const handleOrderError = (error, res, next) => {
-  const validationPrefixes = [
-    "An order",
-    "Each item",
-    "The combined",
-    "One or more",
-    "Select a valid restaurant table",
-    "The selected table",
-    "This table",
-    "Only dine-in",
-  ];
-
-  if (
-    validationPrefixes.some((prefix) =>
-      error.message.startsWith(prefix)
-    )
-  ) {
-    return res.status(400).json({
-      message: error.message,
+      quantity,
+      price,
     });
   }
 
-  return next(error);
+  return { items: preparedItems, total };
 };
 
-// GET: Retrieve authenticated customer's own order history.
-const getMyOrders = async (req, res, next) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ message: "Authentication required." });
-    }
-
-    const orders = await Order.find({ customer: req.user._id })
-      .populate("branch", "name code address phone")
-      .sort({ createdAt: -1 });
-
-    res.json(orders);
-  } catch (error) {
-    next(error);
-  }
-};
-
-// GET: Retrieve orders belonging to a branch.
-const getOrders = async (req, res, next) => {
+const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({
-      $or: [{ branch: req.branchId }, { branchId: req.branchId }],
+      ...getOrderBranchFilter(req.branchId),
+      customer: req.user?._id,
     }).sort({ createdAt: -1 });
 
-    res.json(orders);
+    return res.json({
+      success: true,
+      data: orders,
+    });
   } catch (error) {
-    next(error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch orders.",
+    });
   }
 };
 
-// POST: Create an order.
-const createOrder = async (req, res, next) => {
+const getOrders = async (req, res) => {
+  try {
+    const orders = await Order.find(
+      getOrderBranchFilter(req.branchId)
+    ).sort({ createdAt: -1 });
+
+    return res.json({
+      success: true,
+      data: orders,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch orders.",
+    });
+  }
+};
+
+const createOrder = async (req, res) => {
+  let claimedTableId = null;
+  let orderCreated = false;
+
   try {
     const {
-      customer,
       orderType,
       tableId,
       items,
       status,
       notes,
-      discount: rawDiscount,
-      couponCode: rawCouponCode,
+      customerName,
     } = req.body;
 
-    // Resolve customer ObjectId and customer display name
-    let customerUserId;
-    let customerNameStr = "";
+    // The Order schema requires a customer ObjectId.
+    const customerId = req.user?._id;
 
-    if (req.user && req.user.role === "customer") {
-      customerUserId = req.user._id;
-      customerNameStr = req.user.name;
-    } else if (req.user) {
-      // Staff-created order (cashier, manager, etc.)
-      if (customer && mongoose.isValidObjectId(customer)) {
-        customerUserId = new mongoose.Types.ObjectId(customer);
-        customerNameStr = req.body.customerName || "Customer";
-      } else if (typeof customer === "string" && customer.trim()) {
-        customerUserId = req.user._id;
-        customerNameStr = customer.trim();
-      } else {
-        customerUserId = req.user._id;
-        customerNameStr = req.user.name;
-      }
-    } else {
+    if (
+      !customerId ||
+      !mongoose.Types.ObjectId.isValid(customerId)
+    ) {
       return res.status(401).json({
-        message: "Authentication required to place an order.",
+        success: false,
+        message: "Authenticated customer is required to create an order.",
       });
     }
 
     if (!ORDER_TYPES.includes(orderType)) {
       return res.status(400).json({
-        message: "Select a valid order type.",
+        success: false,
+        message: "Invalid order type.",
       });
     }
 
-    if (status !== undefined && !ORDER_STATUSES.includes(status)) {
+    if (status && !ORDER_STATUSES.includes(status)) {
       return res.status(400).json({
-        message: "Select a valid order status.",
+        success: false,
+        message: "Invalid order status.",
       });
     }
 
-    if (
-      notes !== undefined &&
-      (typeof notes !== "string" || notes.length > 500)
-    ) {
+    if (status === "Completed") {
       return res.status(400).json({
-        message: "Order notes must not exceed 500 characters.",
+        success: false,
+        message: "An order cannot be created as already Completed.",
       });
     }
-
-    const preparedItems = await prepareOrderItems(
-      items,
-      req.branchId
-    );
 
     const preparedTable = await prepareTable(
       orderType,
@@ -295,231 +294,384 @@ const createOrder = async (req, res, next) => {
       req.branchId
     );
 
-    const orderNumber = await generateOrderNumber(req.branchId);
+    const prepared = await prepareItems(
+      items,
+      req.branchId
+    );
 
-    const discount = Math.max(0, Number(rawDiscount) || 0);
-    const couponCode =
-      typeof rawCouponCode === "string" ? rawCouponCode.trim() : "";
-    const subtotal = calculateTotal(preparedItems);
-    const total = Math.max(0, Number((subtotal - discount).toFixed(2)));
+    const orderNumber =
+      `ORD-${Date.now()}-${new mongoose.Types.ObjectId()
+        .toString()
+        .slice(-6)
+        .toUpperCase()}`;
+
+    // Claim the table atomically before creating the order.
+    if (orderType === "Dine-in") {
+      await claimTable(preparedTable.tableId, req.branchId);
+      claimedTableId = preparedTable.tableId;
+    }
 
     const order = await Order.create({
       branch: req.branchId,
       branchId: req.branchId,
+      customer: customerId,
       orderNumber,
-      customer: customerUserId,
-      customerName: customerNameStr,
       orderType,
       ...preparedTable,
-      items: preparedItems,
-      total,
-      totalAmount: total,
-      discount,
-      couponCode,
+      items: prepared.items,
+      total: prepared.total,
+      totalAmount: prepared.total,
       status: status || "Pending",
-      notes: notes?.trim() || "",
+      notes: notes || "",
+      customerName: customerName || "",
     });
 
-    res.status(201).json(order);
+    orderCreated = true;
+
+    return res.status(201).json({
+      success: true,
+      data: order,
+    });
   } catch (error) {
-    handleOrderError(error, res, next);
+    if (claimedTableId && !orderCreated) {
+      await RestaurantTable.updateOne(
+        {
+          _id: claimedTableId,
+          branchId: req.branchId,
+          status: "Occupied",
+        },
+        { $set: { status: "Available" } }
+      ).catch(() => {});
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Failed to create order.",
+    });
   }
 };
 
-// PUT: Update an existing order.
-const updateOrder = async (req, res, next) => {
-  try {
-    const { orderId } = req.params;
+const updateOrder = async (req, res) => {
+  let newlyClaimedTableId = null;
+  let updateSucceeded = false;
 
-    if (!mongoose.isValidObjectId(orderId)) {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
+        success: false,
         message: "Invalid order ID.",
       });
     }
 
     const existingOrder = await Order.findOne({
-      _id: orderId,
-      $or: [{ branch: req.branchId }, { branchId: req.branchId }],
+      _id: id,
+      ...getOrderBranchFilter(req.branchId),
     });
 
     if (!existingOrder) {
       return res.status(404).json({
-        message: "Order not found for this branch.",
+        success: false,
+        message: "Order not found.",
       });
     }
 
     const {
-      customer,
       orderType,
       tableId,
       items,
       status,
       notes,
-      discount: rawDiscount,
-      couponCode: rawCouponCode,
+      customerName,
     } = req.body;
 
-    const updates = {};
+    const nextOrderType =
+      orderType ?? existingOrder.orderType;
 
-    if (customer !== undefined) {
-      if (mongoose.isValidObjectId(customer)) {
-        updates.customer = new mongoose.Types.ObjectId(customer);
-      } else if (typeof customer === "string" && customer.trim()) {
-        updates.customerName = customer.trim();
-      }
-    }
+    const nextStatus = status ?? existingOrder.status;
 
-    if (rawCouponCode !== undefined) {
-      updates.couponCode = typeof rawCouponCode === "string" ? rawCouponCode.trim() : "";
-    }
-
-    if (orderType !== undefined) {
-      if (!ORDER_TYPES.includes(orderType)) {
-        return res.status(400).json({
-          message: "Select a valid order type.",
-        });
-      }
-
-      updates.orderType = orderType;
-    }
-
-    if (status !== undefined) {
-      if (!ORDER_STATUSES.includes(status)) {
-        return res.status(400).json({
-          message: "Select a valid order status.",
-        });
-      }
-
-      updates.status = status;
-    }
-
-    if (notes !== undefined) {
-      if (
-        typeof notes !== "string" ||
-        notes.length > 500
-      ) {
-        return res.status(400).json({
-          message: "Order notes must not exceed 500 characters.",
-        });
-      }
-
-      updates.notes = notes.trim();
-    }
-
-    const finalOrderType =
-      updates.orderType || existingOrder.orderType;
-
-    const finalTableId =
-      tableId !== undefined
-        ? tableId
-        : finalOrderType === "Dine-in"
-          ? existingOrder.tableId
-          : null;
-
-    if (
-      finalOrderType !== "Dine-in" &&
-      tableId !== undefined &&
-      tableId !== null &&
-      tableId !== ""
-    ) {
+    if (!ORDER_TYPES.includes(nextOrderType)) {
       return res.status(400).json({
-        message:
-          "Only dine-in orders can be assigned to a restaurant table.",
+        success: false,
+        message: "Invalid order type.",
+      });
+    }
+
+    if (!ORDER_STATUSES.includes(nextStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order status.",
       });
     }
 
     if (
-      finalOrderType === "Dine-in" &&
-      (tableId !== undefined ||
-        updates.orderType !== undefined)
+      existingOrder.status === "Completed" &&
+      nextStatus !== "Completed"
     ) {
-      const preparedTable = await prepareTable(
-        finalOrderType,
-        finalTableId,
+      return res.status(400).json({
+        success: false,
+        message: "A completed order cannot be reopened.",
+      });
+    }
+
+    if (existingOrder.status === "Cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "A cancelled order cannot be updated.",
+      });
+    }
+
+    const requestedTableId =
+      tableId !== undefined
+        ? tableId
+        : existingOrder.tableId;
+
+    const changingTableOrType =
+      nextOrderType !== existingOrder.orderType ||
+      (nextOrderType === "Dine-in" &&
+        String(requestedTableId || "") !==
+          String(existingOrder.tableId || ""));
+
+    if (
+      existingOrder.orderType === "Dine-in" &&
+      existingOrder.tableId &&
+      changingTableOrType
+    ) {
+      const invoice = await Payment.findOne({
+        branchId: req.branchId,
+        orderId: existingOrder._id,
+      });
+
+      if (
+        existingOrder.status !== "Completed" ||
+        !invoice ||
+        invoice.status !== "Paid"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Complete the order and fully pay its invoice before changing its table or order type.",
+        });
+      }
+    }
+
+    let preparedTable = {
+      tableId: existingOrder.tableId,
+      table: existingOrder.table,
+    };
+
+    if (nextOrderType !== "Dine-in") {
+      preparedTable = { tableId: null, table: "" };
+    } else if (changingTableOrType) {
+      preparedTable = await prepareTable(
+        nextOrderType,
+        requestedTableId,
+        req.branchId,
+        existingOrder
+      );
+
+      const sameTable =
+        String(preparedTable.tableId) ===
+        String(existingOrder.tableId);
+
+      if (!sameTable) {
+        await claimTable(
+          preparedTable.tableId,
+          req.branchId
+        );
+
+        newlyClaimedTableId = preparedTable.tableId;
+      }
+    }
+
+    const updates = {
+      orderType: nextOrderType,
+      status: nextStatus,
+      ...preparedTable,
+    };
+
+    if (notes !== undefined) updates.notes = notes;
+    if (customerName !== undefined) {
+      updates.customerName = customerName;
+    }
+
+    if (items !== undefined) {
+      // Do not change the amount of an already invoiced order.
+      const existingInvoice = await Payment.findOne({
+        branchId: req.branchId,
+        orderId: existingOrder._id,
+      });
+
+      if (existingInvoice) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Items cannot be changed after an invoice has been created.",
+        });
+      }
+
+      const prepared = await prepareItems(
+        items,
         req.branchId
       );
 
-      updates.tableId = preparedTable.tableId;
-      updates.table = preparedTable.table;
-    }
-
-    if (items !== undefined || rawDiscount !== undefined) {
-      const preparedItems = items !== undefined
-        ? await prepareOrderItems(items, req.branchId)
-        : existingOrder.items;
-      const currentDiscount = rawDiscount !== undefined
-        ? Math.max(0, Number(rawDiscount) || 0)
-        : (existingOrder.discount || 0);
-
-      const subtotal = calculateTotal(preparedItems);
-      const newTotal = Math.max(0, Number((subtotal - currentDiscount).toFixed(2)));
-
-      if (items !== undefined) updates.items = preparedItems;
-      updates.discount = currentDiscount;
-      updates.total = newTotal;
-      updates.totalAmount = newTotal;
-    }
-
-    if (finalOrderType !== "Dine-in") {
-      updates.tableId = null;
-      updates.table = "";
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({
-        message: "No valid fields provided for update.",
-      });
+      updates.items = prepared.items;
+      updates.total = prepared.total;
+      updates.totalAmount = prepared.total;
     }
 
     const updatedOrder = await Order.findOneAndUpdate(
       {
-        _id: orderId,
-        $or: [{ branch: req.branchId }, { branchId: req.branchId }],
+        _id: id,
+        ...getOrderBranchFilter(req.branchId),
       },
-      updates,
+      { $set: updates },
       {
         new: true,
         runValidators: true,
       }
     );
 
-    res.json(updatedOrder);
+    if (!updatedOrder) {
+      throw new Error("Order could not be updated.");
+    }
+
+    updateSucceeded = true;
+
+    // Release the previous table only after the old order is eligible.
+    if (
+      existingOrder.tableId &&
+      String(existingOrder.tableId) !==
+        String(updatedOrder.tableId)
+    ) {
+      await releaseTableIfEligible(existingOrder);
+    }
+
+    // Handles both completion-before-payment and
+    // payment-before-completion.
+    await releaseTableIfEligible(updatedOrder);
+
+    return res.json({
+      success: true,
+      data: updatedOrder,
+    });
   } catch (error) {
-    handleOrderError(error, res, next);
+    if (newlyClaimedTableId && !updateSucceeded) {
+      await RestaurantTable.updateOne(
+        {
+          _id: newlyClaimedTableId,
+          branchId: req.branchId,
+          status: "Occupied",
+        },
+        { $set: { status: "Available" } }
+      ).catch(() => {});
+    }
+
+    return res.status(400).json({
+      success: false,
+      message: error.message || "Failed to update order.",
+    });
   }
 };
 
-// DELETE: Remove an order belonging to a branch.
-const deleteOrder = async (req, res, next) => {
+const deleteOrder = async (req, res) => {
   try {
-    const { orderId } = req.params;
+    const { id } = req.params;
 
-    if (!mongoose.isValidObjectId(orderId)) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
+        success: false,
         message: "Invalid order ID.",
       });
     }
 
-    const order = await Order.findOneAndDelete({
-      _id: orderId,
-      $or: [{ branch: req.branchId }, { branchId: req.branchId }],
+    const order = await Order.findOne({
+      _id: id,
+      ...getOrderBranchFilter(req.branchId),
     });
 
     if (!order) {
       return res.status(404).json({
-        message: "Order not found for this branch.",
+        success: false,
+        message: "Order not found.",
       });
     }
 
-    res.json({
+    const invoice = await Payment.findOne({
+      branchId: req.branchId,
+      orderId: order._id,
+    });
+
+    if (
+      invoice &&
+      (
+        Number(invoice.amountPaid || 0) > 0 ||
+        invoice.transactions.length > 0
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Orders with payment history cannot be deleted.",
+      });
+    }
+
+    // Deleting an active dine-in order must not bypass the
+    // Completed + Paid table-release rule.
+    if (
+      order.orderType === "Dine-in" &&
+      order.tableId &&
+      order.status !== "Completed"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "An active dine-in order cannot be deleted. Cancel it through the order workflow instead.",
+      });
+    }
+
+    await Order.deleteOne({ _id: order._id });
+
+    // Completed orders should already have released their table
+    // through releaseTableIfEligible when their invoice was paid.
+    return res.json({
+      success: true,
       message: "Order deleted successfully.",
-      order,
     });
   } catch (error) {
-    next(error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete order.",
+    });
   }
 };
+const syncTableOccupancy = async (branchId) => {
+  const tables = await RestaurantTable.find({ branchId });
 
+  for (const table of tables) {
+    const activeOrder = await Order.exists({
+      tableId: table._id,
+      ...getOrderBranchFilter(branchId),
+      orderType: "Dine-in",
+      status: {
+        $nin: ["Completed", "Cancelled"],
+      },
+    });
+
+    if (activeOrder && table.status === "Available") {
+      await RestaurantTable.updateOne(
+        {
+          _id: table._id,
+          branchId,
+          status: "Available",
+        },
+        {
+          $set: { status: "Occupied" },
+        }
+      );
+    }
+  }
+};
 module.exports = {
   getMyOrders,
   getOrders,

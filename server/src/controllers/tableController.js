@@ -1,9 +1,79 @@
 const mongoose = require("mongoose");
 const RestaurantTable = require("../models/Table");
+const Order = require("../models/Order");
+const Payment = require("../models/Payment");
+
+const getOrderBranchFilter = (branchId) => ({
+  $or: [{ branch: branchId }, { branchId }],
+});
+
+// Synchronize table occupancy with active dine-in orders.
+// Never automatically release a table if its order is Completed
+// until its invoice is fully paid.
+const syncTableOccupancy = async (branchId) => {
+  const tables = await RestaurantTable.find({ branchId });
+
+  for (const table of tables) {
+    const activeOrder = await Order.findOne({
+      tableId: table._id,
+      ...getOrderBranchFilter(branchId),
+      orderType: "Dine-in",
+      status: { $nin: ["Completed", "Cancelled"] },
+    }).select("_id");
+
+    if (activeOrder) {
+      if (table.status !== "Occupied") {
+        await RestaurantTable.updateOne(
+          {
+            _id: table._id,
+            branchId,
+            status: { $ne: "Reserved" },
+          },
+          { $set: { status: "Occupied" } }
+        );
+      }
+
+      continue;
+    }
+
+    // A completed dine-in order keeps its table occupied
+    // until its invoice is fully paid.
+    const completedOrder = await Order.findOne({
+      tableId: table._id,
+      ...getOrderBranchFilter(branchId),
+      orderType: "Dine-in",
+      status: "Completed",
+    }).select("_id");
+
+    if (completedOrder) {
+      const invoice = await Payment.findOne({
+        branchId,
+        orderId: completedOrder._id,
+      }).select("status");
+
+      if (!invoice || invoice.status !== "Paid") {
+        if (table.status !== "Occupied" && table.status !== "Reserved") {
+          await RestaurantTable.updateOne(
+            {
+              _id: table._id,
+              branchId,
+              status: { $ne: "Reserved" },
+            },
+            { $set: { status: "Occupied" } }
+          );
+        }
+
+        continue;
+      }
+    }
+  }
+};
 
 // GET: Retrieve tables belonging to a branch.
 const getTables = async (req, res, next) => {
   try {
+    await syncTableOccupancy(req.branchId);
+
     const tables = await RestaurantTable.find({
       branchId: req.branchId,
     }).sort({ number: 1 });
@@ -106,7 +176,7 @@ const deleteTable = async (req, res, next) => {
       });
     }
 
-    const table = await RestaurantTable.findOneAndDelete({
+    const table = await RestaurantTable.findOne({
       _id: tableId,
       branchId: req.branchId,
     });
@@ -116,6 +186,21 @@ const deleteTable = async (req, res, next) => {
         message: "Table not found for this branch.",
       });
     }
+
+    const activeOrder = await Order.exists({
+      tableId: table._id,
+      ...getOrderBranchFilter(req.branchId),
+      orderType: "Dine-in",
+      status: { $nin: ["Completed", "Cancelled"] },
+    });
+
+    if (activeOrder) {
+      return res.status(409).json({
+        message: "Cannot delete a table with an active dine-in order.",
+      });
+    }
+
+    await RestaurantTable.deleteOne({ _id: table._id });
 
     res.json({
       message: "Table deleted successfully.",

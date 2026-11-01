@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -6,7 +7,6 @@ import {
   ChevronRight,
   Clock3,
   LoaderCircle,
-  MapPin,
   RefreshCw,
   Search,
   Truck,
@@ -255,6 +255,15 @@ function getPaginationPages(currentPage, totalPages) {
   ];
 }
 
+function compareOrderAge(a, b) {
+  const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+  const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+
+  if (dateA !== dateB) return dateA - dateB;
+
+  return a.id.localeCompare(b.id);
+}
+
 function KitchenWorkflow({
   branchid = ALL_BRANCHES,
   branches = [],
@@ -278,14 +287,12 @@ function KitchenWorkflow({
   const [actionError, setActionError] = useState("");
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
 
-  // Sync local state when the parent changes the selected branch.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLocalBranchId(String(branchid || ALL_BRANCHES));
   }, [branchid]);
 
-  const selectedBranchId = String(
-    localBranchId || ALL_BRANCHES
-  );
+  const selectedBranchId = String(localBranchId || ALL_BRANCHES);
 
   const branchOptions = useMemo(
     () => (Array.isArray(branches) ? branches : []),
@@ -320,8 +327,6 @@ function KitchenWorkflow({
       setShowCompleted(false);
       setError("");
       setActionError("");
-
-      // Keep the parent component synchronized when it supports this callback.
       onBranchChange?.(nextBranchId);
     },
     [onBranchChange]
@@ -437,6 +442,7 @@ function KitchenWorkflow({
   useEffect(() => {
     let active = true;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoading(true);
     loadOrders(() => active);
 
@@ -495,19 +501,41 @@ function KitchenWorkflow({
 
   const completedOrders = useMemo(
     () =>
-      filteredOrders.filter((order) =>
-        ["Completed", "Delivered"].includes(order.status)
-      ),
+      filteredOrders
+        .filter((order) =>
+          ["Completed", "Delivered"].includes(order.status)
+        )
+        .sort(compareOrderAge),
     [filteredOrders]
   );
 
   const deliveryOrders = useMemo(
     () =>
-      filteredOrders.filter(
-        (order) => order.status === "Out for Delivery"
-      ),
+      filteredOrders
+        .filter((order) => order.status === "Out for Delivery")
+        .sort(compareOrderAge),
     [filteredOrders]
   );
+
+  // Queue rule: display only the oldest order for each active kitchen stage.
+  // When it advances, the next oldest order automatically becomes visible.
+  const stageQueues = useMemo(() => {
+    const queues = {};
+
+    KITCHEN_STAGES.forEach((stage) => {
+      const queue = filteredOrders
+        .filter((order) => order.status === stage.name)
+        .sort(compareOrderAge);
+
+      queues[stage.name] = {
+        total: queue.length,
+        current: queue.length > 0 ? queue[0] : null,
+        waiting: Math.max(0, queue.length - 1),
+      };
+    });
+
+    return queues;
+  }, [filteredOrders]);
 
   const completedTotalPages = Math.ceil(
     completedOrders.length / COMPLETED_ITEMS_PER_PAGE
@@ -542,6 +570,7 @@ function KitchenWorkflow({
     searchTerm !== "" || orderTypeFilter !== "All";
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCompletedCurrentPage((page) =>
       Math.min(page, Math.max(1, completedTotalPages))
     );
@@ -558,10 +587,12 @@ function KitchenWorkflow({
     setRefreshKey((current) => current + 1);
   }
 
-  async function advanceOrder(orderId, nextStatus) {
+  async function advanceOrder(orderId, branchId, nextStatus) {
     if (updatingOrderId !== null) return;
 
-    const currentOrder = orders.find((order) => order.id === orderId);
+    const currentOrder = orders.find(
+      (order) => order.id === orderId && order.branchId === branchId
+    );
 
     if (!currentOrder || !currentOrder.branchId) {
       setActionError("Unable to identify the branch for this order.");
@@ -649,6 +680,132 @@ function KitchenWorkflow({
     } finally {
       setUpdatingOrderId(null);
     }
+  }
+
+  function renderOrderCard(order, stage) {
+    const elapsed = getElapsedMinutes(order.createdAt);
+    const isPriority = elapsed >= 20;
+    const isUpdating =
+      updatingOrderId === order.id;
+    const TypeIcon = getOrderTypeIcon(order.orderType);
+
+    const readyActionLabel =
+      order.orderType === "Delivery"
+        ? "Send for Delivery"
+        : "Complete Order";
+
+    return (
+      <article
+        className="kitchen-order-card"
+        key={`${order.branchId}-${order.id}`}
+      >
+        <div className="kitchen-order-card-header">
+          <strong>{order.orderNumber}</strong>
+
+          {order.branchName && (
+            <span className="kitchen-order-branch">
+              {order.branchName}
+            </span>
+          )}
+
+          <span
+            className={`kitchen-order-timer ${
+              isPriority ? "priority" : ""
+            }`}
+          >
+            <Clock3 size={13} aria-hidden="true" />
+            {formatElapsedTime(elapsed)}
+          </span>
+        </div>
+
+        <div className="kitchen-order-customer">
+          <h4>{order.customer}</h4>
+          <span className="kitchen-type-badge">
+            <TypeIcon size={13} aria-hidden="true" />
+            {order.orderType}
+            {order.orderType === "Dine-in" && order.table
+              ? ` · ${order.table}`
+              : ""}
+          </span>
+        </div>
+
+        {isPriority && (
+          <div className="kitchen-priority-label">
+            <AlertCircle size={14} aria-hidden="true" />
+            Waiting longer than 20 minutes
+          </div>
+        )}
+
+        <div className="kitchen-order-items">
+          <span className="kitchen-section-label">ORDER ITEMS</span>
+
+          {order.items.map((item, index) => (
+            <div
+              className="kitchen-order-item"
+              key={`${order.branchId}-${order.id}-${item.name}-${index}`}
+            >
+              <span>{item.name}</span>
+              <strong>× {item.quantity}</strong>
+            </div>
+          ))}
+
+          {order.items.length === 0 && (
+            <p>No item details available.</p>
+          )}
+        </div>
+
+        {order.notes.trim() && (
+          <div className="kitchen-order-notes">
+            <strong>Customer notes</strong>
+            <p>{order.notes}</p>
+          </div>
+        )}
+
+        <div className="kitchen-order-card-footer">
+          <span>
+            {order.items.reduce(
+              (total, item) => total + item.quantity,
+              0
+            )}{" "}
+            total items
+          </span>
+
+          <button
+            type="button"
+            className="kitchen-advance-button"
+            onClick={() =>
+              advanceOrder(
+                order.id,
+                order.branchId,
+                stage.nextStatus ||
+                  (order.orderType === "Delivery"
+                    ? "Out for Delivery"
+                    : "Completed")
+              )
+            }
+            disabled={updatingOrderId !== null}
+          >
+            {isUpdating ? (
+              <>
+                <LoaderCircle
+                  size={15}
+                  className="kitchen-spin"
+                  aria-hidden="true"
+                />
+                Updating...
+              </>
+            ) : (
+              <>
+                {stage.name === "Ready"
+                  ? readyActionLabel
+                  : stage.actionLabel}
+                <span aria-hidden="true">→</span>
+              </>
+            )}
+          </button>
+        </div>
+      </article>
+    );
   }
 
   return (
@@ -762,7 +919,9 @@ function KitchenWorkflow({
             <input
               type="checkbox"
               checked={showCompleted}
-              onChange={(event) => setShowCompleted(event.target.checked)}
+              onChange={(event) =>
+                setShowCompleted(event.target.checked)
+              }
             />
             <span>Show completed</span>
           </label>
@@ -809,7 +968,6 @@ function KitchenWorkflow({
         </div>
 
         <span className="kitchen-current-branch">
-          <MapPin size={14} aria-hidden="true" />
           {currentBranchLabel}
         </span>
       </div>
@@ -838,7 +996,9 @@ function KitchenWorkflow({
             aria-hidden="true"
           />
           <strong>
-            {branchLoading ? "Loading branches" : "Loading kitchen orders"}
+            {branchLoading
+              ? "Loading branches"
+              : "Loading kitchen orders"}
           </strong>
           <span>Please wait while we retrieve your orders.</span>
         </div>
@@ -846,18 +1006,8 @@ function KitchenWorkflow({
         <>
           <div className="kitchen-workflow-board">
             {KITCHEN_STAGES.map((stage) => {
-              const stageOrders = filteredOrders
-                .filter((order) => order.status === stage.name)
-                .sort((a, b) => {
-                  const dateA = a.createdAt
-                    ? new Date(a.createdAt).getTime()
-                    : 0;
-                  const dateB = b.createdAt
-                    ? new Date(b.createdAt).getTime()
-                    : 0;
-
-                  return dateA - dateB;
-                });
+              const queue = stageQueues[stage.name];
+              const order = queue.current;
 
               return (
                 <section
@@ -869,140 +1019,24 @@ function KitchenWorkflow({
                       <span className="kitchen-stage-indicator" />
                       <h3>{stage.name}</h3>
                       <span className="kitchen-stage-count">
-                        {stageOrders.length}
+                        {queue.total}
                       </span>
                     </div>
 
                     <p>{stage.description}</p>
+                    {queue.waiting > 0 && (
+                      <small className="kitchen-queue-waiting">
+                        {queue.waiting}{" "}
+                        {queue.waiting === 1 ? "order" : "orders"} waiting
+                        in queue
+                      </small>
+                    )}
                   </div>
 
                   <div className="kitchen-stage-orders">
-                    {stageOrders.map((order) => {
-                      const elapsed = getElapsedMinutes(order.createdAt);
-                      const isPriority = elapsed >= 20;
-                      const isUpdating = updatingOrderId === order.id;
-                      const TypeIcon = getOrderTypeIcon(order.orderType);
-
-                      const readyActionLabel =
-                        order.orderType === "Delivery"
-                          ? "Send for Delivery"
-                          : "Complete Order";
-
-                      return (
-                        <article
-                          className="kitchen-order-card"
-                          key={`${order.branchId}-${order.id}`}
-                        >
-                          <div className="kitchen-order-card-header">
-                            <strong>{order.orderNumber}</strong>
-
-                            {order.branchName && (
-                              <span className="kitchen-order-branch">
-                                {order.branchName}
-                              </span>
-                            )}
-
-                            <span
-                              className={`kitchen-order-timer ${
-                                isPriority ? "priority" : ""
-                              }`}
-                            >
-                              <Clock3 size={13} aria-hidden="true" />
-                              {formatElapsedTime(elapsed)}
-                            </span>
-                          </div>
-
-                          <div className="kitchen-order-customer">
-                            <h4>{order.customer}</h4>
-                            <span className="kitchen-type-badge">
-                              <TypeIcon size={13} aria-hidden="true" />
-                              {order.orderType}
-                              {order.orderType === "Dine-in" && order.table
-                                ? ` · ${order.table}`
-                                : ""}
-                            </span>
-                          </div>
-
-                          {isPriority && (
-                            <div className="kitchen-priority-label">
-                              <AlertCircle size={14} aria-hidden="true" />
-                              Waiting longer than 20 minutes
-                            </div>
-                          )}
-
-                          <div className="kitchen-order-items">
-                            <span className="kitchen-section-label">
-                              ORDER ITEMS
-                            </span>
-
-                            {order.items.map((item, index) => (
-                              <div
-                                className="kitchen-order-item"
-                                key={`${order.branchId}-${order.id}-${item.name}-${index}`}
-                              >
-                                <span>{item.name}</span>
-                                <strong>× {item.quantity}</strong>
-                              </div>
-                            ))}
-
-                            {order.items.length === 0 && (
-                              <p>No item details available.</p>
-                            )}
-                          </div>
-
-                          {order.notes.trim() && (
-                            <div className="kitchen-order-notes">
-                              <strong>Customer notes</strong>
-                              <p>{order.notes}</p>
-                            </div>
-                          )}
-
-                          <div className="kitchen-order-card-footer">
-                            <span>
-                              {order.items.reduce(
-                                (total, item) => total + item.quantity,
-                                0
-                              )}{" "}
-                              total items
-                            </span>
-
-                            <button
-                              type="button"
-                              className="kitchen-advance-button"
-                              onClick={() =>
-                                advanceOrder(
-                                  order.id,
-                                  stage.nextStatus ||
-                                    (order.orderType === "Delivery"
-                                      ? "Out for Delivery"
-                                      : "Completed")
-                                )
-                              }
-                              disabled={updatingOrderId !== null}
-                            >
-                              {isUpdating ? (
-                                <>
-                                  <LoaderCircle
-                                    size={15}
-                                    className="kitchen-spin"
-                                  />
-                                  Updating...
-                                </>
-                              ) : (
-                                <>
-                                  {stage.name === "Ready"
-                                    ? readyActionLabel
-                                    : stage.actionLabel}
-                                  <span aria-hidden="true">→</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
-
-                    {stageOrders.length === 0 && (
+                    {order ? (
+                      renderOrderCard(order, stage)
+                    ) : (
                       <div className="kitchen-stage-empty">
                         <CheckCircle2 size={21} aria-hidden="true" />
                         <p>No orders in this stage</p>

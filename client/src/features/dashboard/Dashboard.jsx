@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useCallback } from 'react'
 import './dashboard.css'
 import InventoryModule from '../inventory/InventoryModule.jsx'
@@ -175,10 +176,11 @@ export default function Dashboard({ user, onLogout }) {
   const [branches, setBranches] = useState([])
   const [selectedBranchId, setSelectedBranchId] = useState('all')
 
-  // Independent branch filters for each module.
+  // Independent branch selections for restaurant modules.
   const [ordersBranchId, setOrdersBranchId] = useState('all')
   const [reservationsBranchId, setReservationsBranchId] = useState('all')
   const [kitchenBranchId, setKitchenBranchId] = useState('all')
+  const [billingBranchId, setBillingBranchId] = useState('')
 
   const [branchLoading, setBranchLoading] = useState(true)
   const [branchError, setBranchError] = useState('')
@@ -186,6 +188,7 @@ export default function Dashboard({ user, onLogout }) {
   const isValidBranch = useCallback(
     (branchId, availableBranches = branches) =>
       branchId === 'all' ||
+      branchId === '' ||
       availableBranches.some(
         (branch) =>
           String(branch._id || branch.id) === String(branchId),
@@ -225,6 +228,7 @@ export default function Dashboard({ user, onLogout }) {
 
       const validForLoadedBranches = (branchId) =>
         branchId === 'all' ||
+        branchId === '' ||
         availableBranches.some(
           (branch) =>
             String(branch._id || branch.id) === String(branchId),
@@ -246,6 +250,15 @@ export default function Dashboard({ user, onLogout }) {
         validForLoadedBranches(currentId) ? currentId : 'all',
       )
 
+      setBillingBranchId((currentId) =>
+        availableBranches.some(
+          (branch) =>
+            String(branch._id || branch.id) === String(currentId),
+        )
+          ? currentId
+          : '',
+      )
+
       if (availableBranches.length === 0) {
         setBranchError('No active branches are available to your account.')
       }
@@ -257,12 +270,14 @@ export default function Dashboard({ user, onLogout }) {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadBranches()
   }, [loadBranches])
 
   // Reset module filters when leaving their pages.
   useEffect(() => {
     if (activePage !== 'Orders') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOrdersBranchId('all')
     }
 
@@ -273,13 +288,18 @@ export default function Dashboard({ user, onLogout }) {
     if (activePage !== 'Kitchen Workflow') {
       setKitchenBranchId('all')
     }
+
+    if (activePage !== 'Billing & Payments') {
+      setBillingBranchId('')
+    }
   }, [activePage])
 
-  // Keep filters valid if the available branches change.
+  // Keep branch selections valid when the available branches change.
   useEffect(() => {
     if (branches.length === 0) return
 
     if (!isValidBranch(selectedBranchId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedBranchId('all')
     }
 
@@ -294,12 +314,23 @@ export default function Dashboard({ user, onLogout }) {
     if (!isValidBranch(kitchenBranchId)) {
       setKitchenBranchId('all')
     }
+
+    if (
+      billingBranchId &&
+      !branches.some(
+        (branch) =>
+          String(branch._id || branch.id) === String(billingBranchId),
+      )
+    ) {
+      setBillingBranchId('')
+    }
   }, [
     branches,
     selectedBranchId,
     ordersBranchId,
     reservationsBranchId,
     kitchenBranchId,
+    billingBranchId,
     isValidBranch,
   ])
 
@@ -656,7 +687,13 @@ export default function Dashboard({ user, onLogout }) {
               branchError={branchError}
             />
           ) : activePage === 'Billing & Payments' ? (
-            <BillingPayments branchId={selectedBranchId} />
+            <BillingPayments
+              branchId={billingBranchId}
+              branches={branches}
+              onBranchChange={setBillingBranchId}
+              branchLoading={branchLoading}
+              branchError={branchError}
+            />
           ) : activePage === 'Food Recommendations' ? (
             <FoodRecommendations branchId={selectedBranchId} />
           ) : activePage === 'Branches' ? (

@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Clock3,
   LoaderCircle,
-  MapPin,
   Pencil,
   Plus,
   Receipt,
@@ -1083,7 +1082,6 @@ function Orders({
           </div>
 
           <span className="orders-current-branch">
-            <MapPin size={14} aria-hidden="true" />
             {currentBranchLabel}
           </span>
         </div>
