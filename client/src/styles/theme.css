@@ -1,0 +1,79 @@
+:root {
+  /* =========================================
+     ANOVA — The Verdant Luxury Palette (Tanvi Alignment)
+     ========================================= */
+  /* Brand colors */
+  --color-primary: #183C34;
+  --color-secondary: #739184;
+  --color-accent: #C5A46D;
+
+  /* Backgrounds */
+  --color-background: #F8F7F3;
+  --color-surface: #FFFFFF;
+  --color-surface-card: #FFFFFF;
+
+  /* Typography */
+  --color-text: #26342F;
+  --color-text-muted: #748078;
+
+  /* Borders */
+  --color-border: #E3E9E3;
+  --color-border-subtle: #EDF1ED;
+
+  /* Status colors */
+  --color-success: #287D60;
+  --color-success-bg: #EAF5F0;
+  --color-warning: #C48A36;
+  --color-warning-bg: #FDF6EC;
+  --color-error: #B95757;
+  --color-error-bg: #FDF0F0;
+  --color-info: #2D6B82;
+  --color-info-bg: #EDF6F9;
+
+  /* Brand Aliases for Compatibility */
+  --anova-forest-green: #183C34;
+  --anova-olive-green: #739184;
+  --anova-sage-green: #739184;
+  --anova-champagne-gold: #C5A46D;
+  --anova-warm-ivory: #F8F7F3;
+  --anova-charcoal: #26342F;
+  --anova-slate-green: #26342F;
+  --anova-moss-green: #739184;
+  --anova-soft-gold: #E4C58E;
+  --anova-cream: #F8F7F3;
+
+  /* Typography */
+  --font-primary: "Inter", sans-serif;
+  --font-display: "Inter", sans-serif;
+
+  /* Border radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 8px rgba(24, 60, 52, 0.05);
+  --shadow-md: 0 8px 24px rgba(24, 60, 52, 0.08);
+  --shadow-lg: 0 16px 36px rgba(24, 60, 52, 0.12);
+
+  /* Transitions */
+  --transition-fast: 0.2s ease;
+  --transition-normal: 0.3s ease;
+}
+
+/* Global Reset & Base Styling */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-primary);
+  background-color: var(--color-background);
+  color: var(--color-text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

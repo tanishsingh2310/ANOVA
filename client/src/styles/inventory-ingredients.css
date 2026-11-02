@@ -1,0 +1,8 @@
+@import "./inventory.css";
+
+/* ============================================================
+   ANOVA INVENTORY — INGREDIENTS & STOCK MANAGEMENT STYLES
+   ============================================================ */
+.inv-ingredients-container {
+  width: 100%;
+}
