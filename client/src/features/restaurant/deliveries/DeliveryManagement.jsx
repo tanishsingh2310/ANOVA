@@ -294,10 +294,6 @@ export default function DeliveryManagement({
       {/* Header */}
       <header className="deliveries-header">
         <div className="deliveries-header-info">
-          <h2>
-            <Truck size={24} />
-            <span>Delivery Management</span>
-          </h2>
           <p>
             <span style={{ fontWeight: 600, color: 'var(--deliv-primary)' }}>
               📍 {currentBranchLabel}:{' '}
